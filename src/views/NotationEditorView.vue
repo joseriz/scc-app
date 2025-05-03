@@ -16,19 +16,33 @@
       </div>
       
         <div class="clef-selector">
-          <label>Clef:</label>
-          <select v-model="selectedClef" @change="handleClefChange">
-            <option value="treble">Treble</option>
-            <option value="bass">Bass</option>
-          </select>
+          <label for="clef-select">Clef:</label>
+          <div class="custom-select">
+            <select id="clef-select" v-model="selectedClef" @change="handleClefChange">
+              <option value="treble">𝄞 Treble</option>
+              <option value="bass">𝄢 Bass</option>
+            </select>
+            <div class="select-icon">▼</div>
+          </div>
         </div>
       </div>
       
       <div class="controls-row">
       <div class="playback-controls">
-        <button @click="playComposition" class="play-btn">Play</button>
-        <button @click="stopPlayback" class="stop-btn">Stop</button>
-        <button @click="clearScore" class="clear-btn">Clear</button>
+        <button @click="playComposition" class="action-button play-button" :disabled="isPlaying">
+          <span class="button-icon">▶</span>
+          <span class="button-label">Play</span>
+        </button>
+        
+        <button @click="stopPlayback" class="action-button stop-button" :disabled="!isPlaying">
+          <span class="button-icon">■</span>
+          <span class="button-label">Stop</span>
+        </button>
+        
+        <button @click="clearScore" class="action-button clear-button" @mousedown="animateButton">
+          <span class="button-icon">✕</span>
+          <span class="button-label">Clear</span>
+        </button>
         </div>
       </div>
     </div>
@@ -2751,6 +2765,14 @@ const toggleDebugMonitor = () => {
     window.debugMonitorRemover = addDebugMonitor();
   }
 };
+
+// Add button animation function
+const animateButton = (event) => {
+  event.target.closest('button').classList.add('button-press-animation');
+  setTimeout(() => {
+    event.target.closest('button').classList.remove('button-press-animation');
+  }, 300);
+};
 </script>
 
 <style scoped>
@@ -2801,27 +2823,167 @@ const toggleDebugMonitor = () => {
 .clef-selector {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 10px;
+}
+
+.clef-selector label {
+  font-weight: 500;
   white-space: nowrap;
 }
 
-.clef-selector select {
-  padding: 5px;
-  border-radius: 4px;
+.custom-select {
+  position: relative;
+  min-width: 120px;
+}
+
+.custom-select select {
+  appearance: none;
+  background-color: white;
   border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 8px 30px 8px 10px;
+  width: 100%;
+  font-size: 15px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.custom-select select:hover {
+  border-color: #2196F3;
+}
+
+.custom-select select:focus {
+  border-color: #2196F3;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.custom-select .select-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 10px;
+  color: #666;
+}
+
+/* Enhance select options (works in some browsers) */
+.custom-select select option {
+  padding: 10px;
+  font-size: 15px;
+}
+
+/* Media query for mobile */
+@media (max-width: 600px) {
+  .custom-select {
+    min-width: 100px;
+  }
+  
+  .custom-select select {
+    padding: 6px 25px 6px 8px;
+    font-size: 14px;
+  }
 }
 
 .playback-controls {
   display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-  width: 100%;
+  gap: 12px;
+  justify-content: center;
+  margin: 10px 0;
 }
 
-.playback-controls button {
-  flex: 1;
-  min-width: 60px;
-  max-width: 100px;
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+.action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Add ripple effect */
+.action-button::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120%;
+  height: 120%;
+  background: rgba(255,255,255,0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.action-button:active:not(:disabled)::after {
+  transform: translate(-50%, -50%) scale(1.5);
+  opacity: 1;
+  transition: all 0.2s ease;
+}
+
+.button-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.button-label {
+  font-weight: 500;
+}
+
+.play-button {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.play-button:hover:not(:disabled) {
+  background-color: #43a047;
+  transform: translateY(-2px);
+}
+
+.stop-button {
+  background-color: #f44336;
+  color: white;
+}
+
+.stop-button:hover:not(:disabled) {
+  background-color: #e53935;
+  transform: translateY(-2px);
+}
+
+.clear-button {
+  background-color: #757575;
+  color: white;
+}
+
+.clear-button:hover:not(:disabled) {
+  background-color: #616161;
+  transform: translateY(-2px);
+}
+
+/* Button press animation */
+@keyframes buttonPress {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
+.button-press-animation {
+  animation: buttonPress 0.3s ease;
 }
 
 /* Mobile tabs with better sizing */
@@ -4274,5 +4436,78 @@ button:disabled {
 .export-btn:disabled {
   background-color: #9E9E9E;
   cursor: not-allowed;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  background: #4CAF50;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background-color: #45a049;
+}
+
+.btn-icon {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.btn-text {
+  font-size: 14px;
+  font-weight: normal;
+}
+
+.btn-disabled {
+  background-color: #9E9E9E;
+  cursor: not-allowed;
+}
+
+.custom-select {
+  position: relative;
+  display: inline-block;
+}
+
+.select-icon {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #999;
+}
+
+.select-icon::after {
+  content: "\25BC";
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #999;
+}
+
+.select-icon::before {
+  content: "\25B2";
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #999;
+}
+
+.select-icon::after,
+.select-icon::before {
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
 }
 </style> 
