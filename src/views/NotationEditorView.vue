@@ -4,17 +4,17 @@
     <!-- Make controls more mobile-friendly -->
     <div class="controls">
       <div class="controls-row">
-        <div class="tempo-control">
+      <div class="tempo-control">
           <label>Tempo: {{ tempo }}</label>
-          <input 
-            type="range" 
-            v-model="tempo" 
-            min="40" 
-            max="240" 
-            class="tempo-slider"
-          />
-        </div>
-        
+        <input 
+          type="range" 
+          v-model="tempo" 
+          min="40" 
+          max="240" 
+          class="tempo-slider"
+        />
+      </div>
+      
         <div class="clef-selector">
           <label>Clef:</label>
           <select v-model="selectedClef" @change="handleClefChange">
@@ -25,10 +25,10 @@
       </div>
       
       <div class="controls-row">
-        <div class="playback-controls">
-          <button @click="playComposition" class="play-btn">Play</button>
-          <button @click="stopPlayback" class="stop-btn">Stop</button>
-          <button @click="clearScore" class="clear-btn">Clear</button>
+      <div class="playback-controls">
+        <button @click="playComposition" class="play-btn">Play</button>
+        <button @click="stopPlayback" class="stop-btn">Stop</button>
+        <button @click="clearScore" class="clear-btn">Clear</button>
         </div>
       </div>
     </div>
@@ -90,8 +90,8 @@
                      class="ledger-line"
                      :style="{
                        top: `${linePos}px`,
-                       width: '20px'
-                     }">
+                     width: '20px'
+                   }">
                 </div>
               </div>
               
@@ -106,10 +106,10 @@
                      class="ledger-line"
                      :style="{
                        top: `${linePos}px`,
-                       width: '20px'
-                     }">
-                </div>
+                     width: '20px'
+                   }">
               </div>
+            </div>
             </template>
             
             <!-- Notes -->
@@ -209,17 +209,17 @@
     </div>
 
     <div v-if="activeTab === 'notes'" class="note-controls-container">
-      <div class="note-controls">
+    <div class="note-controls">
         <!-- Note durations in a scrollable row -->
         <div class="control-section">
           <h4>Duration</h4>
           <div class="scrollable-buttons">
-            <button v-for="duration in availableDurations" 
-                    :key="duration.value"
-                    @click="selectedDuration = duration.value"
-                    :class="['note-btn', { active: selectedDuration === duration.value }]">
-              {{ duration.label }}
-            </button>
+      <button v-for="duration in availableDurations" 
+              :key="duration.value"
+              @click="selectedDuration = duration.value"
+              :class="['note-btn', { active: selectedDuration === duration.value }]">
+        {{ duration.label }}
+      </button>
           </div>
           <div class="dotted-note-toggle">
             <button @click="toggleDottedNote" 
@@ -233,39 +233,39 @@
         <div class="control-section">
           <h4>Accidental</h4>
           <div class="scrollable-buttons">
-            <button v-for="accidental in availableAccidentals"
-                    :key="accidental.value"
-                    @click="selectedAccidental = accidental.value"
-                    :class="['note-btn', { active: selectedAccidental === accidental.value }]">
-              {{ accidental.label }}
-            </button>
+      <button v-for="accidental in availableAccidentals"
+              :key="accidental.value"
+              @click="selectedAccidental = accidental.value"
+              :class="['note-btn', { active: selectedAccidental === accidental.value }]">
+        {{ accidental.label }}
+      </button>
           </div>
         </div>
 
-        <!-- Note/Rest toggle -->
+      <!-- Note/Rest toggle -->
         <div class="control-section">
           <h4>Type</h4>
           <div class="button-group">
-            <button @click="selectedNoteType = 'note'"
-                    :class="['note-btn', { active: selectedNoteType === 'note' }]">
-              Note
-            </button>
-            <button @click="selectedNoteType = 'rest'"
-                    :class="['note-btn', { active: selectedNoteType === 'rest' }]">
-              Rest
-            </button>
+      <button @click="selectedNoteType = 'note'"
+              :class="['note-btn', { active: selectedNoteType === 'note' }]">
+        Note
+      </button>
+      <button @click="selectedNoteType = 'rest'"
+              :class="['note-btn', { active: selectedNoteType === 'rest' }]">
+        Rest
+      </button>
           </div>
-        </div>
-        
+    </div>
+
         <!-- Octave Range -->
         <div class="control-section">
           <h4>Octave</h4>
           <div class="scrollable-buttons">
-            <button v-for="octave in [2,3,4,5,6]"
-                    :key="octave"
-                    @click="selectedOctave = octave"
-                    :class="['octave-btn', { active: selectedOctave === octave }]">
-              {{ octave }}
+        <button v-for="octave in [2,3,4,5,6]"
+                :key="octave"
+                @click="selectedOctave = octave"
+                :class="['octave-btn', { active: selectedOctave === octave }]">
+          {{ octave }}
             </button>
           </div>
         </div>
@@ -350,7 +350,7 @@
               Below lines: {{ getLedgerLines(note, 'below').join(', ') }}
             </p>
           </template>
-        </div>
+    </div>
       </div>
     </div>
   </div>
@@ -498,7 +498,7 @@ onMounted(async () => {
       },
       baseUrl: "https://tonejs.github.io/audio/salamander/",
       onload: () => {
-        console.log("Piano samples loaded successfully");
+    console.log("Piano samples loaded successfully");
       }
     }).toDestination();
     
@@ -659,31 +659,31 @@ const getPitchPosition = (pitch: string) => {
   
   if (selectedClef.value === 'treble') {
     // Treble clef staff positions (pixels from top)
-    const staffPositions: Record<string, number> = {
+  const staffPositions: Record<string, number> = {
       'F5': 100, 'E5': 107.5, 'D5': 115, 'C5': 122.5, 'B4': 130,
       'A4': 137.5, 'G4': 145, 'F4': 152.5, 'E4': 160, 'D4': 167.5,
       'C4': 175, 'B3': 182.5, 'A3': 190, 'G3': 197.5, 'F3': 205
-    };
-    
-    // Calculate position based on note and octave
-    const baseNote = `${note}${octave}`;
-    
-    // If the note is in our standard staff range
-    if (baseNote in staffPositions) {
-      return staffPositions[baseNote];
-    }
-    
-    // For notes above or below the staff
-    const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-    const noteIndex = noteOrder.indexOf(note);
-    
-    if (baseNote > 'F5') {
-      // Notes above the staff (higher than F5)
-      const stepsAboveF5 = (octave - 5) * 7 + noteIndex - noteOrder.indexOf('F');
+  };
+  
+  // Calculate position based on note and octave
+  const baseNote = `${note}${octave}`;
+  
+  // If the note is in our standard staff range
+  if (baseNote in staffPositions) {
+    return staffPositions[baseNote];
+  }
+  
+  // For notes above or below the staff
+  const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const noteIndex = noteOrder.indexOf(note);
+  
+  if (baseNote > 'F5') {
+    // Notes above the staff (higher than F5)
+    const stepsAboveF5 = (octave - 5) * 7 + noteIndex - noteOrder.indexOf('F');
       return 100 - (stepsAboveF5 * 7.5); // Each step is 7.5px
-    } else {
-      // Notes below the staff (lower than F3)
-      const stepsBelowF3 = (3 - octave) * 7 + noteOrder.indexOf('F') - noteIndex;
+  } else {
+    // Notes below the staff (lower than F3)
+    const stepsBelowF3 = (3 - octave) * 7 + noteOrder.indexOf('F') - noteIndex;
       return 205 + (stepsBelowF3 * 7.5); // Each step is 7.5px
     }
   } else {
@@ -815,34 +815,50 @@ const getModifiedPitchForKeySignature = (pitch: string) => {
   return pitch;
 };
 
-// Update the playNoteSound function to handle dotted notes
+// Refine the playNoteSound function for robustness
 const playNoteSound = async (pitch: string, duration: string = "8n", isDotted: boolean = false) => {
+  let pitchToPlay = pitch; // Define pitchToPlay outside try block
+  let noteDuration = duration; // Define noteDuration outside try block
+
   try {
-    // Make sure Tone.js is started
-    await Tone.start();
-    
-    // Apply key signature if needed
-    let pitchToPlay = pitch;
-    if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
-      pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay);
-    }
-    
-    // Calculate the actual duration
-    let noteDuration = duration;
+  // Make sure Tone.js is started
+  await Tone.start();
+  
+  // Apply key signature if needed
+  if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
+    pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay);
+  }
+  
+    // Calculate the actual duration in seconds first for reliability
+    const baseDurationMap: Record<string, number> = {
+      "1n": 4 * (60 / tempo.value), // Whole note duration based on tempo
+      "2n": 2 * (60 / tempo.value), // Half note
+      "4n": 1 * (60 / tempo.value), // Quarter note (1 beat)
+      "8n": 0.5 * (60 / tempo.value), // Eighth note
+      "16n": 0.25 * (60 / tempo.value) // Sixteenth note
+    };
+
+    let durationInSeconds = baseDurationMap[duration] || (60 / tempo.value); // Default to quarter note duration if invalid
+
     if (isDotted) {
-      // Convert duration to seconds, multiply by 1.5, then back to notation
-      const durationMap = {
-        "1n": 4,
-        "2n": 2,
-        "4n": 1,
-        "8n": 0.5,
-        "16n": 0.25
-      };
-      const seconds = durationMap[duration] || 1;
-      const dottedSeconds = seconds * 1.5;
-      noteDuration = `${dottedSeconds}s`;
+      durationInSeconds *= 1.5;
     }
-    
+
+    // Ensure duration is a positive number
+    if (durationInSeconds <= 0) {
+      console.warn(`Calculated invalid duration (${durationInSeconds}s), defaulting to 0.5s`);
+      durationInSeconds = 0.5;
+    }
+
+    // Convert seconds to Tone.js compatible time string (e.g., "1.5s")
+    noteDuration = `${durationInSeconds}s`;
+
+    // Ensure pitch is valid
+    if (!pitchToPlay) {
+        console.warn("Invalid pitch provided, cannot play note.");
+        return; // Exit if pitch is invalid
+    }
+
     // Use the piano synth to play the note if available, otherwise use basic synth
     if (pianoSynth && pianoSynth.loaded) {
       pianoSynth.triggerAttackRelease(pitchToPlay, noteDuration);
@@ -852,13 +868,102 @@ const playNoteSound = async (pitch: string, duration: string = "8n", isDotted: b
       console.warn("No synthesizer available to play notes");
     }
   } catch (error) {
-    console.error("Error playing note:", error);
-    // Try fallback to basic synth
-    if (noteSynth) {
+    console.error(`Error playing note (${pitchToPlay}, ${noteDuration}):`, error);
+    // Try fallback to basic synth, ensuring variables are defined
+  if (noteSynth) {
       try {
-        noteSynth.triggerAttackRelease(pitchToPlay, noteDuration);
+        // Use the already defined pitchToPlay and noteDuration from the outer scope
+        // Add extra checks for safety
+        const safePitch = pitchToPlay || 'C4';
+        const safeDuration = noteDuration || '0.5s'; // Use calculated duration or a default
+        console.log(`Fallback synth playing: ${safePitch}, ${safeDuration}`);
+        noteSynth.triggerAttackRelease(safePitch, safeDuration);
       } catch (fallbackError) {
         console.error("Fallback synth also failed:", fallbackError);
+      }
+    }
+  }
+};
+
+// Ensure playComposition uses the correct duration mapping for playNoteSound
+const playComposition = async () => {
+  if (isPlaying.value) return;
+
+  isPlaying.value = true;
+
+  // Sort notes by position
+  const sortedNotes = [...notes.value].sort((a, b) => a.position - b.position);
+
+  // Map durations to actual time values in seconds
+  const durationMap: Record<string, number> = {
+    'whole': 4,
+    'half': 2,
+    'quarter': 1,
+    'eighth': 0.5,
+    'sixteenth': 0.25
+  };
+
+  // Map durations to Tone.js format (like '4n')
+  const toneDurationMap: Record<string, string> = {
+    'whole': '1n',
+    'half': '2n',
+    'quarter': '4n',
+    'eighth': '8n',
+    'sixteenth': '16n'
+  };
+
+  // Calculate tempo in seconds per beat (quarter note)
+  const secondsPerBeat = 60 / tempo.value;
+
+  try {
+    for (const note of sortedNotes) {
+      currentPlayingNoteId.value = note.id;
+
+      // Calculate the wait duration in seconds
+      let waitDurationSeconds = (durationMap[note.duration] || 1) * secondsPerBeat;
+      if (note.dotted) {
+        waitDurationSeconds *= 1.5;
+      }
+
+      if (note.type === 'note' && note.pitch) {
+        // Play the note using the Tone.js duration format ('4n', '8n', etc.)
+        const toneDuration = toneDurationMap[note.duration] || '4n';
+        playNoteSound(note.pitch, toneDuration, note.dotted);
+
+        // Wait for the calculated duration in seconds
+        await new Promise(resolve => setTimeout(resolve, waitDurationSeconds * 1000));
+      } else {
+        // For rests, just wait the duration
+        await new Promise(resolve => setTimeout(resolve, waitDurationSeconds * 1000));
+      }
+    }
+  } catch (error) {
+    console.error("Error during playback:", error);
+  } finally {
+    // Always reset the playing state
+    currentPlayingNoteId.value = null;
+    isPlaying.value = false;
+    
+    // Ensure any lingering sounds are stopped using the appropriate methods
+    if (pianoSynth && pianoSynth.loaded) {
+      pianoSynth.releaseAll();
+    }
+    
+    if (noteSynth) {
+      // For basic Tone.Synth, we need to call triggerRelease instead of releaseAll
+      try {
+        // This will stop any currently playing notes on the basic synth
+        noteSynth.triggerRelease();
+      } catch (e) {
+        console.warn("Could not release notes from noteSynth:", e);
+        
+        // If that fails, try to dispose the synth and recreate it
+        try {
+          noteSynth.dispose();
+          noteSynth = new Tone.Synth().toDestination();
+        } catch (disposeError) {
+          console.error("Failed to reset synth:", disposeError);
+        }
       }
     }
   }
@@ -1020,13 +1125,13 @@ const testAllNotes = () => {
   
   if (selectedClef.value === 'treble') {
     testNotes = [
-      // Higher notes (with ledger lines)
+    // Higher notes (with ledger lines)
       'A5', 'G5',
-      
-      // Staff notes
+    
+    // Staff notes
       'F5', 'E5', 'D5', 'C5', 'B4', 'A4', 'G4', 'F4', 'E4',
-      
-      // Lower notes (with ledger lines)
+    
+    // Lower notes (with ledger lines)
       'D4', 'C4', 'B3', 'A3', 'G3', 'F3', 'E3', 'D3', 'C3'
     ];
   } else {
@@ -1063,15 +1168,15 @@ const getStemDirection = (pitch: string) => {
   const note = pitch.slice(0, -1).replace(/[#b]/, '');
   
   if (selectedClef.value === 'treble') {
-    // Middle line is B4 in treble clef
-    // Notes above middle line have stems down, below have stems up
-    if (octave > 4) return 'down';
-    if (octave < 4) return 'up';
-    
-    // For octave 4, depends on the note
-    const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-    const noteIndex = noteOrder.indexOf(note);
-    
+  // Middle line is B4 in treble clef
+  // Notes above middle line have stems down, below have stems up
+  if (octave > 4) return 'down';
+  if (octave < 4) return 'up';
+  
+  // For octave 4, depends on the note
+  const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const noteIndex = noteOrder.indexOf(note);
+  
     // B4 is the middle line, notes above it would have stems down
     return noteIndex < 6 ? 'up' : 'down';
   } else {
@@ -1130,57 +1235,6 @@ const getNoteStyle = (note: Note) => {
 
 // Add the isPlaying ref
 const isPlaying = ref(false);
-
-// Update the playComposition function to use the isPlaying ref
-const playComposition = async () => {
-  if (isPlaying.value) return;
-  
-  isPlaying.value = true;
-  
-  // Sort notes by position
-  const sortedNotes = [...notes.value].sort((a, b) => a.position - b.position);
-  
-  // Map durations to actual time values in seconds
-  const durationMap = {
-    'whole': 4,
-    'half': 2,
-    'quarter': 1,
-    'eighth': 0.5,
-    'sixteenth': 0.25
-  };
-  
-  // Calculate tempo in seconds per beat (quarter note)
-  const secondsPerBeat = 60 / tempo.value;
-  
-  for (const note of sortedNotes) {
-    currentPlayingNoteId.value = note.id;
-    
-    if (note.type === 'note' && note.pitch) {
-      // Calculate the actual duration, accounting for dotted notes
-      let noteDuration = durationMap[note.duration] * secondsPerBeat;
-      if (note.dotted) {
-        noteDuration *= 1.5; // Dotted notes are 1.5x the original duration
-      }
-      
-      // Play the note
-      playNoteSound(note.pitch, note.duration, note.dotted);
-      
-      // Wait for the note duration
-      await new Promise(resolve => setTimeout(resolve, noteDuration * 1000));
-    } else {
-      // For rests, just wait the duration
-      let restDuration = durationMap[note.duration] * secondsPerBeat;
-      if (note.dotted) {
-        restDuration *= 1.5; // Dotted rests are also 1.5x the original duration
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, restDuration * 1000));
-    }
-  }
-  
-  currentPlayingNoteId.value = null;
-  isPlaying.value = false;
-};
 
 // Add a function to auto-scroll to the currently playing note
 const autoScrollToNote = (note) => {
@@ -1244,7 +1298,7 @@ const needsLedgerLines = (note, position) => {
   
   if (selectedClef.value === 'treble') {
     // For treble clef
-    if (position === 'above') {
+  if (position === 'above') {
       // Notes above the staff (higher than F5)
       return verticalPos <= 92.5; // G5 and above
     } else if (position === 'below') {
@@ -1273,7 +1327,7 @@ const getLedgerLines = (note, position) => {
   
   if (selectedClef.value === 'treble') {
     // For treble clef
-    if (position === 'above') {
+  if (position === 'above') {
       // Add ledger lines above the staff
       for (let pos = 85; pos >= verticalPos; pos -= 15) {
         lines.push(pos);
@@ -2047,7 +2101,7 @@ onBeforeUnmount(() => {
   }
   
   .staff-container {
-    height: 300px;
+  height: 300px;
   }
   
   .scroll-btn {
