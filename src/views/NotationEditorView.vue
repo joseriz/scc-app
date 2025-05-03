@@ -209,64 +209,65 @@
     </div>
 
     <div v-if="activeTab === 'notes'" class="note-controls-container">
-    <div class="note-controls">
-        <!-- Note durations in a scrollable row -->
-        <div class="control-section">
-          <h4>Duration</h4>
-          <div class="scrollable-buttons">
-      <button v-for="duration in availableDurations" 
-              :key="duration.value"
-              @click="selectedDuration = duration.value"
-              :class="['note-btn', { active: selectedDuration === duration.value }]">
-        {{ duration.label }}
-      </button>
+      <div class="note-controls">
+        <!-- Use a grid layout for better organization on mobile -->
+        <div class="note-controls-grid">
+          <!-- First Row: Duration and Type -->
+          <div class="control-section duration-section">
+            <h4>Duration</h4>
+            <div class="scrollable-buttons">
+              <button v-for="duration in availableDurations" 
+                      :key="duration.value"
+                      @click="selectedDuration = duration.value"
+                      :class="['note-btn', { active: selectedDuration === duration.value }]">
+                {{ duration.label }}
+              </button>
+            </div>
+            <div class="dotted-note-toggle">
+              <button @click="toggleDottedNote" 
+                      :class="['note-btn', { active: isDottedNote }]">
+                Dotted
+              </button>
+            </div>
           </div>
-          <div class="dotted-note-toggle">
-            <button @click="toggleDottedNote" 
-                    :class="['note-btn', { active: isDottedNote }]">
-              Dotted
-            </button>
+          
+          <div class="control-section type-section">
+            <h4>Type</h4>
+            <div class="button-group">
+              <button @click="selectedNoteType = 'note'"
+                      :class="['note-btn', { active: selectedNoteType === 'note' }]">
+                Note
+              </button>
+              <button @click="selectedNoteType = 'rest'"
+                      :class="['note-btn', { active: selectedNoteType === 'rest' }]">
+                Rest
+              </button>
+            </div>
           </div>
-        </div>
-
-        <!-- Accidentals in a scrollable row -->
-        <div class="control-section">
-          <h4>Accidental</h4>
-          <div class="scrollable-buttons">
-      <button v-for="accidental in availableAccidentals"
-              :key="accidental.value"
-              @click="selectedAccidental = accidental.value"
-              :class="['note-btn', { active: selectedAccidental === accidental.value }]">
-        {{ accidental.label }}
-      </button>
+          
+          <!-- Second Row: Accidental and Octave -->
+          <div class="control-section accidental-section">
+            <h4>Accidental</h4>
+            <div class="scrollable-buttons">
+              <button v-for="accidental in availableAccidentals"
+                      :key="accidental.value"
+                      @click="selectedAccidental = accidental.value"
+                      :class="['note-btn', { active: selectedAccidental === accidental.value }]">
+                {{ accidental.label }}
+              </button>
+            </div>
           </div>
-        </div>
-
-      <!-- Note/Rest toggle -->
-        <div class="control-section">
-          <h4>Type</h4>
-          <div class="button-group">
-      <button @click="selectedNoteType = 'note'"
-              :class="['note-btn', { active: selectedNoteType === 'note' }]">
-        Note
-      </button>
-      <button @click="selectedNoteType = 'rest'"
-              :class="['note-btn', { active: selectedNoteType === 'rest' }]">
-        Rest
-      </button>
-          </div>
-    </div>
-
-        <!-- Octave Range -->
-        <div class="control-section">
-          <h4>Octave</h4>
-          <div class="scrollable-buttons">
-        <button v-for="octave in [2,3,4,5,6]"
-                :key="octave"
-                @click="selectedOctave = octave"
-                :class="['octave-btn', { active: selectedOctave === octave }]">
-          {{ octave }}
-            </button>
+          
+          <div class="control-section octave-section">
+            <h4>Octave</h4>
+            <div class="scrollable-buttons">
+              <button v-for="octave in [2,3,4,5,6]"
+                      :key="octave"
+                      @click="selectedOctave = octave"
+                      :class="['octave-btn', { active: selectedOctave === octave }]">
+                {{ octave }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1947,29 +1948,78 @@ onBeforeUnmount(() => {
 
 .control-section {
   margin-bottom: 15px;
-  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
 }
 
 .control-section h4 {
-  margin: 0 0 5px 0;
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: #333;
   font-size: 14px;
-  color: #555;
+  text-align: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
 }
 
-/* Make scrollable buttons more responsive */
+/* Improve button spacing and appearance */
 .scrollable-buttons {
   display: flex;
-  overflow-x: auto;
-  padding-bottom: 5px;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 5px;
-  -webkit-overflow-scrolling: touch;
-  width: 100%;
-  scrollbar-width: none; /* Hide scrollbar for Firefox */
-  -ms-overflow-style: none; /* Hide scrollbar for IE and Edge */
 }
 
-.scrollable-buttons::-webkit-scrollbar {
-  display: none; /* Hide scrollbar for Chrome, Safari, and Opera */
+.note-btn {
+  flex: 0 0 auto;
+  min-width: 40px;
+  height: 40px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.note-btn.active {
+  background: #2196F3;
+  color: white;
+  border-color: #0d8aee;
+  box-shadow: 0 0 5px rgba(33, 150, 243, 0.5);
+}
+
+/* Style dotted note toggle more prominently */
+.dotted-note-toggle {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+}
+
+.dotted-note-toggle button {
+  width: 100%;
+  max-width: 120px;
+  height: 36px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dotted-note-toggle button.active {
+  background: #2196F3;
+  box-shadow: 0 0 5px rgba(33, 150, 243, 0.5);
 }
 
 .button-group {
@@ -2879,5 +2929,170 @@ button:disabled {
 /* Add styles for touch feedback */
 .note.touch-active {
   opacity: 0.7;
+}
+
+/* Improved mobile note controls */
+.note-controls-container {
+  padding: 10px;
+  background: #f5f5f5;
+  border-top: 1px solid #ddd;
+}
+
+.note-controls-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* Make control sections more compact */
+.control-section {
+  margin-bottom: 10px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
+
+/* Smaller headers */
+.control-section h4 {
+  margin-top: 0;
+  margin-bottom: 5px;
+  font-size: 12px;
+  text-align: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 3px;
+}
+
+/* Make buttons smaller and more touch-friendly */
+.note-btn, .octave-btn {
+  flex: 0 0 auto;
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+/* Ensure the scrollable buttons don't overflow */
+.scrollable-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  max-height: none;
+  overflow: visible;
+}
+
+/* Adjust button groups for the type section */
+.button-group {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+}
+
+.button-group button {
+  flex: 1;
+}
+
+/* Make sure octave buttons are always visible */
+.octave-section .scrollable-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.octave-btn {
+  flex: 0 0 calc(20% - 5px);
+  margin: 0;
+}
+
+/* Ensure active state is clearly visible */
+.note-btn.active, .octave-btn.active {
+  background: #2196F3;
+  color: white;
+  border-color: #0d8aee;
+  box-shadow: 0 0 5px rgba(33, 150, 243, 0.5);
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 480px) {
+  .note-controls-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  
+  .note-btn, .octave-btn {
+    min-width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+  
+  .octave-btn {
+    min-width: 25px;
+  }
+}
+
+/* Fix button icon visibility */
+.note-btn, .octave-btn {
+  flex: 0 0 auto;
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+  color: #333; /* Ensure text is visible */
+  font-size: 16px;
+  font-weight: bold; /* Make text more visible */
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-shadow: none; /* Remove any text shadows */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1); /* Add subtle shadow for depth */
+}
+
+/* Ensure button text is visible in all states */
+.note-btn:not(.active), .octave-btn:not(.active) {
+  color: #333; /* Dark text on light background for contrast */
+  background: #f7f7f7; /* Slightly off-white background */
+  border-color: #ddd;
+}
+
+/* Style active state with higher contrast */
+.note-btn.active, .octave-btn.active {
+  background: #2196F3;
+  color: white;
+  border-color: #0d8aee;
+  box-shadow: 0 0 5px rgba(33, 150, 243, 0.5);
+  font-weight: bold;
+}
+
+/* Add specific styles for duration buttons to ensure symbols are visible */
+.duration-section .note-btn {
+  font-family: 'Times New Roman', serif; /* Better for music symbols */
+  font-size: 20px; /* Larger for better visibility */
+  font-weight: normal; /* Normal weight for symbols */
+}
+
+/* Add specific styles for accidental buttons */
+.accidental-section .note-btn {
+  font-size: 18px;
+  font-weight: normal;
+}
+
+/* Octave buttons should be very clear */
+.octave-section .octave-btn {
+  font-weight: bold;
+  font-size: 16px;
 }
 </style> 
