@@ -414,8 +414,25 @@
           </div>
         </div>
       </div>
+      
+      <!-- Add import/export buttons to the Saved tab -->
+      <div class="import-export-controls">
+        <button @click="exportAllCompositions" class="export-btn">Export All</button>
+        <button @click="exportCurrentComposition" class="export-btn" :disabled="!currentCompositionId">Export Current</button>
+        <label for="import-file" class="import-btn">Import</label>
+        <input 
+          type="file" 
+          id="import-file" 
+          accept=".txt,.json" 
+          @change="importCompositions" 
+          style="display: none;"
+        />
+      </div>
     </div>
   </div>
+  <button @click="toggleDebugMonitor" style="position: fixed; bottom: 10px; left: 10px; z-index: 9999; background: #ff5722; color: white; border: none; padding: 5px 10px; border-radius: 4px;">
+    Toggle Debug
+  </button>
 </template>
 
 <script setup lang="ts">
@@ -945,89 +962,106 @@ const playNoteSound = async (pitch: string, duration: string = "8n", isDotted: b
 
 // Ensure playComposition uses the correct duration mapping for playNoteSound
 const playComposition = async () => {
-  if (isPlaying.value) return;
+  if (isPlaying.value) {
+    // If already playing, stop first
+    stopPlayback();
+    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to ensure everything is stopped
+  }
+  
+  // Make sure we have notes to play
+  if (notes.value.length === 0) {
+    alert('No notes to play');
+    return;
+  }
+  
+  console.log(`Starting playback with ${notes.value.length} notes`);
   
   // Start Tone.js context (this requires user interaction)
   await startToneJs();
   
   isPlaying.value = true;
-
-  // Sort notes by position
+  
+  // Sort notes by position for proper playback order
   const sortedNotes = [...notes.value].sort((a, b) => a.position - b.position);
-
-  // Map durations to actual time values in seconds
-  const durationMap: Record<string, number> = {
-    'whole': 4,
-    'half': 2,
-    'quarter': 1,
-    'eighth': 0.5,
-    'sixteenth': 0.25
-  };
-
-  // Map durations to Tone.js format (like '4n')
-  const toneDurationMap: Record<string, string> = {
-    'whole': '1n',
-    'half': '2n',
-    'quarter': '4n',
-    'eighth': '8n',
-    'sixteenth': '16n'
-  };
-
-  // Calculate tempo in seconds per beat (quarter note)
-  const secondsPerBeat = 60 / tempo.value;
-
-  try {
-    for (const note of sortedNotes) {
-      currentPlayingNoteId.value = note.id;
-
-      // Calculate the wait duration in seconds
-      let waitDurationSeconds = (durationMap[note.duration] || 1) * secondsPerBeat;
-      if (note.dotted) {
-        waitDurationSeconds *= 1.5;
-      }
-
-      if (note.type === 'note' && note.pitch) {
-        // Play the note using the Tone.js duration format ('4n', '8n', etc.)
-        const toneDuration = toneDurationMap[note.duration] || '4n';
-        playNoteSound(note.pitch, toneDuration, note.dotted);
-
-        // Wait for the calculated duration in seconds
-        await new Promise(resolve => setTimeout(resolve, waitDurationSeconds * 1000));
-      } else {
-        // For rests, just wait the duration
-        await new Promise(resolve => setTimeout(resolve, waitDurationSeconds * 1000));
-      }
-    }
-  } catch (error) {
-    console.error("Error during playback:", error);
-  } finally {
-    // Always reset the playing state
-    currentPlayingNoteId.value = null;
-    isPlaying.value = false;
+  
+  // Initialize array to track timeout IDs for cleanup
+  if (!window.playbackTimeouts) window.playbackTimeouts = [];
+  window.playbackTimeouts = [];
+  
+  // Clear any existing timeouts
+  window.playbackTimeouts.forEach(id => clearTimeout(id));
+  window.playbackTimeouts = [];
+  
+  // Play notes in sequence with proper timing
+  let totalDelay = 0;
+  
+  for (const note of sortedNotes) {
+    // console.log(`Scheduling ${note.pitch || 'rest'} at position ${note.position}`);
     
-    // Ensure any lingering sounds are stopped using the appropriate methods
-    if (pianoSynth && pianoSynth.loaded) {
-      pianoSynth.releaseAll();
+    // Calculate delay for this note
+    const secondsPerBeat = 60 / tempo.value;
+    
+    // Map durations to relative lengths
+    const durationMap = {
+      'whole': 4,
+      'half': 2,
+      'quarter': 1,
+      'eighth': 0.5,
+      'sixteenth': 0.25
+    };
+    
+    // Map durations to Tone.js format
+    const toneDurationMap = {
+      'whole': '1n',
+      'half': '2n',
+      'quarter': '4n',
+      'eighth': '8n',
+      'sixteenth': '16n'
+    };
+    
+    // Calculate the wait duration in seconds
+    let waitDurationSeconds = (durationMap[note.duration] || 1) * secondsPerBeat;
+    if (note.dotted) {
+      waitDurationSeconds *= 1.5;
     }
     
-    if (noteSynth) {
-      // For basic Tone.Synth, we need to call triggerRelease instead of releaseAll
-      try {
-        // This will stop any currently playing notes on the basic synth
-        noteSynth.triggerRelease();
-      } catch (e) {
-        console.warn("Could not release notes from noteSynth:", e);
+    // Function to play this note at the right time
+    const playNoteWithDelay = (noteToPlay, delay) => {
+      const timeoutId = setTimeout(() => {
+        currentPlayingNoteId.value = noteToPlay.id;
         
-        // If that fails, try to dispose the synth and recreate it
-        try {
-          noteSynth.dispose();
-          noteSynth = new Tone.Synth().toDestination();
-        } catch (disposeError) {
-          console.error("Failed to reset synth:", disposeError);
+        if (noteToPlay.type === 'note' && noteToPlay.pitch) {
+          // Play the note using the Tone.js duration format ('4n', '8n', etc.)
+          const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
+          playNoteSound(noteToPlay.pitch, toneDuration, noteToPlay.dotted);
         }
-      }
-    }
+        
+        // Schedule the end of this note
+        const noteEndTimeoutId = setTimeout(() => {
+          if (currentPlayingNoteId.value === noteToPlay.id) {
+            currentPlayingNoteId.value = null;
+          }
+        }, waitDurationSeconds * 1000);
+        
+        window.playbackTimeouts.push(noteEndTimeoutId);
+      }, delay);
+      
+      window.playbackTimeouts.push(timeoutId);
+    };
+    
+    // Schedule this note
+    playNoteWithDelay(note, totalDelay * 1000);
+    totalDelay += waitDurationSeconds;
   }
+  
+  // Stop playing after all notes have played
+  const finalTimeoutId = setTimeout(() => {
+    isPlaying.value = false;
+    currentPlayingNoteId.value = null;
+    console.log('Playback complete');
+  }, totalDelay * 1000 + 100); // Add a small buffer
+  
+  window.playbackTimeouts.push(finalTimeoutId);
 };
 
 // Add this new function to adjust the pitch for playback
@@ -1333,16 +1367,41 @@ const updateStaffScroll = () => {
 
 // Update the stopPlayback function to use the isPlaying ref
 const stopPlayback = () => {
-  if (!isPlaying.value) return;
+  isPlaying.value = false;
+  currentPlayingNoteId.value = null;
   
-  // Stop any currently playing notes
-  if (pianoSynth) {
-    pianoSynth.releaseAll();
+  // Cancel any scheduled note playback
+  if (window.playbackTimeouts) {
+    window.playbackTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    window.playbackTimeouts = [];
   }
   
-  // Reset the playing state
-  currentPlayingNoteId.value = null;
-  isPlaying.value = false;
+  // Stop Tone.js Transport if it's running
+  try {
+    Tone.Transport.stop();
+    Tone.Transport.cancel(0);
+  } catch (e) {
+    console.error('Error stopping Tone.Transport:', e);
+  }
+  
+  // Use triggerRelease instead of releaseAll for noteSynth
+  if (noteSynth) {
+    try {
+      noteSynth.triggerRelease(); // This is the correct method for basic Tone.Synth
+    } catch (e) {
+      console.error('Error stopping synth:', e);
+    }
+  }
+  
+  if (pianoSynth) {
+    try {
+      pianoSynth.releaseAll();
+    } catch (e) {
+      console.error('Error stopping piano sampler:', e);
+    }
+  }
+  
+  console.log('Playback stopped and all scheduled notes cleared');
 };
 
 const clearScore = () => {
@@ -2024,6 +2083,9 @@ const updateNotes = (newNotes) => {
 const clearStaffCompletely = async () => {
   console.log('Clearing staff completely...');
   
+  // Stop any playback first
+  stopPlayback();
+  
   // Store the current length for debugging
   const originalLength = notes.value.length;
   
@@ -2033,8 +2095,9 @@ const clearStaffCompletely = async () => {
     noteElement.style.opacity = '0.3'; // Visual indicator that these will be removed
   });
   
-  // Clear the notes array
-  notes.value = [];
+  // Create a fresh empty array for notes (this ensures no references to old notes remain)
+  const emptyArray = [];
+  notes.value = emptyArray;
   
   // Wait for Vue to update
   await nextTick();
@@ -2048,43 +2111,17 @@ const clearStaffCompletely = async () => {
   
   console.log(`Staff cleared: removed ${originalLength} notes, current length: ${notes.value.length}`);
   
-  // Force a redraw of the staff container by toggling a class
-  const staffContainer = document.querySelector('.staff-container');
-  if (staffContainer) {
-    staffContainer.classList.add('force-redraw');
-    setTimeout(() => {
-      staffContainer.classList.remove('force-redraw');
-    }, 10);
-  }
-  
   // Reset scroll position to beginning
   scrollPosition.value = 0;
-  
-  // Force update the staff display
-  await updateStaffDisplay();
-  
-  // Wait for good measure
-  await nextTick();
-  
-  // Double-check that notes were actually cleared
-  const remainingNotes = document.querySelectorAll('.note');
-  if (remainingNotes.length > 0) {
-    console.warn(`WARNING: ${remainingNotes.length} note elements still in DOM after clearing!`);
-    console.log('Attempting force removal...');
-    
-    // Last resort: try to remove them manually
-    remainingNotes.forEach(noteElement => {
-      if (noteElement.parentNode) {
-        noteElement.parentNode.removeChild(noteElement);
-      }
-    });
-  }
   
   // Reset the DOM transform to avoid ghost notes
   const staffElement = document.querySelector('.staff');
   if (staffElement) {
     staffElement.style.transform = 'translateX(0px)';
   }
+  
+  // Force garbage collection if possible
+  if (window.gc) window.gc();
   
   return new Promise(resolve => setTimeout(resolve, 50)); // Give the browser time to update
 };
@@ -2102,7 +2139,80 @@ const clearStaffCompletely = async () => {
 }
 */
 
-// Update the loadComposition function to use the new clear function
+// Add a function to completely reset the audio system
+const resetAudioSystem = async () => {
+  console.log('Completely resetting audio system...');
+  
+  // Stop any ongoing playback
+  stopPlayback();
+  
+  // First, release and dispose all current audio nodes
+  if (noteSynth) {
+    try {
+      noteSynth.releaseAll();
+      noteSynth.dispose();
+      noteSynth = null;
+    } catch (e) {
+      console.error('Error disposing noteSynth:', e);
+    }
+  }
+  
+  if (pianoSynth) {
+    try {
+      pianoSynth.releaseAll();
+      pianoSynth.dispose();
+      pianoSynth = null;
+    } catch (e) {
+      console.error('Error disposing pianoSynth:', e);
+    }
+  }
+  
+  // Clear all scheduled events
+  try {
+    Tone.Transport.cancel(0);
+    Tone.Transport.stop();
+  } catch (e) {
+    console.error('Error clearing Tone.Transport:', e);
+  }
+  
+  // Clear any timeouts
+  if (window.playbackTimeouts) {
+    window.playbackTimeouts.forEach(id => clearTimeout(id));
+    window.playbackTimeouts = [];
+  }
+  
+  // Re-initialize the audio context if possible
+  try {
+    await Tone.start();
+    Tone.context.resume();
+  } catch (e) {
+    console.log('Could not restart Tone context (may need user interaction):', e);
+  }
+  
+  // Recreate the synthesizers
+  try {
+    noteSynth = new Tone.Synth({
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 }
+    }).toDestination();
+    
+    pianoSynth = new Tone.Sampler({
+      urls: {
+        'C4': 'C4.mp3',
+        'D#4': 'Ds4.mp3',
+        'F#4': 'Fs4.mp3',
+        'A4': 'A4.mp3',
+      },
+      baseUrl: 'https://tonejs.github.io/audio/salamander/'
+    }).toDestination();
+    
+    console.log('Audio system reset complete, new synths created');
+  } catch (e) {
+    console.error('Error recreating synths:', e);
+  }
+};
+
+// Update the loadComposition function to use the resetAudioSystem
 const loadComposition = async (id: string) => {
   const composition = savedCompositions.value.find(comp => comp.id === id);
   if (!composition) {
@@ -2122,19 +2232,19 @@ const loadComposition = async (id: string) => {
   }
   
   try {
-    // Clear the staff completely first
-    await clearStaffCompletely();
+    // Stop any playback
+    stopPlayback();
     
-    // Wait a bit to ensure clearing is complete
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Force notes array reset - this is the most important part
+    await forceResetNotesArray();
     
-    console.log('Staff cleared, now loading new notes...');
+    // Give the browser time to process changes
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    console.log('Notes array completely reset, now loading new notes...');
     
     // Create proper Note objects from the saved data
     const loadedNotes = composition.notes.map(note => {
-      console.log('Processing note:', note);
-      
-      // Ensure all required properties are present exactly as expected
       return {
         id: note.id || Date.now().toString(),
         type: note.type || 'note',
@@ -2146,51 +2256,28 @@ const loadComposition = async (id: string) => {
       };
     });
     
-    console.log('Processed loaded notes:', loadedNotes);
+    // Wait for another tick before adding notes
+    await nextTick();
     
-    // Add notes one by one instead of replacing the array
+    // Add the notes individually
     for (const note of loadedNotes) {
       notes.value.push(note);
-      await nextTick(); // Allow Vue to update after each note
+      await nextTick();
     }
     
-    console.log('All notes added, current notes array:', notes.value);
-    
-    // Set the composition data - only assign to writable properties
+    // Set properties from the composition
     try {
-      tempo.value = composition.tempo;
+      tempo.value = composition.tempo || 120;
+      selectedClef.value = composition.clef || 'treble';
+      keySignature.value = composition.keySignature || 'C';
     } catch (e) {
-      console.warn('Could not update tempo directly:', e);
+      console.warn('Error updating some properties:', e);
     }
-    
-    try {
-      selectedClef.value = composition.clef;
-    } catch (e) {
-      console.warn('Could not update selectedClef directly:', e);
-    }
-    
-    try {
-      keySignature.value = composition.keySignature;
-    } catch (e) {
-      console.warn('Could not update keySignature directly:', e);
-    }
-    
-    // Restore other state if it exists - check if writable first
-    try {
-      if (composition.selectedDuration) selectedDuration.value = composition.selectedDuration;
-      if (composition.selectedNoteType) selectedNoteType.value = composition.selectedNoteType;
-      if (composition.selectedAccidental) selectedAccidental.value = composition.selectedAccidental;
-      if (composition.selectedOctave) selectedOctave.value = composition.selectedOctave;
-      if (composition.isDottedNote !== undefined) isDottedNote.value = composition.isDottedNote;
-    } catch (e) {
-      console.warn('Could not update some UI state:', e);
-    }
-    
-    // Apply key signature change
-    changeKeySignature(keySignature.value);
     
     // Force update of staff display
-    await updateStaffDisplay(composition.staffWidth);
+    updateStaffDisplay();
+    
+    console.log('Composition loaded successfully with', notes.value.length, 'notes');
     
     // Switch to notes tab
     activeTab.value = 'notes';
@@ -2198,7 +2285,7 @@ const loadComposition = async (id: string) => {
     alert('Composition loaded successfully!');
   } catch (error) {
     console.error('Error loading composition:', error);
-    alert('Error loading composition: ' + error);
+    alert('Error loading composition: ' + error.message);
   }
 };
 
@@ -2411,6 +2498,258 @@ const saveRename = (id: string) => {
 const cancelRename = () => {
   editingComposition.value = '';
   editCompositionName.value = '';
+};
+
+// Add functions for importing and exporting compositions
+const exportAllCompositions = () => {
+  try {
+    // Create a JSON string of all compositions
+    const dataToExport = JSON.stringify(savedCompositions.value, null, 2);
+    
+    // Create a Blob with the data
+    const blob = new Blob([dataToExport], { type: 'text/plain' });
+    
+    // Create a download link
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `music-notation-all-compositions-${new Date().toISOString().slice(0, 10)}.txt`;
+    
+    // Trigger the download
+    document.body.appendChild(a);
+    a.click();
+    
+    // Clean up
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    
+    console.log('All compositions exported successfully');
+  } catch (error) {
+    console.error('Error exporting compositions:', error);
+    alert('Error exporting compositions: ' + error.message);
+  }
+};
+
+const exportCurrentComposition = () => {
+  if (!currentCompositionId.value) {
+    alert('No composition is currently loaded');
+    return;
+  }
+  
+  try {
+    // Find the current composition
+    const composition = savedCompositions.value.find(comp => comp.id === currentCompositionId.value);
+    if (!composition) {
+      throw new Error('Current composition not found');
+    }
+    
+    // Create a JSON string of the composition
+    const dataToExport = JSON.stringify(composition, null, 2);
+    
+    // Create a Blob with the data
+    const blob = new Blob([dataToExport], { type: 'text/plain' });
+    
+    // Create a download link
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `music-notation-${composition.name.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.txt`;
+    
+    // Trigger the download
+    document.body.appendChild(a);
+    a.click();
+    
+    // Clean up
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    
+    console.log('Composition exported successfully');
+  } catch (error) {
+    console.error('Error exporting composition:', error);
+    alert('Error exporting composition: ' + error.message);
+  }
+};
+
+const importCompositions = (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  
+  reader.onload = (e) => {
+    try {
+      // Parse the JSON data
+      const importedData = JSON.parse(e.target.result);
+      
+      // Check if it's an array (multiple compositions) or a single composition
+      if (Array.isArray(importedData)) {
+        // Ask for confirmation if there are existing compositions
+        if (savedCompositions.value.length > 0) {
+          if (!confirm(`Import ${importedData.length} compositions? This will merge with your existing compositions.`)) {
+            return;
+          }
+        }
+        
+        // Validate and add each composition
+        let importCount = 0;
+        for (const comp of importedData) {
+          if (validateComposition(comp)) {
+            // Generate a new ID to avoid conflicts
+            const newId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+            savedCompositions.value.push({
+              ...comp,
+              id: newId,
+              dateCreated: comp.dateCreated || Date.now()
+            });
+            importCount++;
+          }
+        }
+        
+        if (importCount > 0) {
+          saveToLocalStorage();
+          alert(`Successfully imported ${importCount} compositions`);
+        } else {
+          alert('No valid compositions found in the import file');
+        }
+      } else if (validateComposition(importedData)) {
+        // It's a single composition - confirm import
+        if (!confirm(`Import composition "${importedData.name || 'Unnamed'}"?`)) {
+          return;
+        }
+        
+        // Generate a new ID to avoid conflicts
+        const newId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+        savedCompositions.value.push({
+          ...importedData,
+          id: newId,
+          dateCreated: importedData.dateCreated || Date.now()
+        });
+        
+        saveToLocalStorage();
+        alert('Composition imported successfully');
+      } else {
+        alert('Invalid composition format');
+      }
+    } catch (error) {
+      console.error('Error importing compositions:', error);
+      alert('Error importing file: ' + error.message);
+    }
+    
+    // Reset the file input
+    event.target.value = '';
+  };
+  
+  reader.onerror = () => {
+    alert('Error reading file');
+    event.target.value = '';
+  };
+  
+  reader.readAsText(file);
+};
+
+// Helper function to validate a composition object
+const validateComposition = (comp) => {
+  // Check required fields
+  if (!comp || typeof comp !== 'object') return false;
+  if (!comp.name || typeof comp.name !== 'string') return false;
+  if (!Array.isArray(comp.notes)) return false;
+  
+  // Basic check for notes format
+  for (const note of comp.notes) {
+    if (!note.id || !note.type || !note.position) {
+      return false;
+    }
+  }
+  
+  return true;
+};
+
+// Create a completely new function to force-reset the notes array
+const forceResetNotesArray = () => {
+  console.log('Forcing complete reset of notes array...');
+  
+  // Manually empty the array while preserving reactivity
+  while (notes.value.length > 0) {
+    notes.value.pop();
+  }
+  
+  // Double-check
+  if (notes.value.length > 0) {
+    console.warn('Failed to clear notes array with pop method, trying splice...');
+    notes.value.splice(0, notes.value.length);
+  }
+  
+  console.log('Notes array reset, current length:', notes.value.length);
+  
+  // Force a redraw
+  nextTick(() => {
+    const noteElements = document.querySelectorAll('.note');
+    console.log(`After reset, DOM has ${noteElements.length} note elements`);
+    
+    // Manual DOM cleanup if needed
+    if (noteElements.length > 0) {
+      console.warn('Forcing manual DOM cleanup of remaining notes');
+      noteElements.forEach(el => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+    }
+  });
+  
+  return nextTick();
+};
+
+// Add a mountable debug element to help diagnose notes issues
+const addDebugMonitor = () => {
+  const monitor = document.createElement('div');
+  monitor.style.position = 'fixed';
+  monitor.style.bottom = '10px';
+  monitor.style.right = '10px';
+  monitor.style.backgroundColor = 'rgba(0,0,0,0.7)';
+  monitor.style.color = 'white';
+  monitor.style.padding = '10px';
+  monitor.style.borderRadius = '5px';
+  monitor.style.zIndex = '9999';
+  monitor.style.maxHeight = '200px';
+  monitor.style.overflowY = 'auto';
+  monitor.style.fontSize = '12px';
+  monitor.style.fontFamily = 'monospace';
+  monitor.id = 'notes-debug-monitor';
+  
+  const updateMonitor = () => {
+    monitor.innerHTML = `
+      <div><strong>Notes: ${notes.value.length}</strong></div>
+      <div><strong>DOM Notes: ${document.querySelectorAll('.note').length}</strong></div>
+      <div style="margin-top:5px"><strong>Notes List:</strong></div>
+      ${notes.value.map((n, i) => 
+        `<div>${i}: ${n.type} ${n.pitch || 'rest'} at ${n.position}</div>`
+      ).join('')}
+    `;
+  };
+  
+  document.body.appendChild(monitor);
+  
+  // Update every second
+  const interval = setInterval(updateMonitor, 1000);
+  
+  // Return function to remove
+  return () => {
+    clearInterval(interval);
+    if (document.body.contains(monitor)) {
+      document.body.removeChild(monitor);
+    }
+  };
+};
+
+// Add this debug monitor when needed (perhaps with a debug button)
+const toggleDebugMonitor = () => {
+  const existing = document.getElementById('notes-debug-monitor');
+  if (existing) {
+    document.body.removeChild(existing);
+    if (window.debugMonitorInterval) {
+      clearInterval(window.debugMonitorInterval);
+      window.debugMonitorInterval = null;
+    }
+  } else {
+    window.debugMonitorRemover = addDebugMonitor();
+  }
 };
 </script>
 
@@ -3905,5 +4244,35 @@ button:disabled {
   padding: 5px 10px;
   cursor: pointer;
   margin-left: 5px;
+}
+
+/* Import/Export controls */
+.import-export-controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+  margin-bottom: 15px;
+  justify-content: center;
+}
+
+.export-btn, .import-btn {
+  background-color: #3F51B5;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 15px;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-block;
+  text-align: center;
+}
+
+.export-btn:hover, .import-btn:hover {
+  background-color: #303F9F;
+}
+
+.export-btn:disabled {
+  background-color: #9E9E9E;
+  cursor: not-allowed;
 }
 </style> 
