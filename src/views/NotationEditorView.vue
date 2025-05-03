@@ -47,6 +47,22 @@
       </div>
     </div>
 
+    <!-- Add this after the clef selector -->
+    <div class="time-signature-selector">
+      <label for="time-signature">Time:</label>
+      <div class="custom-select">
+        <select id="time-signature" v-model="timeSignature" @change="updateTimeSignature">
+          <option value="4/4">4/4</option>
+          <option value="3/4">3/4</option>
+          <option value="2/4">2/4</option>
+          <option value="6/8">6/8</option>
+          <option value="9/8">9/8</option>
+          <option value="12/8">12/8</option>
+        </select>
+        <div class="select-icon">▼</div>
+      </div>
+    </div>
+
     <!-- Staff container with improved mobile layout -->
     <div class="staff-container">
       <div class="clef">
@@ -61,10 +77,17 @@
              class="key-signature-accidental"
              :style="{
                top: `${getKeySignaturePosition(accidental)}px`,
-               left: `${getKeySignatureXPosition(index)}px`
+               left: `${15 + (index * 8)}px` // More compact horizontal spacing
              }">
           {{ getAccidentalSymbolForKeySignature(accidental) }}
         </div>
+      </div>
+      
+      <!-- Update time signature positioning to appear after key signature -->
+      <div class="time-signature-display" 
+           :style="{ left: `${45 + (currentKeySignatureAccidentals.length * 10) + 5}px` }">
+        <div class="time-signature-numerator">{{ timeSignatureNumerator }}</div>
+        <div class="time-signature-denominator">{{ timeSignatureDenominator }}</div>
       </div>
       
       <!-- Scrollable staff -->
@@ -83,10 +106,38 @@
           </div>
           
           <!-- Measure bars -->
-          <div v-for="i in measuresCount" 
-               :key="`measure-${i}`" 
-               class="measure-bar"
-               :style="{ left: `${i * measureWidth.value}px` }">
+          <div v-for="(barline, i) in barlines" 
+               :key="`barline-${i}`" 
+               class="barline"
+               :class="{ 
+                 'barline-single': barline.type === 'single',
+                 'barline-double': barline.type === 'double',
+                 'barline-final': barline.type === 'final',
+                 'barline-repeat-start': barline.type === 'repeat-start',
+                 'barline-repeat-end': barline.type === 'repeat-end'
+               }"
+               :style="{ left: `${barline.position}px` }">
+            
+            <!-- Add repeat dots for repeat barlines -->
+            <template v-if="barline.type === 'repeat-start' || barline.type === 'repeat-end'">
+              <div class="repeat-dots">
+                <div class="repeat-dot"></div>
+                <div class="repeat-dot"></div>
+              </div>
+            </template>
+            
+            <!-- Add measure number (only show for the first barline and then every measure) -->
+            <div v-if="barline.measureNumber > 0" class="measure-number">
+              {{ barline.measureNumber }}
+            </div>
+          </div>
+          
+          <!-- Beat markers (optional, for visual aid) -->
+          <div v-if="showBeatMarkers" 
+               v-for="beat in beatPositions" 
+               :key="`beat-${beat.position}`"
+               class="beat-marker"
+               :style="{ left: `${beat.position}px` }">
           </div>
           
           <!-- Notes container -->
@@ -224,39 +275,39 @@
     </div>
 
     <div v-if="activeTab === 'notes'" class="note-controls-container">
-      <div class="note-controls">
+    <div class="note-controls">
         <!-- Use a grid layout for better organization on mobile -->
         <div class="note-controls-grid">
           <!-- First Row: Duration and Type -->
           <div class="control-section duration-section">
             <h4>Duration</h4>
             <div class="scrollable-buttons">
-              <button v-for="duration in availableDurations" 
-                      :key="duration.value"
-                      @click="selectedDuration = duration.value"
-                      :class="['note-btn', { active: selectedDuration === duration.value }]">
-                {{ duration.label }}
-              </button>
+      <button v-for="duration in availableDurations" 
+              :key="duration.value"
+              @click="selectedDuration = duration.value"
+              :class="['note-btn', { active: selectedDuration === duration.value }]">
+        {{ duration.label }}
+      </button>
             </div>
             <div class="dotted-note-toggle">
               <button @click="toggleDottedNote" 
                       :class="['note-btn', { active: isDottedNote }]">
                 Dotted
-              </button>
+      </button>
             </div>
           </div>
-          
+
           <div class="control-section type-section">
             <h4>Type</h4>
             <div class="button-group">
-              <button @click="selectedNoteType = 'note'"
-                      :class="['note-btn', { active: selectedNoteType === 'note' }]">
-                Note
-              </button>
-              <button @click="selectedNoteType = 'rest'"
-                      :class="['note-btn', { active: selectedNoteType === 'rest' }]">
-                Rest
-              </button>
+      <button @click="selectedNoteType = 'note'"
+              :class="['note-btn', { active: selectedNoteType === 'note' }]">
+        Note
+      </button>
+      <button @click="selectedNoteType = 'rest'"
+              :class="['note-btn', { active: selectedNoteType === 'rest' }]">
+        Rest
+      </button>
             </div>
           </div>
           
@@ -269,18 +320,18 @@
                       @click="selectedAccidental = accidental.value"
                       :class="['note-btn', { active: selectedAccidental === accidental.value }]">
                 {{ accidental.label }}
-              </button>
+      </button>
             </div>
-          </div>
-          
+    </div>
+
           <div class="control-section octave-section">
             <h4>Octave</h4>
             <div class="scrollable-buttons">
-              <button v-for="octave in [2,3,4,5,6]"
-                      :key="octave"
-                      @click="selectedOctave = octave"
-                      :class="['octave-btn', { active: selectedOctave === octave }]">
-                {{ octave }}
+        <button v-for="octave in [2,3,4,5,6]"
+                :key="octave"
+                @click="selectedOctave = octave"
+                :class="['octave-btn', { active: selectedOctave === octave }]">
+          {{ octave }}
               </button>
             </div>
           </div>
@@ -383,8 +434,8 @@
           />
           <button @click="saveComposition" class="save-btn">Save</button>
         </div>
-      </div>
-      
+    </div>
+
       <div class="control-section">
         <h4>Your Saved Compositions</h4>
         <div v-if="savedCompositions.length === 0" class="no-saved-compositions">
@@ -421,11 +472,11 @@
                 title="Update this composition with current changes"
               >
                 Update
-              </button>
+      </button>
               <button @click="startRename(comp.id, comp.name)" class="load-btn" style="background-color: #9C27B0;">Rename</button>
               <button @click="deleteComposition(comp.id)" class="delete-btn">Delete</button>
-            </div>
-          </div>
+    </div>
+  </div>
         </div>
       </div>
       
@@ -721,10 +772,10 @@ const getKeySignaturePosition = (accidental: string) => {
   return positions[note] || 0;
 };
 
-// Function to get the horizontal position of a key signature accidental
-const getKeySignatureXPosition = (index: number) => {
-  // Start after the clef, space them evenly
-  return 60 + (index * 15);
+// Update this function to make key signatures more compact
+const getKeySignatureXPosition = (index) => {
+  // More compact spacing - 10px between accidentals
+  return 45 + (index * 10);
 };
 
 // Function to get the accidental symbol (# or b)
@@ -910,14 +961,14 @@ const playNoteSound = async (pitch: string, duration: string = "8n", isDotted: b
     // Start Tone.js context (this requires user interaction)
     await startToneJs();
     
-    // Make sure Tone.js is started
-    await Tone.start();
-    
-    // Apply key signature if needed
-    if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
-      pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay);
-    }
-    
+  // Make sure Tone.js is started
+  await Tone.start();
+  
+  // Apply key signature if needed
+  if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
+    pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay);
+  }
+  
     // Calculate the actual duration in seconds first for reliability
     const baseDurationMap: Record<string, number> = {
       "1n": 4 * (60 / tempo.value), // Whole note duration based on tempo
@@ -1998,11 +2049,14 @@ interface SavedComposition {
 // Update the savedCompositions ref to use this type
 const savedCompositions = ref<SavedComposition[]>([]);
 
-// Improve saveComposition to store all state
+// Fix the saveComposition function to properly save to localStorage
 const saveComposition = () => {
   if (!compositionName.value.trim()) {
-    alert('Please enter a name for your composition');
-    return;
+    compositionName.value = prompt('Enter a name for this composition:') || 'Untitled';
+    if (!compositionName.value.trim()) {
+      alert('Please enter a name for your composition');
+      return;
+    }
   }
   
   console.log('Saving notes:', notes.value);
@@ -2018,7 +2072,7 @@ const saveComposition = () => {
     pitch: note.pitch
   }));
   
-  const newComposition: SavedComposition = {
+  const newComposition = {
     id: Date.now().toString(),
     name: compositionName.value.trim(),
     dateCreated: Date.now(),
@@ -2026,12 +2080,15 @@ const saveComposition = () => {
     tempo: tempo.value,
     clef: selectedClef.value,
     keySignature: keySignature.value,
+    timeSignature: timeSignature.value, // Add time signature
     staffWidth: staffWidth.value,
     selectedDuration: selectedDuration.value,
     selectedNoteType: selectedNoteType.value,
     selectedAccidental: selectedAccidental.value,
     selectedOctave: selectedOctave.value,
-    isDottedNote: isDottedNote.value
+    isDottedNote: isDottedNote.value,
+    // Add any other necessary fields
+    chordSymbols: chordSymbols.value
   };
   
   // Log the composition to debug
@@ -2040,10 +2097,7 @@ const saveComposition = () => {
   savedCompositions.value.push(newComposition);
   saveToLocalStorage();
   
-  // Reset the input
-  compositionName.value = '';
-  
-  alert('Composition saved successfully!');
+  alert(`Composition "${compositionName.value}" saved successfully!`);
 };
 
 // First, let's check if notes is a computed property or a ref
@@ -2227,7 +2281,7 @@ const resetAudioSystem = async () => {
 };
 
 // Update the loadComposition function to use the resetAudioSystem
-const loadComposition = async (id: string) => {
+const loadComposition = async (id) => {
   const composition = savedCompositions.value.find(comp => comp.id === id);
   if (!composition) {
     console.error('Composition not found:', id);
@@ -2284,6 +2338,12 @@ const loadComposition = async (id: string) => {
       tempo.value = composition.tempo || 120;
       selectedClef.value = composition.clef || 'treble';
       keySignature.value = composition.keySignature || 'C';
+      
+      // Load time signature if it exists
+      if (composition.timeSignature) {
+        timeSignature.value = composition.timeSignature;
+        updateTimeSignature(); // Update UI based on time signature
+      }
     } catch (e) {
       console.warn('Error updating some properties:', e);
     }
@@ -2772,6 +2832,292 @@ const animateButton = (event) => {
   setTimeout(() => {
     event.target.closest('button').classList.remove('button-press-animation');
   }, 300);
+};
+
+// Add these reactive variables
+const timeSignature = ref('4/4');
+const timeSignatureNumerator = computed(() => timeSignature.value.split('/')[0]);
+const timeSignatureDenominator = computed(() => timeSignature.value.split('/')[1]);
+const showBeatMarkers = ref(false); // Set to true for debugging
+
+// Fix the duplicate measureWidth identifier by renaming
+// Rename this computed property to avoid the conflict
+const measureWidthByTimeSignature = computed(() => {
+  const [numerator, denominator] = timeSignature.value.split('/').map(n => parseInt(n));
+  
+  // Base width per quarter note
+  const quarterNoteWidth = 50;
+  
+  // Calculate beats based on time signature
+  let beatsPerMeasure = numerator;
+  let beatUnit = denominator;
+  
+  // Compound meters (6/8, 9/8, 12/8) have different beat structures
+  if ([6, 9, 12].includes(numerator) && denominator === 8) {
+    // In compound meters, each dotted quarter note is one beat
+    beatsPerMeasure = numerator / 3;
+    beatUnit = 4; // Treat as quarter note equivalent
+  }
+  
+  // Calculate width based on beat unit
+  let beatWidth = quarterNoteWidth;
+  if (beatUnit === 2) beatWidth = quarterNoteWidth * 2; // Half note
+  if (beatUnit === 8) beatWidth = quarterNoteWidth / 2; // Eighth note
+  
+  return beatsPerMeasure * beatWidth;
+});
+
+// Generate barlines with proper musical positioning and measure numbers
+const barlines = computed(() => {
+  const lines = [];
+  const totalMeasures = Math.ceil(staffWidth.value / measureWidthByTimeSignature.value);
+  
+  // Calculate key signature width
+  const keySignatureWidth = currentKeySignatureAccidentals.value.length * 10;
+  
+  // Get initial position after clef, key signature, and time signature
+  const initialPosition = 70 + keySignatureWidth + 20; // 70px for clef, then key sig, then 20px for time sig
+  
+  // First barline is at the start of first measure (after clef, key sig, and time sig)
+  lines.push({
+    type: 'single',
+    position: initialPosition,
+    measureNumber: 1, // This is actually the start of measure 1
+    isIntervalMeasure: false
+  });
+  
+  // Add remaining barlines
+  for (let i = 1; i < totalMeasures; i++) {
+    // Position each barline at the end of the measure
+    const position = initialPosition + (i * measureWidthByTimeSignature.value);
+    
+    // By default, use single barlines for all regular measures
+    let type = 'single';
+    
+    // For the last measure, use a final barline
+    if (i === totalMeasures - 1) {
+      type = 'final';
+    }
+    
+    lines.push({
+      type,
+      position,
+      measureNumber: i + 1, // Adjust measure number to start from 2
+      isIntervalMeasure: (i + 1) % 5 === 0
+    });
+  }
+  
+  return lines;
+});
+
+// Calculate beat positions (for visual aid)
+const beatPositions = computed(() => {
+  const positions = [];
+  const [numerator, denominator] = timeSignature.value.split('/').map(n => parseInt(n));
+  
+  // Base width per quarter note
+  const quarterNoteWidth = 50;
+  
+  // Calculate beat width based on denominator
+  let beatWidth = quarterNoteWidth; // Default for quarter note
+  if (denominator === 2) beatWidth = quarterNoteWidth * 2; // Half note
+  if (denominator === 8) beatWidth = quarterNoteWidth / 2; // Eighth note
+  
+  // Calculate total beats (used for compound meters)
+  let totalBeats = numerator;
+  
+  // For compound meters, show subdivisions
+  if ([6, 9, 12].includes(numerator) && denominator === 8) {
+    totalBeats = numerator; // Show all eighth notes
+  }
+  
+  const totalMeasures = Math.ceil(staffWidth.value / measureWidthByTimeSignature.value);
+  
+  for (let measure = 0; measure < totalMeasures; measure++) {
+    const measureStart = 70 + (measure * measureWidthByTimeSignature.value);
+    
+    for (let beat = 1; beat < totalBeats; beat++) {
+      positions.push({
+        position: measureStart + (beat * (measureWidthByTimeSignature.value / totalBeats)),
+        measure,
+        beat
+      });
+    }
+  }
+  
+  return positions;
+});
+
+// Function to update time signature
+const updateTimeSignature = () => {
+  // Recalculate measure widths and barline positions
+  console.log(`Time signature changed to ${timeSignature.value}`);
+  
+  // Force redraw of staff
+  updateStaffDisplay();
+  
+  // Notify user about the change
+  const [numerator, denominator] = timeSignature.value.split('/');
+  
+  // Optional: Adjust notes to fit the new time signature
+  const beatValue = denominator === '8' ? 0.5 : 1; // Eighth note vs quarter note
+  
+  // Update beat markers if needed
+  updateBeatMarkers();
+};
+
+// Function to update beat markers
+const updateBeatMarkers = () => {
+  // Update visual beat markers if they're enabled
+  if (showBeatMarkers.value) {
+    console.log('Updating beat markers');
+  }
+};
+
+// Update exportComposition
+const exportComposition = () => {
+  // Create the export data object with all measure information
+  const exportData = {
+    name: compositionName.value || 'Untitled',
+    notes: notes.value.map(note => ({
+      ...note,
+      type: note.type,
+      position: note.position,
+      verticalPosition: note.verticalPosition,
+      duration: note.duration,
+      dotted: note.dotted,
+      pitch: note.pitch
+    })),
+    // Include all necessary measure and musical data
+    timeSignature: timeSignature.value,
+    clef: selectedClef.value,
+    keySignature: keySignature.value, // FIX: Use keySignature instead of selectedKeySignature
+    tempo: tempo.value,
+    chordSymbols: chordSymbols.value,
+    // Add metadata
+    version: '1.0', 
+    dateExported: new Date().toISOString()
+  };
+  
+  // Convert to JSON
+  const jsonString = JSON.stringify(exportData, null, 2);
+  
+  // Create a download link
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${compositionName.value || 'music-notation'}.json`;
+  document.body.appendChild(a);
+  a.click();
+  
+  // Clean up
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+};
+
+// Update importComposition to support time signature
+const handleImportFile = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      // Parse the JSON data
+      const importedData = JSON.parse(e.target.result);
+      
+      // Check if it's an array (multiple compositions) or a single composition
+      if (Array.isArray(importedData)) {
+        // Multiple compositions
+        importedCompositions.value = importedData;
+        showImportModal.value = true;
+      } else {
+        // Single composition
+        importComposition(importedData);
+      }
+    } catch (error) {
+      console.error('Error importing file:', error);
+      alert('Error importing file. Please check the file format.');
+    }
+  };
+  reader.readAsText(file);
+};
+
+// Function to import a single composition
+const importComposition = (composition) => {
+  try {
+    // Clear existing score
+    clearScore();
+    
+    // Load notes
+    notes.value = composition.notes.map(note => ({
+      ...note,
+      id: note.id || generateId(),
+      type: note.type || 'note',
+      position: note.position || 0,
+      verticalPosition: note.verticalPosition || 0,
+      duration: note.duration || 'quarter',
+      dotted: note.dotted || false,
+      pitch: note.pitch || 'C4'
+    }));
+    
+    // Set time signature, defaulting to 4/4 if not provided
+    timeSignature.value = composition.timeSignature || '4/4';
+    
+    // Set other musical parameters
+    selectedClef.value = composition.clef || 'treble';
+    keySignature.value = composition.keySignature || 'C'; // FIX: Use keySignature instead of selectedKeySignature
+    tempo.value = composition.tempo || 120;
+    
+    // Load chord symbols if present
+    if (composition.chordSymbols) {
+      chordSymbols.value = composition.chordSymbols;
+    }
+    
+    // Set composition name
+    compositionName.value = composition.name || 'Imported Composition';
+    
+    // Update UI based on loaded data
+    updateTimeSignature();
+    handleClefChange();
+    updateKeySignature();
+    
+    console.log(`Imported composition: ${composition.name}`);
+    alert(`Successfully imported: ${composition.name}`);
+  } catch (error) {
+    console.error('Error during import:', error);
+    alert('Error importing composition. Please check the file format.');
+  }
+};
+
+// Add timeSignature to exportComposition if it exists
+const exportToFile = () => {
+  // Create a JSON string with the current composition
+  const compositionData = {
+    name: compositionName.value || 'Untitled Composition',
+    notes: notes.value,
+    tempo: tempo.value,
+    clef: selectedClef.value,
+    keySignature: keySignature.value,
+    timeSignature: timeSignature.value, // Add time signature
+    // Add any other properties you want to save
+  };
+  
+  const dataStr = JSON.stringify(compositionData);
+  const dataBlob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(dataBlob);
+  
+  // Create a link and trigger download
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${compositionData.name.replace(/\s+/g, '_')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 };
 </script>
 
@@ -3676,16 +4022,17 @@ button:disabled {
 .key-signature {
   position: absolute;
   top: 0;
-  left: 60px; /* Position after the clef */
+  left: 40px; /* Position right after the clef */
   height: 100%;
-  width: 120px; /* Give enough space for up to 7 accidentals */
-  z-index: 3;
+  z-index: 2;
 }
 
 .key-signature-accidental {
   position: absolute;
   font-size: 24px;
-  transform: translateY(-50%);
+  line-height: 0;
+  transform: translate(-50%, -50%); /* Center the accidental on its position */
+  font-family: 'Times New Roman', serif; /* Better for music notation */
 }
 
 .key-signature-control {
@@ -4509,5 +4856,323 @@ button:disabled {
   font-size: 12px;
   line-height: 1;
   pointer-events: none;
+}
+
+/* Time signature selector styles */
+.time-signature-selector {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.time-signature-selector label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.custom-select select {
+  appearance: none;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 8px 30px 8px 10px;
+  width: 100%;
+  font-size: 15px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.custom-select select:hover {
+  border-color: #2196F3;
+}
+
+.custom-select select:focus {
+  border-color: #2196F3;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.custom-select .select-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 10px;
+  color: #666;
+}
+
+/* Enhance select options (works in some browsers) */
+.custom-select select option {
+  padding: 10px;
+  font-size: 15px;
+}
+
+/* Media query for mobile */
+@media (max-width: 600px) {
+  .custom-select {
+    min-width: 100px;
+  }
+  
+  .custom-select select {
+    padding: 6px 25px 6px 8px;
+    font-size: 14px;
+  }
+}
+
+/* Add this inside the staff div, after the measure bars section */
+.time-signature-display {
+  position: absolute;
+  top: 100px;
+  left: 70px;
+  display: flex;
+  gap: 5px;
+  z-index: 5;
+}
+
+/* Add this inside the staff div, after the measure bars section */
+.time-signature-display .time-signature-numerator {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* Add this inside the staff div, after the measure bars section */
+.time-signature-display .time-signature-denominator {
+  font-size: 14px;
+  color: #666;
+}
+
+/* Measure bars with proper musical implementation */
+.barline {
+  position: absolute;
+  top: 100px;
+  width: 1px;
+  height: 60px;
+  background: black;
+  z-index: 2;
+}
+
+/* Add repeat dots for repeat barlines */
+.repeat-dots {
+  position: absolute;
+  top: 100px;
+  left: 70px;
+  display: flex;
+  gap: 5px;
+  z-index: 5;
+}
+
+/* Beat markers (optional, for visual aid) */
+.beat-marker {
+  position: absolute;
+  top: 100px;
+  width: 1px;
+  height: 60px;
+  background: black;
+  z-index: 2;
+}
+
+/* Barline styling */
+.barline {
+  position: absolute;
+  top: 97.5px; /* Align with staff */
+  width: 2px;
+  height: 65px; /* Cover all 5 lines */
+  background-color: #000;
+  z-index: 1;
+}
+
+.barline-single {
+  width: 1px;
+}
+
+.barline-double {
+  width: 5px;
+  position: relative;
+}
+
+.barline-double::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: #000;
+}
+
+.barline-double::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: #000;
+}
+
+.barline-final {
+  width: 6px;
+  position: relative;
+}
+
+.barline-final::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: #000;
+}
+
+.barline-final::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background-color: #000;
+}
+
+.barline-repeat-start,
+.barline-repeat-end {
+  width: 10px;
+  position: relative;
+}
+
+.barline-repeat-start::before,
+.barline-repeat-end::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background-color: #000;
+}
+
+.barline-repeat-start::after,
+.barline-repeat-end::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: #000;
+}
+
+.repeat-dots {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Time signature display */
+.time-signature-display {
+  position: absolute;
+  top: 107px; /* Align with staff */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 2;
+}
+
+.time-signature-numerator,
+.time-signature-denominator {
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+/* Fix the time signature display positioning and styling */
+.time-signature-display {
+  position: absolute;
+  top: 110px; /* Align with staff */
+  left: 70px; /* Position after clef */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 3; /* Make sure it's above the staff lines */
+  width: 20px;
+  text-align: center;
+}
+
+.time-signature-numerator,
+.time-signature-denominator {
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 1;
+  font-family: 'Times New Roman', serif; /* Better for music notation */
+}
+
+.time-signature-numerator {
+  border-bottom: 1px solid transparent; /* Optional: adds spacing */
+  margin-bottom: 2px;
+}
+
+/* Fix the time signature display positioning and styling */
+.time-signature-display {
+  position: absolute;
+  top: 110px; /* Align with staff */
+  left: 70px; /* Position after clef */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 3; /* Make sure it's above the staff lines */
+  width: 20px;
+  text-align: center;
+}
+
+.time-signature-numerator,
+.time-signature-denominator {
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 1;
+  font-family: 'Times New Roman', serif; /* Better for music notation */
+}
+
+.time-signature-numerator {
+  border-bottom: 1px solid transparent; /* Optional: adds spacing */
+  margin-bottom: 2px;
+}
+
+/* Improved key signature styling */
+.key-signature {
+  position: absolute;
+  top: 0;
+  left: 40px; /* Position right after the clef */
+  height: 100%;
+  z-index: 2;
+}
+
+.key-signature-accidental {
+  position: absolute;
+  font-size: 24px;
+  line-height: 0;
+  transform: translate(-50%, -50%); /* Center the accidental on its position */
+  font-family: 'Times New Roman', serif; /* Better for music notation */
+}
+
+/* Add measure number styling */
+.measure-number {
+  position: absolute;
+  top: 75px; /* Position above the staff */
+  left: -8px; /* Better align with the barline */
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* Option to only show measure numbers at regular intervals */
+.measure-number[data-interval="true"] {
+  font-weight: bold;
+  color: #333;
 }
 </style> 
