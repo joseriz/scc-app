@@ -206,6 +206,7 @@
     <div class="mobile-tabs">
       <button @click="activeTab = 'notes'" :class="['tab-btn', { active: activeTab === 'notes' }]">Notes</button>
       <button @click="activeTab = 'settings'" :class="['tab-btn', { active: activeTab === 'settings' }]">Settings</button>
+      <button @click="activeTab = 'saved'" :class="['tab-btn', { active: activeTab === 'saved' }]">Saved</button>
     </div>
 
     <div v-if="activeTab === 'notes'" class="note-controls-container">
@@ -354,11 +355,71 @@
     </div>
       </div>
     </div>
+
+    <!-- Add a panel for saved compositions -->
+    <div v-if="activeTab === 'saved'" class="saved-compositions-container">
+      <div class="control-section">
+        <h4>Save Current Composition</h4>
+        <div class="save-composition-form">
+          <input 
+            type="text" 
+            v-model="compositionName" 
+            placeholder="Enter a name for your composition" 
+            class="composition-name-input"
+          />
+          <button @click="saveComposition" class="save-btn">Save</button>
+        </div>
+      </div>
+      
+      <div class="control-section">
+        <h4>Your Saved Compositions</h4>
+        <div v-if="savedCompositions.length === 0" class="no-saved-compositions">
+          No saved compositions yet.
+        </div>
+        <div v-else class="saved-composition-list">
+          <div v-for="comp in savedCompositions" :key="comp.id" class="saved-composition-item">
+            <div class="composition-info">
+              <!-- Show name or edit form based on edit state -->
+              <template v-if="editingComposition === comp.id">
+                <div class="edit-name-form">
+                  <input 
+                    type="text" 
+                    v-model="editCompositionName" 
+                    class="rename-input" 
+                    @keyup.enter="saveRename(comp.id)"
+                  />
+                  <button @click="saveRename(comp.id)" class="save-rename-btn">Save</button>
+                  <button @click="cancelRename" class="cancel-rename-btn">Cancel</button>
+                </div>
+              </template>
+              <template v-else>
+                <span class="composition-name">{{ comp.name }}</span>
+                <span class="composition-date">{{ formatDate(comp.dateCreated) }}</span>
+              </template>
+            </div>
+            <div class="composition-actions">
+              <button @click="loadComposition(comp.id)" class="load-btn">Load</button>
+              <!-- Show update button if the current composition matches -->
+              <button 
+                v-if="currentCompositionId === comp.id" 
+                @click="updateComposition(comp.id)" 
+                class="update-btn"
+                title="Update this composition with current changes"
+              >
+                Update
+              </button>
+              <button @click="startRename(comp.id, comp.name)" class="load-btn" style="background-color: #9C27B0;">Rename</button>
+              <button @click="deleteComposition(comp.id)" class="delete-btn">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, reactive, watch } from 'vue';
 import * as Tone from 'tone';
 import { useNotationStore } from '@/stores/notation';
 
@@ -452,95 +513,88 @@ const createFallbackPianoSynth = () => {
 let noteSynth: Tone.Synth | null = null;
 let pianoSynth: Tone.Sampler | null = null;
 
+// Define the missing initializeToneJs function
+const initializeToneJs = async () => {
+  try {
+    // Do not start Tone.js here - only set up the synths
+    console.log('Setting up Tone.js components...');
+    
+    // Initialize any samplers or synthesizers if needed
+    if (!pianoSynth) {
+      // If there's already a pianoSynth defined elsewhere, this won't override it
+      console.log('Creating piano sampler...');
+      try {
+        pianoSynth = new Tone.Sampler({
+          urls: {
+            'C4': 'C4.mp3',
+            'D#4': 'Ds4.mp3',
+            'F#4': 'Fs4.mp3',
+            'A4': 'A4.mp3',
+          },
+          release: 1,
+          baseUrl: 'https://tonejs.github.io/audio/salamander/'
+        }).toDestination();
+      } catch (error) {
+        console.error('Error initializing piano sampler:', error);
+      }
+    }
+    
+    if (!noteSynth) {
+      // Create a basic synth as fallback
+      console.log('Creating basic synth...');
+      try {
+        noteSynth = new Tone.Synth({
+          oscillator: {
+            type: 'sine'
+          },
+          envelope: {
+            attack: 0.005,
+            decay: 0.1,
+            sustain: 0.3,
+            release: 1
+          }
+        }).toDestination();
+      } catch (error) {
+        console.error('Error initializing basic synth:', error);
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Failed to initialize Tone.js:', error);
+    return false;
+  }
+};
+
 // Initialize Tone.js
 onMounted(async () => {
   try {
-    // Initialize basic synth for immediate note feedback
-    noteSynth = new Tone.Synth({
-      oscillator: {
-        type: 'triangle'
-      },
-      envelope: {
-        attack: 0.02,
-        decay: 0.1,
-        sustain: 0.3,
-        release: 1
-      }
-    }).toDestination();
+    // Initialize Tone.js
+    await initializeToneJs();
     
-    // Initialize piano sampler for better sound quality
-    pianoSynth = new Tone.Sampler({
-      urls: {
-        A1: "A1.mp3",
-        A2: "A2.mp3",
-        A3: "A3.mp3",
-        A4: "A4.mp3",
-        A5: "A5.mp3",
-        A6: "A6.mp3",
-        C1: "C1.mp3",
-        C2: "C2.mp3",
-        C3: "C3.mp3",
-        C4: "C4.mp3",
-        C5: "C5.mp3",
-        C6: "C6.mp3",
-        C7: "C7.mp3",
-        "D#1": "Ds1.mp3",
-        "D#2": "Ds2.mp3",
-        "D#3": "Ds3.mp3",
-        "D#4": "Ds4.mp3",
-        "D#5": "Ds5.mp3",
-        "D#6": "Ds6.mp3",
-        "F#1": "Fs1.mp3",
-        "F#2": "Fs2.mp3",
-        "F#3": "Fs3.mp3",
-        "F#4": "Fs4.mp3",
-        "F#5": "Fs5.mp3",
-        "F#6": "Fs6.mp3"
-      },
-      baseUrl: "https://tonejs.github.io/audio/salamander/",
-      onload: () => {
-    console.log("Piano samples loaded successfully");
-      }
-    }).toDestination();
+    // Initialize the staff width based on the container
+    const staffContainer = document.querySelector('.staff-scroll-container');
+    if (staffContainer) {
+      visibleStaffWidth.value = staffContainer.clientWidth;
+      console.log(`Visible staff width: ${visibleStaffWidth.value}px`);
+    }
     
-    // Wait for the sampler to load
-    await new Promise<void>((resolve) => {
-      if (pianoSynth) {
-        pianoSynth.onstop = () => resolve();
-        // If it's already loaded, resolve immediately
-        if (pianoSynth.loaded) {
-          resolve();
-        }
-      } else {
-        resolve(); // Resolve anyway if no sampler
-      }
-    });
+    // Make sure the staff is wide enough
+    const staffElement = document.querySelector('.staff');
+    if (staffElement) {
+      staffElement.style.width = `${staffWidth.value}px`;
+      console.log(`Staff width set to: ${staffWidth.value}px`);
+    }
     
-    console.log("Tone.js initialized successfully");
+    // Add window resize listener
+    window.addEventListener('resize', handleResize);
   } catch (error) {
-    console.error("Error initializing Tone.js:", error);
+    console.error('Error initializing Tone.js:', error);
     // Fallback to basic synth if piano samples fail to load
     if (!noteSynth) {
       noteSynth = new Tone.Synth().toDestination();
     }
   }
-  
-  // Initialize the staff width based on the container
-  const staffContainer = document.querySelector('.staff-scroll-container');
-  if (staffContainer) {
-    visibleStaffWidth.value = staffContainer.clientWidth;
-    console.log(`Visible staff width: ${visibleStaffWidth.value}px`);
-  }
-  
-  // Make sure the staff is wide enough
-  const staffElement = document.querySelector('.staff');
-  if (staffElement) {
-    staffElement.style.width = `${staffWidth.value}px`;
-    console.log(`Staff width set to: ${staffWidth.value}px`);
-  }
-  
-  // Add window resize listener
-  window.addEventListener('resize', handleResize);
 });
 
 // Types
@@ -822,14 +876,17 @@ const playNoteSound = async (pitch: string, duration: string = "8n", isDotted: b
   let noteDuration = duration; // Define noteDuration outside try block
 
   try {
-  // Make sure Tone.js is started
-  await Tone.start();
-  
-  // Apply key signature if needed
-  if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
-    pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay);
-  }
-  
+    // Start Tone.js context (this requires user interaction)
+    await startToneJs();
+    
+    // Make sure Tone.js is started
+    await Tone.start();
+    
+    // Apply key signature if needed
+    if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
+      pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay);
+    }
+    
     // Calculate the actual duration in seconds first for reliability
     const baseDurationMap: Record<string, number> = {
       "1n": 4 * (60 / tempo.value), // Whole note duration based on tempo
@@ -889,7 +946,10 @@ const playNoteSound = async (pitch: string, duration: string = "8n", isDotted: b
 // Ensure playComposition uses the correct duration mapping for playNoteSound
 const playComposition = async () => {
   if (isPlaying.value) return;
-
+  
+  // Start Tone.js context (this requires user interaction)
+  await startToneJs();
+  
   isPlaying.value = true;
 
   // Sort notes by position
@@ -1844,6 +1904,514 @@ onBeforeUnmount(() => {
     clearTimeout(touchTimer.value);
   }
 });
+
+// Define a proper type for the saved composition
+interface SavedComposition {
+  id: string;
+  name: string;
+  dateCreated: number;
+  notes: Note[];
+  tempo: number;
+  clef: string;
+  keySignature: string;
+  staffWidth: number;
+  selectedDuration: string;
+  selectedNoteType: string;
+  selectedAccidental: string;
+  selectedOctave: number;
+  isDottedNote: boolean;
+}
+
+// Update the savedCompositions ref to use this type
+const savedCompositions = ref<SavedComposition[]>([]);
+
+// Improve saveComposition to store all state
+const saveComposition = () => {
+  if (!compositionName.value.trim()) {
+    alert('Please enter a name for your composition');
+    return;
+  }
+  
+  console.log('Saving notes:', notes.value);
+  
+  // Create deep copies of notes to ensure all properties are preserved
+  const notesToSave = notes.value.map(note => ({
+    id: note.id,
+    type: note.type,
+    position: note.position,
+    verticalPosition: note.verticalPosition !== undefined ? note.verticalPosition : 0,
+    duration: note.duration,
+    dotted: note.dotted !== undefined ? note.dotted : false,
+    pitch: note.pitch
+  }));
+  
+  const newComposition: SavedComposition = {
+    id: Date.now().toString(),
+    name: compositionName.value.trim(),
+    dateCreated: Date.now(),
+    notes: notesToSave,
+    tempo: tempo.value,
+    clef: selectedClef.value,
+    keySignature: keySignature.value,
+    staffWidth: staffWidth.value,
+    selectedDuration: selectedDuration.value,
+    selectedNoteType: selectedNoteType.value,
+    selectedAccidental: selectedAccidental.value,
+    selectedOctave: selectedOctave.value,
+    isDottedNote: isDottedNote.value
+  };
+  
+  // Log the composition to debug
+  console.log('Saving composition:', newComposition);
+  
+  savedCompositions.value.push(newComposition);
+  saveToLocalStorage();
+  
+  // Reset the input
+  compositionName.value = '';
+  
+  alert('Composition saved successfully!');
+};
+
+// First, let's check if notes is a computed property or a ref
+// Add a function to safely update notes if it's a computed property
+const updateNotes = (newNotes) => {
+  // If notes is a computed property with a setter, this should work
+  // If it's a ref, this will also work fine
+  
+  try {
+    // Try direct assignment first (for writable refs)
+    notes.value = newNotes;
+    console.log('Notes updated through direct assignment');
+  } catch (error) {
+    console.error('Error updating notes directly:', error);
+    
+    // If direct assignment fails, try alternative methods:
+    
+    // Method 1: If using a store, use the store's methods
+    try {
+      const notationStore = useNotationStore();
+      notationStore.setNotes(newNotes);
+      console.log('Notes updated through store');
+      return;
+    } catch (storeError) {
+      console.error('Error updating notes through store:', storeError);
+    }
+    
+    // Method 2: If notes is managed through a different ref, find and use that
+    try {
+      // Clear existing notes and add new ones
+      while (notes.value.length > 0) {
+        notes.value.pop();
+      }
+      
+      // Add new notes one by one (this avoids replacing the entire array)
+      newNotes.forEach(note => {
+        notes.value.push(note);
+      });
+      
+      console.log('Notes updated through array manipulation');
+    } catch (arrayError) {
+      console.error('Error updating notes through array manipulation:', arrayError);
+      
+      // Last resort - alert the user that loading failed
+      alert('Failed to load notes. Please try again or reload the application.');
+    }
+  }
+};
+
+// Improve the clearStaffCompletely function to forcefully clear everything
+const clearStaffCompletely = async () => {
+  console.log('Clearing staff completely...');
+  
+  // Store the current length for debugging
+  const originalLength = notes.value.length;
+  
+  // First, mark all existing notes for removal (helps with debugging)
+  document.querySelectorAll('.note').forEach(noteElement => {
+    noteElement.classList.add('to-be-removed');
+    noteElement.style.opacity = '0.3'; // Visual indicator that these will be removed
+  });
+  
+  // Clear the notes array
+  notes.value = [];
+  
+  // Wait for Vue to update
+  await nextTick();
+  
+  // Force manual DOM cleanup if needed
+  document.querySelectorAll('.note.to-be-removed').forEach(noteElement => {
+    if (noteElement.parentNode) {
+      noteElement.parentNode.removeChild(noteElement);
+    }
+  });
+  
+  console.log(`Staff cleared: removed ${originalLength} notes, current length: ${notes.value.length}`);
+  
+  // Force a redraw of the staff container by toggling a class
+  const staffContainer = document.querySelector('.staff-container');
+  if (staffContainer) {
+    staffContainer.classList.add('force-redraw');
+    setTimeout(() => {
+      staffContainer.classList.remove('force-redraw');
+    }, 10);
+  }
+  
+  // Reset scroll position to beginning
+  scrollPosition.value = 0;
+  
+  // Force update the staff display
+  await updateStaffDisplay();
+  
+  // Wait for good measure
+  await nextTick();
+  
+  // Double-check that notes were actually cleared
+  const remainingNotes = document.querySelectorAll('.note');
+  if (remainingNotes.length > 0) {
+    console.warn(`WARNING: ${remainingNotes.length} note elements still in DOM after clearing!`);
+    console.log('Attempting force removal...');
+    
+    // Last resort: try to remove them manually
+    remainingNotes.forEach(noteElement => {
+      if (noteElement.parentNode) {
+        noteElement.parentNode.removeChild(noteElement);
+      }
+    });
+  }
+  
+  // Reset the DOM transform to avoid ghost notes
+  const staffElement = document.querySelector('.staff');
+  if (staffElement) {
+    staffElement.style.transform = 'translateX(0px)';
+  }
+  
+  return new Promise(resolve => setTimeout(resolve, 50)); // Give the browser time to update
+};
+
+// Add this CSS to help with the force redraw
+// Add this inside the <style> section:
+/*
+.force-redraw {
+  animation: flash 0.1s;
+}
+
+@keyframes flash {
+  0% { opacity: 0.9; }
+  100% { opacity: 1; }
+}
+*/
+
+// Update the loadComposition function to use the new clear function
+const loadComposition = async (id: string) => {
+  const composition = savedCompositions.value.find(comp => comp.id === id);
+  if (!composition) {
+    console.error('Composition not found:', id);
+    return;
+  }
+  
+  // Store the current composition ID
+  currentCompositionId.value = id;
+  console.log('Loading composition:', composition);
+  
+  // Confirm before loading and overwriting current composition
+  if (notes.value.length > 0) {
+    if (!confirm('Loading this composition will replace your current work. Continue?')) {
+      return;
+    }
+  }
+  
+  try {
+    // Clear the staff completely first
+    await clearStaffCompletely();
+    
+    // Wait a bit to ensure clearing is complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    console.log('Staff cleared, now loading new notes...');
+    
+    // Create proper Note objects from the saved data
+    const loadedNotes = composition.notes.map(note => {
+      console.log('Processing note:', note);
+      
+      // Ensure all required properties are present exactly as expected
+      return {
+        id: note.id || Date.now().toString(),
+        type: note.type || 'note',
+        position: note.position || 0,
+        verticalPosition: note.verticalPosition !== undefined ? note.verticalPosition : 0,
+        duration: note.duration || 'quarter',
+        dotted: note.dotted !== undefined ? note.dotted : false,
+        pitch: note.pitch
+      };
+    });
+    
+    console.log('Processed loaded notes:', loadedNotes);
+    
+    // Add notes one by one instead of replacing the array
+    for (const note of loadedNotes) {
+      notes.value.push(note);
+      await nextTick(); // Allow Vue to update after each note
+    }
+    
+    console.log('All notes added, current notes array:', notes.value);
+    
+    // Set the composition data - only assign to writable properties
+    try {
+      tempo.value = composition.tempo;
+    } catch (e) {
+      console.warn('Could not update tempo directly:', e);
+    }
+    
+    try {
+      selectedClef.value = composition.clef;
+    } catch (e) {
+      console.warn('Could not update selectedClef directly:', e);
+    }
+    
+    try {
+      keySignature.value = composition.keySignature;
+    } catch (e) {
+      console.warn('Could not update keySignature directly:', e);
+    }
+    
+    // Restore other state if it exists - check if writable first
+    try {
+      if (composition.selectedDuration) selectedDuration.value = composition.selectedDuration;
+      if (composition.selectedNoteType) selectedNoteType.value = composition.selectedNoteType;
+      if (composition.selectedAccidental) selectedAccidental.value = composition.selectedAccidental;
+      if (composition.selectedOctave) selectedOctave.value = composition.selectedOctave;
+      if (composition.isDottedNote !== undefined) isDottedNote.value = composition.isDottedNote;
+    } catch (e) {
+      console.warn('Could not update some UI state:', e);
+    }
+    
+    // Apply key signature change
+    changeKeySignature(keySignature.value);
+    
+    // Force update of staff display
+    await updateStaffDisplay(composition.staffWidth);
+    
+    // Switch to notes tab
+    activeTab.value = 'notes';
+    
+    alert('Composition loaded successfully!');
+  } catch (error) {
+    console.error('Error loading composition:', error);
+    alert('Error loading composition: ' + error);
+  }
+};
+
+// Update updateStaffDisplay to accept an optional width parameter
+const updateStaffDisplay = async (width?: number) => {
+  // Use nextTick to ensure Vue has updated the DOM
+  await nextTick();
+  
+  // Update staff width if specified
+  const staffElement = document.querySelector('.staff');
+  if (staffElement) {
+    // Use the provided width or the current staffWidth.value
+    const displayWidth = width || staffWidth.value;
+    staffElement.style.width = `${displayWidth}px`;
+    console.log(`Set staff width to ${displayWidth}px`);
+  } else {
+    console.warn('Staff element not found');
+  }
+  
+  // Force redraw of each note
+  notes.value.forEach((note, index) => {
+    console.log(`Verifying note ${index} display:`, note);
+    
+    // Check if note elements exist and are visible
+    const noteElement = document.querySelector(`.note[data-id="${note.id}"]`);
+    if (!noteElement) {
+      console.warn(`Note element for ${note.id} not found in DOM`);
+    }
+  });
+  
+  // Update staff scroll position to show notes if they're off-screen
+  if (notes.value.length > 0) {
+    // Find the first note position
+    const firstNotePosition = Math.min(...notes.value.map(note => note.position));
+    const xPos = firstNotePosition * 50;
+    
+    // Scroll to show this position
+    if (xPos > 0) {
+      scrollPosition.value = Math.max(0, xPos - 100);
+      console.log(`Set scroll position to ${scrollPosition.value}`);
+    } else {
+      scrollPosition.value = 0;
+    }
+    
+    // Apply the scroll position
+    const staffElement = document.querySelector('.staff');
+    if (staffElement) {
+      staffElement.style.transform = `translateX(-${scrollPosition.value}px)`;
+    }
+  }
+  
+  console.log('Staff updated, notes:', notes.value);
+};
+
+// Improve saveToLocalStorage to handle potential errors
+const saveToLocalStorage = () => {
+  try {
+    const dataToSave = JSON.stringify(savedCompositions.value);
+    console.log('Saving data to localStorage:', dataToSave);
+    localStorage.setItem('musicNotationAppCompositions', dataToSave);
+  } catch (e) {
+    console.error('Error saving to localStorage:', e);
+    alert('Error saving compositions. Local storage may be full or disabled.');
+  }
+};
+
+// Improve loadSavedCompositions for better error handling
+const loadSavedCompositions = () => {
+  const savedItems = localStorage.getItem('musicNotationAppCompositions');
+  if (savedItems) {
+    try {
+      const parsed = JSON.parse(savedItems);
+      console.log('Loaded compositions from localStorage:', parsed);
+      savedCompositions.value = parsed;
+    } catch (e) {
+      console.error('Error parsing saved compositions:', e);
+      savedCompositions.value = [];
+    }
+  }
+};
+
+// Delete a composition
+const deleteComposition = (id: string) => {
+  if (!confirm('Are you sure you want to delete this composition?')) {
+    return;
+  }
+  
+  savedCompositions.value = savedCompositions.value.filter(comp => comp.id !== id);
+  saveToLocalStorage();
+};
+
+// Format date for display
+const formatDate = (timestamp: number) => {
+  return new Date(timestamp).toLocaleDateString();
+};
+
+// Add a new ref for the composition name
+const compositionName = ref('');
+
+// Update the onMounted hook to handle errors gracefully
+onMounted(async () => {
+  // Load saved compositions from localStorage
+  loadSavedCompositions();
+  
+  try {
+    // Initialize Tone.js
+    await initializeToneJs();
+    
+    // Set up the initial display
+    updateStaffDisplay();
+    
+    console.log('Component mounted, saved compositions loaded:', savedCompositions.value);
+  } catch (error) {
+    console.error('Error during component initialization:', error);
+  }
+});
+
+// Add a proper function to start Tone.js that will be called on user interaction
+const startToneJs = async () => {
+  try {
+    // This should only be called after a user gesture
+    console.log('Starting Tone.js AudioContext...');
+    await Tone.start();
+    console.log('Tone.js AudioContext started successfully');
+    return true;
+  } catch (error) {
+    console.error('Error starting Tone.js AudioContext:', error);
+    return false;
+  }
+};
+
+// Add a watch function to detect when notes change
+watch(notes, (newNotes) => {
+  console.log('Notes array changed:', newNotes);
+}, { deep: true });
+
+// Add variables for tracking the current composition and renaming state
+const currentCompositionId = ref('');
+const editingComposition = ref('');
+const editCompositionName = ref('');
+
+// Add a function to update an existing composition
+const updateComposition = (id: string) => {
+  if (!confirm('Are you sure you want to update this saved composition with your current changes?')) {
+    return;
+  }
+  
+  const composition = savedCompositions.value.find(comp => comp.id === id);
+  if (!composition) {
+    console.error('Composition not found:', id);
+    return;
+  }
+  
+  console.log('Updating composition:', composition);
+  
+  // Create deep copies of notes to ensure all properties are preserved
+  const notesToSave = notes.value.map(note => ({
+    id: note.id,
+    type: note.type,
+    position: note.position,
+    verticalPosition: note.verticalPosition !== undefined ? note.verticalPosition : 0,
+    duration: note.duration,
+    dotted: note.dotted !== undefined ? note.dotted : false,
+    pitch: note.pitch
+  }));
+  
+  // Update the composition with current state
+  composition.notes = notesToSave;
+  composition.tempo = tempo.value;
+  composition.clef = selectedClef.value;
+  composition.keySignature = keySignature.value;
+  composition.staffWidth = staffWidth.value;
+  composition.selectedDuration = selectedDuration.value;
+  composition.selectedNoteType = selectedNoteType.value;
+  composition.selectedAccidental = selectedAccidental.value;
+  composition.selectedOctave = selectedOctave.value;
+  composition.isDottedNote = isDottedNote.value;
+  
+  // Save to localStorage
+  saveToLocalStorage();
+  
+  alert('Composition updated successfully!');
+};
+
+// Functions for renaming compositions
+const startRename = (id: string, currentName: string) => {
+  editingComposition.value = id;
+  editCompositionName.value = currentName;
+};
+
+const saveRename = (id: string) => {
+  if (!editCompositionName.value.trim()) {
+    alert('Please enter a valid name');
+    return;
+  }
+  
+  const composition = savedCompositions.value.find(comp => comp.id === id);
+  if (!composition) {
+    console.error('Composition not found:', id);
+    return;
+  }
+  
+  composition.name = editCompositionName.value.trim();
+  saveToLocalStorage();
+  cancelRename();
+  
+  alert('Composition renamed successfully!');
+};
+
+const cancelRename = () => {
+  editingComposition.value = '';
+  editCompositionName.value = '';
+};
 </script>
 
 <style scoped>
@@ -3094,5 +3662,248 @@ button:disabled {
 .octave-section .octave-btn {
   font-weight: bold;
   font-size: 16px;
+}
+
+/* Add styles for saved compositions */
+.saved-compositions-container {
+  margin-top: 20px;
+  padding: 15px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.save-composition-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.save-btn {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.no-saved-compositions {
+  text-align: center;
+  color: #666;
+}
+
+.saved-composition-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.saved-composition-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px;
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.composition-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.composition-name {
+  font-weight: bold;
+}
+
+.composition-date {
+  font-size: 12px;
+  color: #666;
+}
+
+.composition-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.load-btn, .delete-btn {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Styles for saved compositions */
+.saved-compositions-container {
+  padding: 15px;
+  background: #f5f5f5;
+}
+
+.save-composition-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.composition-name-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.save-btn {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 15px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.save-btn:hover {
+  background-color: #45a049;
+}
+
+.no-saved-compositions {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-style: italic;
+}
+
+.saved-composition-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.saved-composition-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+  background: white;
+  margin-bottom: 5px;
+  border-radius: 4px;
+}
+
+.composition-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.composition-name {
+  font-weight: bold;
+  color: #333;
+}
+
+.composition-date {
+  font-size: 12px;
+  color: #777;
+}
+
+.composition-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.load-btn {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.delete-btn {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+/* Make tabs fit the new third option */
+.mobile-tabs {
+  display: flex;
+}
+
+.mobile-tabs .tab-btn {
+  flex: 1;
+  padding: 10px;
+  text-align: center;
+  background: #f0f0f0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.mobile-tabs .tab-btn.active {
+  background: white;
+  border-bottom: 2px solid #2196F3;
+  font-weight: bold;
+}
+
+/* Add CSS for force-redraw animation */
+.force-redraw {
+  animation: flash 0.1s;
+}
+
+@keyframes flash {
+  0% { opacity: 0.9; }
+  100% { opacity: 1; }
+}
+
+/* Add styles for edit mode in saved compositions */
+.edit-name-form {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.rename-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #2196F3;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.save-rename-btn, .cancel-rename-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.save-rename-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.cancel-rename-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+/* Update button */
+.update-btn {
+  background-color: #FF9800;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  margin-left: 5px;
 }
 </style> 
