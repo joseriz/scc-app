@@ -173,7 +173,7 @@
   }
   
   .play-button:hover:not(:disabled) {
-    background-color: #43a047;
+    background-color: #45a049;
     transform: translateY(-2px);
   }
   
@@ -2155,4 +2155,36 @@
   .measure-visibility-toggle label {
     font-size: 14px;
     color: #333;
+  }
+  
+  /* Add styles for pause and resume buttons */
+  .pause-button {
+    background-color: #FF9800;
+    color: white;
+  }
+  
+  .pause-button:hover:not(:disabled) {
+    background-color: #F57C00;
+    transform: translateY(-2px);
+  }
+  
+  .resume-button {
+    background-color: #2196F3;
+    color: white;
+  }
+  
+  .resume-button:hover:not(:disabled) {
+    background-color: #1976D2;
+    transform: translateY(-2px);
+  }
+  
+  /* Add styles for the restart button */
+  .restart-button {
+    background-color: #2196F3;
+    color: white;
+  }
+  
+  .restart-button:hover:not(:disabled) {
+    background-color: #1976D2;
+    transform: translateY(-2px);
   }

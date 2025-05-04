@@ -29,19 +29,47 @@
       
       <div class="controls-row">
       <div class="playback-controls">
-        <button @click="playComposition" class="action-button play-button" :disabled="isPlaying">
-          <span class="button-icon">▶</span>
-          <span class="button-label">Play</span>
+        <button 
+          @click="togglePlayback" 
+          class="action-button play-button"
+          :class="{
+            'play-button': !isPlaying && !isPaused,
+            'pause-button': isPlaying && !isPaused,
+            'resume-button': isPaused
+          }"
+        >
+          <span class="button-icon">
+            <span v-if="!isPlaying && !isPaused">▶</span>
+            <span v-else-if="isPlaying && !isPaused">⏸</span>
+            <span v-else-if="isPaused">⏯</span>
+          </span>
+          <span class="button-label">
+            {{ !isPlaying && !isPaused ? 'Play' : (isPlaying && !isPaused ? 'Pause' : 'Resume') }}
+          </span>
         </button>
         
-        <button @click="stopPlayback" class="action-button stop-button" :disabled="!isPlaying">
+        <button @click="stopPlayback" class="action-button stop-button" :disabled="!isPlaying && !isPaused">
           <span class="button-icon">■</span>
           <span class="button-label">Stop</span>
         </button>
         
-        <button @click="clearScore" class="action-button clear-button" @mousedown="animateButton">
-          <span class="button-icon">✕</span>
-          <span class="button-label">Clear</span>
+        <!-- Update the clear button to be disabled during playback -->
+        <button 
+          @click="isPlaying || isPaused ? restartPlayback() : confirmClearScore()" 
+          class="action-button"
+          :class="{
+            'clear-button': !isPlaying && !isPaused,
+            'restart-button': isPlaying || isPaused
+          }"
+          @mousedown="animateButton"
+        >
+          <span class="button-icon">
+            <span v-if="!isPlaying && !isPaused">✕</span>
+            <span v-else>⟲</span>
+          </span>
+          <span class="button-label">
+            {{ !isPlaying && !isPaused ? 'Clear' : 'Restart' }}
+          </span>
         </button>
         </div>
       </div>
@@ -1421,46 +1449,37 @@ const updateStaffScroll = () => {
 // Update the stopPlayback function
 const stopPlayback = () => {
   isPlaying.value = false;
+  isPaused.value = false;
   currentPlayingNoteId.value = null;
+  pausedTimeouts.value = [];
+  pauseTime.value = null;
   
-  // Cancel any scheduled note playback
+  // Clear all timeouts
   if (window.playbackTimeouts) {
-    window.playbackTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    window.playbackTimeouts.forEach(id => clearTimeout(id));
     window.playbackTimeouts = [];
   }
   
-  // Stop Tone.js Transport if it's running
-  try {
-    Tone.Transport.stop();
-    Tone.Transport.cancel(0);
-  } catch (e) {
-    console.error('Error stopping Tone.Transport:', e);
-  }
-  
-  // Use triggerRelease instead of releaseAll for noteSynth
-  if (noteSynth) {
-    try {
-      noteSynth.triggerRelease(); // This is the correct method for basic Tone.Synth
-    } catch (e) {
-      console.error('Error stopping synth:', e);
-    }
-  }
-  
-  if (pianoSynth) {
-    try {
-      // For Sampler, we can use releaseAll
-      pianoSynth.releaseAll();
-    } catch (e) {
-      console.error('Error stopping piano sampler:', e);
-    }
-  }
-  
-  console.log('Playback stopped and all scheduled notes cleared');
+  console.log('Playback stopped');
 };
 
+// Update the clearScore function to properly clear all notes
 const clearScore = () => {
-  notationStore.clearNotes();
-  chordSymbols.value = []; // Clear chord symbols too
+  // First stop any playback
+  stopPlayback();
+  
+  // Clear all notes
+  notes.value = [];
+  
+  // Reset scroll position
+  scrollPosition.value = 0;
+  updateStaffScroll();
+  
+  // Reset playback range to default
+  playbackStartMeasure.value = 1;
+  playbackEndMeasure.value = 0;
+  
+  console.log('Score cleared');
 };
 
 // Add these functions to handle ledger lines
@@ -2042,52 +2061,70 @@ interface SavedComposition {
 // Update the savedCompositions ref to use this type
 const savedCompositions = ref<SavedComposition[]>([]);
 
-// Fix the saveComposition function to properly save to localStorage
+// Fix the saveComposition function to properly handle duplicate names
 const saveComposition = () => {
+  // Validate that the composition name is not empty
   if (!compositionName.value.trim()) {
-    compositionName.value = prompt('Enter a name for this composition:') || 'Untitled';
-    if (!compositionName.value.trim()) {
-      alert('Please enter a name for your composition');
-      return;
+    alert('Please enter a name for your composition');
+    return;
+  }
+  
+  // Check if a composition with this name already exists
+  const existingComposition = savedCompositions.value.find(
+    comp => comp.name.toLowerCase() === compositionName.value.trim().toLowerCase()
+  );
+  
+  // If a composition with this name exists
+  if (existingComposition) {
+    // If it's the current composition being edited, offer to update instead
+    if (existingComposition.id === currentCompositionId.value) {
+      if (confirm(`Do you want to update the existing composition "${compositionName.value}"?`)) {
+        // Update existing composition
+        updateComposition(existingComposition.id);
+        return;
+      }
+    } else {
+      // It's a different composition with the same name
+      const choice = confirm(`A composition named "${compositionName.value}" already exists. Choose:\n\n- OK to update the existing composition\n- Cancel to create a new composition with a unique name`);
+      
+      if (choice) {
+        // User chose to update the existing composition
+        currentCompositionId.value = existingComposition.id;
+        updateComposition(existingComposition.id);
+        return;
+      } else {
+        // User chose to create a new composition - ask for a different name
+        const newName = prompt(`Please enter a different name for your composition:`, `${compositionName.value} (copy)`);
+        if (!newName) return; // User canceled
+        compositionName.value = newName.trim();
+      }
     }
   }
   
-  console.log('Saving notes:', notes.value);
-  
-  // Create deep copies of notes to ensure all properties are preserved
-  const notesToSave = notes.value.map(note => ({
-    id: note.id,
-    type: note.type,
-    position: note.position,
-    verticalPosition: note.verticalPosition !== undefined ? note.verticalPosition : 0,
-    duration: note.duration,
-    dotted: note.dotted !== undefined ? note.dotted : false,
-    pitch: note.pitch
-  }));
-  
+  // Create a new composition
   const newComposition = {
     id: Date.now().toString(),
     name: compositionName.value.trim(),
     dateCreated: Date.now(),
-    notes: notesToSave,
+    notes: notes.value,
     tempo: tempo.value,
     clef: selectedClef.value,
     keySignature: keySignature.value,
-    timeSignature: timeSignature.value, // Add time signature
-    staffWidth: staffWidth.value,
-    selectedDuration: selectedDuration.value,
+    timeSignature: timeSignature.value,
     selectedNoteType: selectedNoteType.value,
-    selectedAccidental: selectedAccidental.value,
+    selectedNoteDuration: selectedDuration.value,
     selectedOctave: selectedOctave.value,
     isDottedNote: isDottedNote.value,
-    // Add any other necessary fields
     chordSymbols: chordSymbols.value
   };
   
-  // Log the composition to debug
-  console.log('Saving composition:', newComposition);
-  
+  // Save the composition
   savedCompositions.value.push(newComposition);
+  
+  // Update currentCompositionId to the newly saved composition
+  currentCompositionId.value = newComposition.id;
+  
+  // Save to localStorage
   saveToLocalStorage();
   
   alert(`Composition "${compositionName.value}" saved successfully!`);
@@ -2264,33 +2301,45 @@ const saveComposition = () => {
 // Update the loadComposition function to use the resetAudioSystem
 const loadComposition = (compositionId: string) => {
   try {
-    const composition = notationStore.getComposition(compositionId) as Composition;
-    if (composition) {
-      // Clear current score
-      clearScore();
-      
-      // Set composition name
-      compositionName.value = composition.name;
-      
-      // Load notes
-      notes.value = composition.notes;
-      
-      // Load other settings
-      selectedClef.value = composition.clef || 'treble';
-      keySignature.value = composition.keySignature || 'C';
-      tempo.value = composition.tempo || 120;
-      
-      // Load chord symbols if they exist
-      if (composition.chordSymbols && composition.chordSymbols.length) {
-        chordSymbols.value = composition.chordSymbols;
-      }
-      
-      // Load time signature if it exists
-      if (composition.timeSignature) {
-        timeSignature.value = composition.timeSignature;
-        updateTimeSignature(); // Update UI based on time signature
-      }
+    // Find the composition in the saved compositions array
+    const composition = savedCompositions.value.find(comp => comp.id === compositionId);
+    
+    if (!composition) {
+      console.error('Composition not found:', compositionId);
+      return;
     }
+    
+    // Set the current composition ID so the Update button will appear
+    currentCompositionId.value = compositionId;
+    
+    console.log('Loading composition:', composition);
+    
+    // Clear current score
+    clearScore();
+    
+    // Set composition name
+    compositionName.value = composition.name;
+    
+    // Load notes
+    notes.value = composition.notes;
+    
+    // Load other settings
+    selectedClef.value = composition.clef || 'treble';
+    keySignature.value = composition.keySignature || 'C';
+    tempo.value = composition.tempo || 120;
+    
+    // Load chord symbols if they exist
+    if (composition.chordSymbols && composition.chordSymbols.length) {
+      chordSymbols.value = composition.chordSymbols;
+    }
+    
+    // Load time signature if it exists
+    if (composition.timeSignature) {
+      timeSignature.value = composition.timeSignature;
+      updateTimeSignature(); // Update UI based on time signature
+    }
+    
+    console.log('Composition loaded successfully with', notes.value.length, 'notes');
   } catch (e) {
     console.error('Error loading composition:', e);
   }
@@ -2408,30 +2457,33 @@ const updateComposition = (id: string) => {
     return;
   }
   
-  console.log('Updating composition:', composition);
-  
-  // Create deep copies of notes to ensure all properties are preserved
-  const notesToSave = notes.value.map(note => ({
-    id: note.id,
-    type: note.type,
-    position: note.position,
-    verticalPosition: note.verticalPosition !== undefined ? note.verticalPosition : 0,
-    duration: note.duration,
-    dotted: note.dotted !== undefined ? note.dotted : false,
-    pitch: note.pitch
-  }));
+  // Check if the name has changed and if the new name conflicts with any existing compositions
+  if (composition.name !== compositionName.value.trim()) {
+    const nameExists = savedCompositions.value.some(
+      comp => comp.id !== id && comp.name.toLowerCase() === compositionName.value.trim().toLowerCase()
+    );
+    
+    if (nameExists) {
+      if (!confirm(`A composition named "${compositionName.value}" already exists. Do you want to use this name anyway?`)) {
+        return;
+      }
+    }
+    
+    // Update the name
+    composition.name = compositionName.value.trim();
+  }
   
   // Update the composition with current state
-  composition.notes = notesToSave;
+  composition.notes = notes.value.map(note => ({...note}));
   composition.tempo = tempo.value;
   composition.clef = selectedClef.value;
   composition.keySignature = keySignature.value;
-  composition.staffWidth = staffWidth.value;
-  composition.selectedDuration = selectedDuration.value;
+  composition.timeSignature = timeSignature.value;
   composition.selectedNoteType = selectedNoteType.value;
-  composition.selectedAccidental = selectedAccidental.value;
+  composition.selectedNoteDuration = selectedDuration.value;
   composition.selectedOctave = selectedOctave.value;
   composition.isDottedNote = isDottedNote.value;
+  composition.chordSymbols = chordSymbols.value;
   
   // Save to localStorage
   saveToLocalStorage();
@@ -3160,7 +3212,7 @@ const playScore = () => {
     
     // Function to play this note at the right time
     const playNoteWithDelay = (noteToPlay, delay) => {
-      const timeoutId = setTimeout(() => {
+      const callback = () => {
         currentPlayingNoteId.value = noteToPlay.id;
         
         // Auto-scroll to the playing note if enabled
@@ -3175,14 +3227,32 @@ const playScore = () => {
         }
         
         // Schedule the end of this note
-        const noteEndTimeoutId = setTimeout(() => {
+        const noteEndCallback = () => {
           if (currentPlayingNoteId.value === noteToPlay.id) {
             currentPlayingNoteId.value = null;
           }
-        }, waitDurationSeconds * 1000);
+        };
+        
+        const noteEndTimeoutId = setTimeout(noteEndCallback, waitDurationSeconds * 1000);
+        
+        // Store timeout info for potential pausing
+        (window as any)[`timeout_${noteEndTimeoutId}_info`] = {
+          startTime: Date.now(),
+          duration: waitDurationSeconds * 1000,
+          callback: noteEndCallback
+        };
         
         window.playbackTimeouts.push(noteEndTimeoutId);
-      }, delay);
+      };
+      
+      const timeoutId = setTimeout(callback, delay);
+      
+      // Store timeout info for potential pausing
+      (window as any)[`timeout_${timeoutId}_info`] = {
+        startTime: Date.now(),
+        duration: delay,
+        callback
+      };
       
       window.playbackTimeouts.push(timeoutId);
     };
@@ -3194,12 +3264,33 @@ const playScore = () => {
   
   // Stop playing after all notes have played
   const finalTimeoutId = setTimeout(() => {
+    // Reset all playback state variables
     isPlaying.value = false;
+    isPaused.value = false;
     currentPlayingNoteId.value = null;
+    
+    // Clear any remaining timeouts
+    if (window.playbackTimeouts) {
+      window.playbackTimeouts.forEach(id => clearTimeout(id));
+      window.playbackTimeouts = [];
+    }
+    
     console.log('Playback complete');
   }, totalDelay * 1000 + 100); // Add a small buffer
   
+  // Store the final timeout ID for potential cleanup
   window.playbackTimeouts.push(finalTimeoutId);
+  
+  // Store timeout info for the final timeout
+  (window as any)[`timeout_${finalTimeoutId}_info`] = {
+    startTime: Date.now(),
+    duration: totalDelay * 1000 + 100,
+    callback: () => {
+      isPlaying.value = false;
+      isPaused.value = false;
+      currentPlayingNoteId.value = null;
+    }
+  };
 };
 
 // Add the autoScrollToNote function
@@ -3230,6 +3321,184 @@ const autoScrollToNote = (note: Note) => {
 
 // Add this ref for measure visibility
 const showMeasureNumbers = ref(true); // Default to shown
+
+// Add a ref to track if playback is paused
+const isPaused = ref(false);
+
+// Add a ref to store the remaining timeouts when paused
+const pausedTimeouts = ref<{id: number, remainingTime: number, callback: Function}[]>([]);
+
+// Add a ref to store the time when playback was paused
+const pauseTime = ref<number | null>(null);
+
+// Add a function to pause playback
+const pausePlayback = () => {
+  if (!isPlaying.value || isPaused.value) return;
+  
+  isPaused.value = true;
+  pauseTime.value = Date.now();
+  
+  // Stop any currently playing sounds using the correct methods
+  if (noteSynth) {
+    try {
+      // For basic Tone.Synth, use triggerRelease() without arguments to release all notes
+      noteSynth.triggerRelease();
+    } catch (e) {
+      console.error('Error stopping noteSynth:', e);
+    }
+  }
+  
+  if (pianoSynth) {
+    try {
+      // For Tone.Sampler, we can use releaseAll()
+      pianoSynth.releaseAll();
+    } catch (e) {
+      console.error('Error stopping pianoSynth:', e);
+    }
+  }
+  
+  // Store all active timeouts with their remaining time
+  pausedTimeouts.value = [];
+  
+  // Clear all active timeouts
+  if (window.playbackTimeouts) {
+    window.playbackTimeouts.forEach(id => {
+      // Calculate remaining time for this timeout
+      const timeoutInfo = (window as any)[`timeout_${id}_info`];
+      if (timeoutInfo) {
+        const elapsedTime = Date.now() - timeoutInfo.startTime;
+        const remainingTime = Math.max(0, timeoutInfo.duration - elapsedTime);
+        
+        // Store the timeout info for resuming later
+        pausedTimeouts.value.push({
+          id,
+          remainingTime,
+          callback: timeoutInfo.callback
+        });
+      }
+      
+      // Clear the timeout
+      clearTimeout(id);
+    });
+    
+    // Clear the timeouts array
+    window.playbackTimeouts = [];
+  }
+  
+  console.log('Playback paused with', pausedTimeouts.value.length, 'pending timeouts');
+};
+
+// Add a function to resume playback
+const resumePlayback = () => {
+  if (!isPaused.value) return;
+  
+  isPaused.value = false;
+  isPlaying.value = true;
+  
+  // Reset the currently playing note ID to avoid multiple highlights
+  currentPlayingNoteId.value = null;
+  
+  // Recreate all timeouts with their remaining time
+  window.playbackTimeouts = [];
+  
+  // Sort timeouts by remaining time to ensure they execute in the correct order
+  const sortedTimeouts = [...pausedTimeouts.value].sort((a, b) => a.remainingTime - b.remainingTime);
+  
+  console.log('Resuming playback with', sortedTimeouts.length, 'timeouts');
+  
+  // Skip any timeouts with very small remaining time (less than 10ms)
+  // These are likely to be the ones that would play immediately and cause the first note issue
+  const validTimeouts = sortedTimeouts.filter(timeout => timeout.remainingTime > 10);
+  
+  // Group timeouts that are very close together (within 50ms) to prevent duplicates
+  const groupedTimeouts: {remainingTime: number, callbacks: Function[]}[] = [];
+  
+  validTimeouts.forEach(timeout => {
+    // Check if we have a group that's very close in time
+    const existingGroup = groupedTimeouts.find(group => 
+      Math.abs(group.remainingTime - timeout.remainingTime) < 50
+    );
+    
+    if (existingGroup) {
+      // Add this callback to the existing group
+      existingGroup.callbacks.push(timeout.callback);
+    } else {
+      // Create a new group
+      groupedTimeouts.push({
+        remainingTime: timeout.remainingTime,
+        callbacks: [timeout.callback]
+      });
+    }
+  });
+  
+  // Create timeouts for each group
+  groupedTimeouts.forEach(group => {
+    // Add a small delay (100ms) to all timeouts to prevent immediate playback
+    const adjustedTime = Math.max(100, group.remainingTime);
+    
+    const newTimeoutId = setTimeout(() => {
+      // Execute only the first callback in the group to prevent duplicates
+      if (group.callbacks.length > 0) {
+        group.callbacks[0]();
+      }
+    }, adjustedTime);
+    
+    // Store the new timeout ID
+    window.playbackTimeouts.push(newTimeoutId);
+    
+    // Store timeout info for potential future pausing
+    (window as any)[`timeout_${newTimeoutId}_info`] = {
+      startTime: Date.now(),
+      duration: adjustedTime,
+      callback: group.callbacks[0]
+    };
+  });
+  
+  // Clear the paused timeouts
+  pausedTimeouts.value = [];
+  pauseTime.value = null;
+  
+  console.log('Playback resumed with', groupedTimeouts.length, 'grouped timeouts');
+};
+
+// Add a function to toggle playback
+const togglePlayback = () => {
+  if (!isPlaying.value && !isPaused.value) {
+    // Not playing and not paused -> Start playing
+    playComposition();
+  } else if (isPlaying.value && !isPaused.value) {
+    // Playing and not paused -> Pause
+    pausePlayback();
+  } else if (isPaused.value) {
+    // Paused -> Resume
+    resumePlayback();
+  }
+};
+
+// Add a function to restart playback
+const restartPlayback = () => {
+  // First stop the current playback
+  stopPlayback();
+  
+  // Small delay to ensure everything is stopped
+  setTimeout(() => {
+    // Start playback again (which will use the current measure range settings)
+    playComposition();
+  }, 100);
+};
+
+// Add a function to show a confirmation dialog before clearing the score
+const confirmClearScore = () => {
+  // Only show confirmation if there are notes to clear
+  if (notes.value.length > 0) {
+    if (confirm('Are you sure you want to clear the score? This action cannot be undone.')) {
+      clearScore();
+    }
+  } else {
+    // If there are no notes, just clear without confirmation
+    clearScore();
+  }
+};
 </script>
 
 <style scoped src="@/assets/styles/global.css"/>
