@@ -742,66 +742,95 @@
   .stem {
     position: absolute;
     width: 1px;
-    height: 30px;
+    height: 30px; /* Standard stem length */
     background: black;
   }
   
   .stem.up {
-    bottom: 20px;
-    right: 5px;
+    /* Stem goes up from the right side of the notehead */
+    bottom: 19px; /* Align with notehead center */
+    right: 5px; /* Position relative to note container */
   }
   
   .stem.down {
-    top: 20px;
-    left: 5px;
+    /* Stem goes down from the left side of the notehead */
+    top: 19px; /* Align with notehead center */
+    left: 5px; /* Position relative to note container */
   }
   
-  /* Flag styles for eighth and sixteenth notes */
+  /* --- Remove Previous Flag Styles --- */
+  /* Delete the .flag, .flag::before, .flag::after rules added previously */
+
+  /* --- Add New CSS Flag Styles (Skewed Rectangles) --- */
   .flag {
     position: absolute;
-    width: 10px;
-    height: 10px;
+    width: 0;
+    height: 0;
+    pointer-events: none;
   }
-  
+
+  /* Position the flag container at the end of the stem */
   .flag.up {
-    top: 0;
-    right: 5px;
-    border-right: 1px solid black;
-    border-top: 1px solid black;
-    transform: rotate(-30deg);
+    bottom: 49px; /* End of the upward stem */
+    right: 5px; /* Align with stem */
   }
-  
   .flag.down {
-    bottom: 0;
-    left: 5px;
-    border-left: 1px solid black;
-    border-bottom: 1px solid black;
-    transform: rotate(-30deg);
+    top: 49px; /* End of the downward stem */
+    left: 5px; /* Align with stem */
   }
-  
-  .flag.sixteenth:after {
+
+  /* Style for the first flag (::before) - using a skewed rectangle */
+  .flag::before {
     content: '';
     position: absolute;
-    width: 10px;
-    height: 10px;
-    border-right: 1px solid black;
-    border-top: 1px solid black;
-    top: 5px;
-    right: -1px;
-    transform: rotate(0deg);
+    width: 14px; /* Width of the flag */
+    height: 8px; /* Thickness/height of the flag */
+    background-color: black;
+    border-radius: 0 0 4px 4px; /* Slightly rounded bottom corners */
+    transform-origin: top left; /* Skew from the connection point */
   }
-  
-  .flag.sixteenth.down:after {
-    border-right: none;
-    border-top: none;
-    border-left: 1px solid black;
-    border-bottom: 1px solid black;
-    top: auto;
-    right: auto;
-    bottom: 5px;
-    left: -1px;
+
+  /* Style for the second flag (::after) - only for sixteenth */
+  .flag.sixteenth::after {
+    content: '';
+    position: absolute;
+    width: 14px; /* Match first flag */
+    height: 8px; /* Match first flag */
+    background-color: black;
+    border-radius: 0 0 4px 4px; /* Match first flag */
+    transform-origin: top left; /* Match first flag */
   }
-  
+
+  /* Positioning and skew for UP stem flags */
+  .flag.up::before {
+    bottom: -4px; /* Overlap stem end slightly */
+    left: 0px; /* Connect to stem */
+    transform: skewY(35deg); /* Skew downwards */
+  }
+  .flag.up.sixteenth::after {
+    bottom: -11px; /* Position below the first flag */
+    left: 0px; /* Align with first flag */
+    transform: skewY(35deg); /* Match slant */
+  }
+
+  /* Positioning and style adjustments for DOWN stem flags */
+  .flag.down::before,
+  .flag.down.sixteenth::after {
+    border-radius: 4px 4px 0 0; /* Slightly rounded top corners */
+    transform-origin: bottom right; /* Skew from the connection point */
+  }
+
+  .flag.down::before {
+    top: -4px; /* Overlap stem end slightly */
+    right: 0px; /* Connect to stem */
+    transform: skewY(-35deg); /* Skew upwards */
+  }
+  .flag.down.sixteenth::after {
+    top: -11px; /* Position above the first flag */
+    right: 0px; /* Align with first flag */
+    transform: skewY(-35deg); /* Match slant */
+  }
+
   /* Accidental positioning */
   .accidental {
     position: absolute;
@@ -2367,3 +2396,24 @@
        padding: 6px 20px 6px 8px; /* Adjust padding */
     }
   }
+
+  .note.selected {
+    /* Add a distinct outline to the selected note */
+    outline: 2px solid #2196F3; /* Blue outline */
+    outline-offset: 3px; /* Space between note and outline */
+    border-radius: 50%; /* Make outline rounded for noteheads */
+    box-shadow: 0 0 8px rgba(33, 150, 243, 0.5); /* Optional subtle glow */
+  }
+
+  /* Ensure outline works for rests too */
+  .note.rest.selected {
+    outline: 2px solid #2196F3;
+    outline-offset: 3px;
+    border-radius: 4px; /* More rectangular outline for rests */
+    box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
+  }
+
+  /* Optional: Slightly adjust position if outline causes overlap issues */
+  /* .note.selected {
+    z-index: 10;
+  } */

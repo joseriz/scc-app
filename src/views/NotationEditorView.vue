@@ -748,23 +748,31 @@ interface Composition {
   notes: Note[];
   clef: string;
   keySignature: string;
-  timeSignature?: string;
+  timeSignature?: string; // Keep optional here for flexibility during creation
   tempo: number;
   chordSymbols: ChordSymbol[];
   selectedNoteType: string;
   selectedDuration: string;
   selectedOctave: number;
   isDottedNote: boolean;
-  staffWidth?: number;
+  staffWidth: number; // Make required here as it's essential for layout
   selectedAccidental?: string;
 }
 
 // Add window property declarations
 declare global {
   interface Window {
-    playbackTimeouts: NodeJS.Timeout[];
+    playbackTimeouts: number[]; // Correct type for browser setTimeout IDs
     debugMonitorInterval: number | null;
     debugMonitorRemover: () => void;
+    // Add this if you use it, otherwise remove
+    // gc?: () => void;
+    // Add this for timeout info storage
+    [key: `timeout_${number}_info`]: {
+      startTime: number;
+      duration: number;
+      callback: Function;
+    };
   }
 }
 
@@ -2155,12 +2163,14 @@ interface SavedComposition {
   tempo: number;
   clef: string;
   keySignature: string;
-  staffWidth: number;
+  staffWidth: number; // Required for restoring layout
   selectedDuration: string;
   selectedNoteType: string;
-  selectedAccidental: string;
+  selectedAccidental?: string; // Add missing property (make optional if needed)
   selectedOctave: number;
   isDottedNote: boolean;
+  chordSymbols: ChordSymbol[]; // Add missing property
+  timeSignature?: string; // Add missing property (make optional)
 }
 
 // Update the savedCompositions ref to use this type
@@ -2207,33 +2217,34 @@ const saveComposition = () => {
   }
   
   // Create a new composition with the correct type
+  // Ensure all required fields from the Composition interface are present
   const newComposition: Composition = {
     id: Date.now().toString(),
     name: compositionName.value.trim(),
     dateCreated: Date.now(),
-    notes: notes.value,
+    notes: notes.value.map(note => ({...note})), // Deep copy notes
     tempo: tempo.value,
     clef: selectedClef.value,
     keySignature: keySignature.value,
-    timeSignature: timeSignature.value,
+    timeSignature: timeSignature.value, // Include time signature
     selectedNoteType: selectedNoteType.value,
     selectedDuration: selectedDuration.value,
     selectedOctave: selectedOctave.value,
     isDottedNote: isDottedNote.value,
-    chordSymbols: chordSymbols.value,
-    staffWidth: staffWidth.value,
+    chordSymbols: chordSymbols.value.map(chord => ({...chord})), // Deep copy chords
+    staffWidth: staffWidth.value, // Ensure staffWidth is included
     selectedAccidental: selectedAccidental.value
   };
-  
-  // Save the composition
+
+  // Save the composition (pushing a Composition type into SavedComposition[] is okay if Composition includes all fields of SavedComposition)
   savedCompositions.value.push(newComposition);
-  
+
   // Update currentCompositionId to the newly saved composition
   currentCompositionId.value = newComposition.id;
-  
+
   // Save to localStorage
   saveToLocalStorage();
-  
+
   alert(`Composition "${compositionName.value}" saved successfully!`);
 };
 
@@ -2413,6 +2424,7 @@ const loadComposition = (compositionId: string) => {
     
     if (!composition) {
       console.error('Composition not found:', compositionId);
+      alert('Failed to load composition.'); // User feedback
       return;
     }
     
@@ -2422,33 +2434,45 @@ const loadComposition = (compositionId: string) => {
     console.log('Loading composition:', composition);
     
     // Clear current score
-    clearScore();
+    clearScore(); // Ensure this properly resets state
     
     // Set composition name
     compositionName.value = composition.name;
     
-    // Load notes
-    notes.value = composition.notes;
+    // Load notes (ensure deep copy)
+    notes.value = composition.notes.map(note => ({...note}));
     
     // Load other settings
     selectedClef.value = composition.clef || 'treble';
     keySignature.value = composition.keySignature || 'C';
     tempo.value = composition.tempo || 120;
+    staffWidth.value = composition.staffWidth || 8 * 120; // Load staffWidth or use default
+    selectedDuration.value = composition.selectedDuration || 'quarter';
+    selectedNoteType.value = composition.selectedNoteType || 'note';
+    selectedAccidental.value = composition.selectedAccidental || 'natural';
+    selectedOctave.value = composition.selectedOctave || 4;
+    isDottedNote.value = composition.isDottedNote || false;
     
-    // Load chord symbols if they exist
-    if (composition.chordSymbols && Array.isArray(composition.chordSymbols)) {
-      chordSymbols.value = composition.chordSymbols;
-    }
+    // Load chord symbols if they exist (ensure deep copy)
+    chordSymbols.value = (composition.chordSymbols && Array.isArray(composition.chordSymbols))
+      ? composition.chordSymbols.map(chord => ({...chord}))
+      : [];
     
     // Load time signature if it exists
-    if (composition.timeSignature) {
-      timeSignature.value = composition.timeSignature;
-      updateTimeSignature(); // Update UI based on time signature
-    }
+    timeSignature.value = composition.timeSignature || '4/4'; // Default if missing
+    updateTimeSignature(); // Update UI based on time signature
+    
+    // Update the staff display with the loaded width
+    nextTick(() => {
+        updateStaffDisplay(staffWidth.value);
+        // Also update measuresCount based on loaded width if necessary
+        measuresCount.value = Math.ceil(staffWidth.value / measureWidthByTimeSignature.value);
+    });
     
     console.log('Composition loaded successfully with', notes.value.length, 'notes');
   } catch (e) {
     console.error('Error loading composition:', e);
+    alert('An error occurred while loading the composition.'); // User feedback
   }
 };
 
@@ -2558,45 +2582,40 @@ const updateComposition = (id: string) => {
     return;
   }
   
-  const composition = savedCompositions.value.find(comp => comp.id === id);
-  if (!composition) {
-    console.error('Composition not found:', id);
+  const compositionIndex = savedCompositions.value.findIndex(comp => comp.id === id);
+  if (compositionIndex === -1) {
+    console.error('Composition not found for update:', id);
     return;
   }
-  
-  // Check if the name has changed and if the new name conflicts with any existing compositions
-  if (composition.name !== compositionName.value.trim()) {
-    const nameExists = savedCompositions.value.some(
-      comp => comp.id !== id && comp.name.toLowerCase() === compositionName.value.trim().toLowerCase()
-    );
-    
-    if (nameExists) {
-      if (!confirm(`A composition named "${compositionName.value}" already exists. Do you want to use this name anyway?`)) {
-        return;
-      }
-    }
-    
-    // Update the name
-    composition.name = compositionName.value.trim();
-  }
-  
-  // Update the composition with current state
-  composition.notes = notes.value.map(note => ({...note}));
-  composition.tempo = tempo.value;
-  composition.clef = selectedClef.value;
-  composition.keySignature = keySignature.value;
-  if (!composition.timeSignature) composition.timeSignature = timeSignature.value;
-  else composition.timeSignature = timeSignature.value;
-  composition.selectedNoteType = selectedNoteType.value;
-  composition.selectedDuration = selectedDuration.value;
-  composition.selectedOctave = selectedOctave.value;
-  composition.isDottedNote = isDottedNote.value;
-  if (!composition.chordSymbols) composition.chordSymbols = [];
-  composition.chordSymbols = chordSymbols.value;
-  
+
+  // Create the updated composition object matching SavedComposition interface
+  const updatedData: SavedComposition = {
+    // Keep existing id and dateCreated
+    id: savedCompositions.value[compositionIndex].id,
+    dateCreated: savedCompositions.value[compositionIndex].dateCreated,
+    // Update name if changed
+    name: compositionName.value.trim() || savedCompositions.value[compositionIndex].name,
+    // Update with current state
+    notes: notes.value.map(note => ({...note})), // Deep copy
+    tempo: tempo.value,
+    clef: selectedClef.value,
+    keySignature: keySignature.value,
+    timeSignature: timeSignature.value, // Include time signature
+    selectedNoteType: selectedNoteType.value,
+    selectedDuration: selectedDuration.value,
+    selectedOctave: selectedOctave.value,
+    isDottedNote: isDottedNote.value,
+    chordSymbols: chordSymbols.value.map(chord => ({...chord})), // Deep copy
+    staffWidth: staffWidth.value, // Include staffWidth
+    selectedAccidental: selectedAccidental.value // Include selectedAccidental
+  };
+
+  // Replace the old composition data with the new data
+  savedCompositions.value.splice(compositionIndex, 1, updatedData);
+
   // Save to localStorage
   saveToLocalStorage();
-  
+
   alert('Composition updated successfully!');
 };
 
@@ -3468,32 +3487,37 @@ const pausePlayback = () => {
   
   // Store all active timeouts with their remaining time
   pausedTimeouts.value = [];
-  
+
   // Clear all active timeouts
   if (window.playbackTimeouts) {
     window.playbackTimeouts.forEach(id => {
       // Calculate remaining time for this timeout
-      const timeoutInfo = (window as any)[`timeout_${id}_info`];
+      // Use the dynamically generated key to access timeout info
+      const timeoutInfoKey = `timeout_${id}_info` as keyof Window;
+      const timeoutInfo = window[timeoutInfoKey];
+
       if (timeoutInfo) {
         const elapsedTime = Date.now() - timeoutInfo.startTime;
         const remainingTime = Math.max(0, timeoutInfo.duration - elapsedTime);
-        
+
         // Store the timeout info for resuming later
         pausedTimeouts.value.push({
-          id,
+          id, // id is already a number here
           remainingTime,
           callback: timeoutInfo.callback
         });
+        // Clean up the stored info
+        delete window[timeoutInfoKey];
       }
-      
+
       // Clear the timeout
       clearTimeout(id);
     });
-    
+
     // Clear the timeouts array
     window.playbackTimeouts = [];
   }
-  
+
   console.log('Playback paused with', pausedTimeouts.value.length, 'pending timeouts');
 };
 
