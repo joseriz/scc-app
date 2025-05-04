@@ -4,17 +4,17 @@
     <!-- Make controls more mobile-friendly -->
     <div class="controls">
       <div class="controls-row">
-      <div class="tempo-control">
+        <div class="tempo-control">
           <label>Tempo: {{ tempo }}</label>
-        <input 
-          type="range" 
-          v-model="tempo" 
-          min="40" 
-          max="240" 
-          class="tempo-slider"
-        />
-      </div>
-      
+          <input 
+            type="range" 
+            v-model="tempo" 
+            min="40" 
+            max="240" 
+            class="tempo-slider"
+          />
+        </div>
+        
         <div class="clef-selector">
           <label for="clef-select">Clef:</label>
           <div class="custom-select">
@@ -25,52 +25,78 @@
             <div class="select-icon">▼</div>
           </div>
         </div>
+
+        <!-- ADD THE KEY SIGNATURE SELECTOR HERE -->
+        <div class="key-signature-selector">
+          <label for="key-signature">Key:</label>
+          <div class="custom-select">
+            <select id="key-signature" v-model="keySignature" @change="changeKeySignature(keySignature)">
+              <option value="C">C Maj (0)</option>
+              <option value="G">G Maj (1♯)</option>
+              <option value="D">D Maj (2♯)</option>
+              <option value="A">A Maj (3♯)</option>
+              <option value="E">E Maj (4♯)</option>
+              <option value="B">B Maj (5♯)</option>
+              <option value="F#">F♯ Maj (6♯)</option>
+              <option value="C#">C♯ Maj (7♯)</option>
+              <option value="F">F Maj (1♭)</option>
+              <option value="Bb">B♭ Maj (2♭)</option>
+              <option value="Eb">E♭ Maj (3♭)</option>
+              <option value="Ab">A♭ Maj (4♭)</option>
+              <option value="Db">D♭ Maj (5♭)</option>
+              <option value="Gb">G♭ Maj (6♭)</option>
+              <option value="Cb">C♭ Maj (7♭)</option>
+            </select>
+            <div class="select-icon">▼</div>
+          </div>
+        </div>
+        <!-- END OF ADDED KEY SIGNATURE SELECTOR -->
       </div>
       
       <div class="controls-row">
-      <div class="playback-controls">
-        <button 
-          @click="togglePlayback" 
-          class="action-button play-button"
-          :class="{
-            'play-button': !isPlaying && !isPaused,
-            'pause-button': isPlaying && !isPaused,
-            'resume-button': isPaused
-          }"
-        >
-          <span class="button-icon">
-            <span v-if="!isPlaying && !isPaused">▶</span>
-            <span v-else-if="isPlaying && !isPaused">⏸</span>
-            <span v-else-if="isPaused">⏯</span>
-          </span>
-          <span class="button-label">
-            {{ !isPlaying && !isPaused ? 'Play' : (isPlaying && !isPaused ? 'Pause' : 'Resume') }}
-          </span>
-        </button>
-        
-        <button @click="stopPlayback" class="action-button stop-button" :disabled="!isPlaying && !isPaused">
-          <span class="button-icon">■</span>
-          <span class="button-label">Stop</span>
-        </button>
-        
-        <!-- Update the clear button to be disabled during playback -->
-        <button 
-          @click="isPlaying || isPaused ? restartPlayback() : confirmClearScore()" 
-          class="action-button"
-          :class="{
-            'clear-button': !isPlaying && !isPaused,
-            'restart-button': isPlaying || isPaused
-          }"
-          @mousedown="animateButton"
-        >
-          <span class="button-icon">
-            <span v-if="!isPlaying && !isPaused">✕</span>
-            <span v-else>⟲</span>
-          </span>
-          <span class="button-label">
-            {{ !isPlaying && !isPaused ? 'Clear' : 'Restart' }}
-          </span>
-        </button>
+        <div class="playback-controls">
+          <button 
+            @click="togglePlayback" 
+            class="action-button play-button"
+            :class="{
+              'play-button': !isPlaying && !isPaused,
+              'pause-button': isPlaying && !isPaused,
+              'resume-button': isPaused
+            }"
+          >
+            <span class="button-icon">
+              <span v-if="!isPlaying && !isPaused">▶</span>
+              <span v-else-if="isPlaying && !isPaused">⏸</span>
+              <span v-else-if="isPaused">⏯</span>
+            </span>
+            <span class="button-label">
+              {{ !isPlaying && !isPaused ? 'Play' : (isPlaying && !isPaused ? 'Pause' : 'Resume') }}
+            </span>
+          </button>
+          
+          <button @click="stopPlayback" class="action-button stop-button" :disabled="!isPlaying && !isPaused">
+            <span class="button-icon">■</span>
+            <span class="button-label">Stop</span>
+          </button>
+          
+          <!-- Update the clear button to be disabled during playback -->
+          <button 
+            @click="isPlaying || isPaused ? restartPlayback() : confirmClearScore()" 
+            class="action-button"
+            :class="{
+              'clear-button': !isPlaying && !isPaused,
+              'restart-button': isPlaying || isPaused
+            }"
+            @mousedown="animateButton"
+          >
+            <span class="button-icon">
+              <span v-if="!isPlaying && !isPaused">✕</span>
+              <span v-else>⟲</span>
+            </span>
+            <span class="button-label">
+              {{ !isPlaying && !isPaused ? 'Clear' : 'Restart' }}
+            </span>
+          </button>
         </div>
       </div>
     </div>
@@ -446,26 +472,32 @@
 
     <div v-if="activeTab === 'settings'" class="settings-container">
       <!-- Key signature selector -->
+      <!-- REMOVE THIS ENTIRE DIV BLOCK -->
+      <!--
       <div class="control-section">
         <h4>Key Signature</h4>
-        <select id="key-signature" v-model="keySignature" @change="changeKeySignature(keySignature)">
-          <option value="C">C Major (No sharps/flats)</option>
-          <option value="G">G Major (1 sharp)</option>
-          <option value="D">D Major (2 sharps)</option>
-          <option value="A">A Major (3 sharps)</option>
-          <option value="E">E Major (4 sharps)</option>
-          <option value="B">B Major (5 sharps)</option>
-          <option value="F#">F# Major (6 sharps)</option>
-          <option value="C#">C# Major (7 sharps)</option>
-          <option value="F">F Major (1 flat)</option>
-          <option value="Bb">Bb Major (2 flats)</option>
-          <option value="Eb">Eb Major (3 flats)</option>
-          <option value="Ab">Ab Major (4 flats)</option>
-          <option value="Db">Db Major (5 flats)</option>
-          <option value="Gb">Gb Major (6 flats)</option>
-          <option value="Cb">Cb Major (7 flats)</option>
-        </select>
+        <div class="custom-select">
+          <select id="key-signature" v-model="keySignature" @change="changeKeySignature(keySignature)">
+            <option value="C">C Major (No sharps/flats)</option>
+            <option value="G">G Major (1 sharp)</option>
+            <option value="D">D Major (2 sharps)</option>
+            <option value="A">A Major (3 sharps)</option>
+            <option value="E">E Major (4 sharps)</option>
+            <option value="B">B Major (5 sharps)</option>
+            <option value="F#">F# Major (6 sharps)</option>
+            <option value="C#">C# Major (7 sharps)</option>
+            <option value="F">F Major (1 flat)</option>
+            <option value="Bb">Bb Major (2 flats)</option>
+            <option value="Eb">Eb Major (3 flats)</option>
+            <option value="Ab">Ab Major (4 flats)</option>
+            <option value="Db">Db Major (5 flats)</option>
+            <option value="Gb">Gb Major (6 flats)</option>
+            <option value="Cb">Cb Major (7 flats)</option>
+          </select>
+          <div class="select-icon">▼</div>
+        </div>
       </div>
+      -->
 
       <!-- Chord controls -->
       <div class="control-section">

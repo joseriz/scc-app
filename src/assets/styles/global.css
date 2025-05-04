@@ -2316,3 +2316,54 @@
   .note.has-lyric {
     /* No special styling needed here, just for selection */
   }
+
+  /* Add some spacing for the new key signature selector */
+  .key-signature-selector {
+    display: flex;
+    align-items: center;
+    margin-left: 15px; /* Adjust spacing as needed */
+  }
+
+  .key-signature-selector label {
+    margin-right: 5px;
+    font-weight: bold;
+  }
+
+  /* Ensure custom select styles apply */
+  .key-signature-selector .custom-select {
+    position: relative;
+    display: inline-block;
+  }
+
+  .key-signature-selector .custom-select select {
+    /* Inherit styles from existing custom-select or define them */
+    padding: 8px 25px 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: white;
+    cursor: pointer;
+    appearance: none; /* Hide default arrow */
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    min-width: 120px; /* Adjust width */
+  }
+
+  .key-signature-selector .custom-select .select-icon {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    pointer-events: none; /* Allow clicks to pass through to select */
+  }
+
+  /* Adjustments for smaller screens if needed */
+  @media (max-width: 768px) {
+    .key-signature-selector {
+      margin-left: 10px; /* Reduce margin on smaller screens */
+      margin-top: 5px; /* Add some top margin if needed */
+    }
+    .key-signature-selector .custom-select select {
+       min-width: 100px; /* Slightly smaller width */
+       padding: 6px 20px 6px 8px; /* Adjust padding */
+    }
+  }
