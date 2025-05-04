@@ -178,16 +178,17 @@
             </template>
             
             <!-- Notes -->
-            <div v-for="note in notes" 
+            <div v-for="note in notes"
                  :key="note.id"
                  class="note"
                  :class="{
-                   'rest': note.type === 'rest', // Add this line
+                   'rest': note.type === 'rest',
                    'playing': note.id === currentPlayingNoteId,
-                   'key-signature-affected': note.type === 'note' && 
-                                            note.pitch && 
-                                            !note.pitch.includes('#') && 
-                                            !note.pitch.includes('b') && 
+                   'selected': note.id === selectedNoteId, // Add class for selected note
+                   'key-signature-affected': note.type === 'note' &&
+                                            note.pitch &&
+                                            !note.pitch.includes('#') &&
+                                            !note.pitch.includes('b') &&
                                             isNoteAffectedByKeySignature(note.pitch.charAt(0)),
                    'dotted': note.dotted,
                    'whole-note': note.duration === 'whole'
@@ -197,8 +198,9 @@
                  @contextmenu.prevent="removeNote(note)"
                  @touchstart="handleTouchStart(note, $event)"
                  @touchend="handleTouchEnd"
-                 @touchmove="handleTouchMove">
-              
+                 @touchmove="handleTouchMove"
+                 @click.stop="selectNote(note)">
+
               <!-- For rests, use the existing symbol -->
               <template v-if="note.type === 'rest'">
                 {{ getNoteSymbol(note) }}
@@ -237,6 +239,15 @@
                 {{ note.pitch.includes('#') || note.pitch.includes('b') ? 
                      getAccidentalSymbol(note) : 
                      getAccidentalSymbolForKeySignature(getKeySignatureAccidentalForNote(note.pitch.charAt(0))) }}
+              </span>
+
+              <!-- Lyric Display -->
+              <span v-if="note.lyric"
+                    class="lyric"
+                    :class="{ 'playing': note.id === currentPlayingNoteId }"
+                    :data-note-id="note.id"
+                    :style="getLyricStyle(note)">
+                {{ note.lyric }}
               </span>
             </div>
             
@@ -686,6 +697,7 @@ interface Note {
   position: number;
   verticalPosition: number;
   dotted?: boolean;
+  lyric?: string; // Add this line for lyrics
 }
 
 // Add new interface for chord symbols
@@ -3122,6 +3134,22 @@ const exportComposition = () => {
 // // Add missing importedCompositions ref and showImportModal
 // const importedCompositions = ref([]);
 // const showImportModal = ref(false);
+
+// Add a new ref for the selected note
+const selectedNoteId = ref<string | null>(null);
+
+// Add a function to select a note
+const selectNote = (note: Note) => {
+  selectedNoteId.value = note.id;
+};
+
+// Add a function to get the lyric style
+const getLyricStyle = (note: Note) => {
+  return {
+    color: note.id === currentPlayingNoteId.value ? 'red' : 'black',
+    fontWeight: note.id === currentPlayingNoteId.value ? 'bold' : 'normal'
+  };
+};
 </script>
 
 <style scoped src="@/assets/styles/global.css"/>
