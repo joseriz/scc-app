@@ -181,7 +181,8 @@
             <div v-for="note in notes" 
                  :key="note.id"
                  class="note"
-                 :class="{ 
+                 :class="{
+                   'rest': note.type === 'rest', // Add this line
                    'playing': note.id === currentPlayingNoteId,
                    'key-signature-affected': note.type === 'note' && 
                                             note.pitch && 
@@ -282,12 +283,14 @@
           <div class="control-section duration-section">
             <h4>Duration</h4>
             <div class="scrollable-buttons">
-      <button v-for="duration in availableDurations" 
-              :key="duration.value"
-              @click="selectedDuration = duration.value"
-              :class="['note-btn', { active: selectedDuration === duration.value }]">
-        {{ duration.label }}
-      </button>
+              <!-- Update this loop -->
+              <button v-for="duration in availableDurations"
+                      :key="duration.value"
+                      @click="selectedDuration = duration.value"
+                      :class="['note-btn', { active: selectedDuration === duration.value }]">
+                <!-- Conditionally display note or rest symbol -->
+                {{ selectedNoteType === 'note' ? duration.noteLabel : duration.restLabel }}
+              </button>
             </div>
             <div class="dotted-note-toggle">
               <button @click="toggleDottedNote" 
@@ -509,9 +512,9 @@ import { useNotationStore } from '@/stores/notation';
 const notationStore = useNotationStore();
 
 // State variables
-const selectedHeight = ref('middle');
+// const selectedHeight = ref('middle');
 const selectedOctave = ref(4);
-const selectedNoteType = ref('note');
+const selectedNoteType = ref('note'); // Default to 'note'
 const selectedAccidental = ref('natural');
 const selectedDuration = ref('quarter');
 const lastClickY = ref(0);
@@ -521,18 +524,13 @@ const showNotePositions = ref(false);
 const currentPlayingNoteId = ref<string | null>(null);
 const selectedClef = ref('treble');
 
-const staffGuideNotes = [
-  'G5', 'F5', 'E5', 'D5', 'C5',
-  'B4', 'A4', 'G4', 'F4', 'E4', 'D4',
-  'C4', 'B3', 'A3', 'G3', 'F3', 'E3', 'D3', 'C3', 'B2', 'A2'
-];
-
+// Update availableDurations to include both note and rest symbols
 const availableDurations = [
-  { value: 'whole', label: '𝅝' },
-  { value: 'half', label: '𝅗𝅥' },
-  { value: 'quarter', label: '♩' },
-  { value: 'eighth', label: '♪' },
-  { value: 'sixteenth', label: '♬' }
+  { value: 'whole', noteLabel: '𝅝', restLabel: '𝄻' }, // Whole Note / Whole Rest
+  { value: 'half', noteLabel: '𝅗𝅥', restLabel: '𝄼' }, // Half Note / Half Rest
+  { value: 'quarter', noteLabel: '♩', restLabel: '𝄽' }, // Quarter Note / Quarter Rest
+  { value: 'eighth', noteLabel: '♪', restLabel: '𝄾' }, // Eighth Note / Eighth Rest
+  { value: 'sixteenth', noteLabel: '♬', restLabel: '𝄿' } // Sixteenth Note / Sixteenth Rest
 ];
 
 const availableAccidentals = [
@@ -545,36 +543,36 @@ const availableAccidentals = [
 const notes = computed(() => notationStore.notes);
 
 // Create a piano-like synth for playback
-const createPianoSynth = () => {
-  return new Tone.Sampler({
-    urls: {
-      A1: "A1.mp3",
-      A2: "A2.mp3",
-      A3: "A3.mp3",
-      A4: "A4.mp3",
-      A5: "A5.mp3",
-      A6: "A6.mp3",
-      C1: "C1.mp3",
-      C2: "C2.mp3",
-      C3: "C3.mp3",
-      C4: "C4.mp3",
-      C5: "C5.mp3",
-      C6: "C6.mp3",
-      'D#1': "Ds1.mp3",
-      'D#2': "Ds2.mp3",
-      'D#3': "Ds3.mp3",
-      'D#4': "Ds4.mp3",
-      'D#5': "Ds5.mp3",
-      'F#1': "Fs1.mp3",
-      'F#2': "Fs2.mp3",
-      'F#3': "Fs3.mp3",
-      'F#4': "Fs4.mp3",
-      'F#5': "Fs5.mp3"
-    },
-    release: 1,
-    baseUrl: "https://tonejs.github.io/audio/salamander/",
-  }).toDestination();
-};
+// const createPianoSynth = () => {
+//   return new Tone.Sampler({
+//     urls: {
+//       A1: "A1.mp3",
+//       A2: "A2.mp3",
+//       A3: "A3.mp3",
+//       A4: "A4.mp3",
+//       A5: "A5.mp3",
+//       A6: "A6.mp3",
+//       C1: "C1.mp3",
+//       C2: "C2.mp3",
+//       C3: "C3.mp3",
+//       C4: "C4.mp3",
+//       C5: "C5.mp3",
+//       C6: "C6.mp3",
+//       'D#1': "Ds1.mp3",
+//       'D#2': "Ds2.mp3",
+//       'D#3': "Ds3.mp3",
+//       'D#4': "Ds4.mp3",
+//       'D#5': "Ds5.mp3",
+//       'F#1': "Fs1.mp3",
+//       'F#2': "Fs2.mp3",
+//       'F#3': "Fs3.mp3",
+//       'F#4': "Fs4.mp3",
+//       'F#5': "Fs5.mp3"
+//     },
+//     release: 1,
+//     baseUrl: "https://tonejs.github.io/audio/salamander/",
+//   }).toDestination();
+// };
 
 // Create a fallback synth with piano-like settings
 const createFallbackPianoSynth = () => {
@@ -758,25 +756,16 @@ const getKeySignaturePosition = (accidental: string) => {
     'A': 130, // A4 line
     'E': 152.5, // E4 space
     'B': 122.5, // B4 space
-    
-    // For flats (positions would be different)
-    'B': 122.5, // B4 space
-    'E': 152.5, // E4 space
-    'A': 130, // A4 line
-    'D': 160, // D4 line
-    'G': 137.5, // G4 space
-    'C': 115, // C5 line
-    'F': 145  // F4 line
   };
   
   return positions[note] || 0;
 };
 
 // Update this function to make key signatures more compact
-const getKeySignatureXPosition = (index) => {
-  // More compact spacing - 10px between accidentals
-  return 45 + (index * 10);
-};
+// const getKeySignatureXPosition = (index) => {
+//   // More compact spacing - 10px between accidentals
+//   return 45 + (index * 10);
+// };
 
 // Function to get the accidental symbol (# or b)
 const getAccidentalSymbolForKeySignature = (accidental: string) => {
@@ -855,63 +844,63 @@ const getPitchPosition = (pitch: string) => {
   }
 };
 
-const showLedgerLinesForNote = (pitch: string, position: number) => {
-  // Get the base note without accidentals
-  const octave = parseInt(pitch.slice(-1));
-  const note = pitch.slice(0, -1).replace(/[#b]/, '');
-  const baseNote = `${note}${octave}`;
+// const showLedgerLinesForNote = (pitch: string, position: number) => {
+//   // Get the base note without accidentals
+//   const octave = parseInt(pitch.slice(-1));
+//   const note = pitch.slice(0, -1).replace(/[#b]/, '');
+//   const baseNote = `${note}${octave}`;
   
-  // Define the staff range
-  const aboveStaff = ['F5', 'G5', 'A5', 'B5', 'C6', 'D6', 'E6', 'F6', 'G6', 'A6', 'B6'];
-  const belowStaff = ['D3', 'C3', 'B2', 'A2', 'G2', 'F2', 'E2', 'D2', 'C2'];
+//   // Define the staff range
+//   const aboveStaff = ['F5', 'G5', 'A5', 'B5', 'C6', 'D6', 'E6', 'F6', 'G6', 'A6', 'B6'];
+//   const belowStaff = ['D3', 'C3', 'B2', 'A2', 'G2', 'F2', 'E2', 'D2', 'C2'];
   
-  // Find all ledger line elements
-  const ledgerLinesAbove = document.querySelectorAll('.ledger-line.above');
-  const ledgerLinesBelow = document.querySelectorAll('.ledger-line.below');
+//   // Find all ledger line elements
+//   const ledgerLinesAbove = document.querySelectorAll('.ledger-line.above');
+//   const ledgerLinesBelow = document.querySelectorAll('.ledger-line.below');
   
-  // Reset all ledger lines
-  ledgerLinesAbove.forEach(line => (line as HTMLElement).style.display = 'none');
-  ledgerLinesBelow.forEach(line => (line as HTMLElement).style.display = 'none');
+//   // Reset all ledger lines
+//   ledgerLinesAbove.forEach(line => (line as HTMLElement).style.display = 'none');
+//   ledgerLinesBelow.forEach(line => (line as HTMLElement).style.display = 'none');
   
-  // Show appropriate ledger lines based on the note
-  if (aboveStaff.includes(baseNote)) {
-    const index = aboveStaff.indexOf(baseNote);
-    const linesNeeded = Math.floor(index / 2) + 1;
+//   // Show appropriate ledger lines based on the note
+//   if (aboveStaff.includes(baseNote)) {
+//     const index = aboveStaff.indexOf(baseNote);
+//     const linesNeeded = Math.floor(index / 2) + 1;
     
-    for (let i = 0; i < linesNeeded && i < ledgerLinesAbove.length; i++) {
-      const line = ledgerLinesAbove[i] as HTMLElement;
-      line.style.display = 'block';
-      line.style.left = `${position * 50}px`;
-      line.style.width = '20px';
-    }
-  } else if (belowStaff.includes(baseNote)) {
-    const index = belowStaff.indexOf(baseNote);
-    const linesNeeded = Math.floor(index / 2) + 1;
+//     for (let i = 0; i < linesNeeded && i < ledgerLinesAbove.length; i++) {
+//       const line = ledgerLinesAbove[i] as HTMLElement;
+//       line.style.display = 'block';
+//       line.style.left = `${position * 50}px`;
+//       line.style.width = '20px';
+//     }
+//   } else if (belowStaff.includes(baseNote)) {
+//     const index = belowStaff.indexOf(baseNote);
+//     const linesNeeded = Math.floor(index / 2) + 1;
     
-    for (let i = 0; i < linesNeeded && i < ledgerLinesBelow.length; i++) {
-      const line = ledgerLinesBelow[i] as HTMLElement;
-      line.style.display = 'block';
-      line.style.left = `${position * 50}px`;
-      line.style.width = '20px';
-    }
-  }
-};
+//     for (let i = 0; i < linesNeeded && i < ledgerLinesBelow.length; i++) {
+//       const line = ledgerLinesBelow[i] as HTMLElement;
+//       line.style.display = 'block';
+//       line.style.left = `${position * 50}px`;
+//       line.style.width = '20px';
+//     }
+//   }
+// };
 
 // Add this new function
-const selectNoteHeight = (height: 'high' | 'middle' | 'low') => {
-  selectedHeight.value = height;
-  switch (height) {
-    case 'high':
-      selectedOctave.value = 5;
-      break;
-    case 'middle':
-      selectedOctave.value = 4;
-      break;
-    case 'low':
-      selectedOctave.value = 3;
-      break;
-  }
-};
+// const selectNoteHeight = (height: 'high' | 'middle' | 'low') => {
+//   selectedHeight.value = height;
+//   switch (height) {
+//     case 'high':
+//       selectedOctave.value = 5;
+//       break;
+//     case 'middle':
+//       selectedOctave.value = 4;
+//       break;
+//     case 'low':
+//       selectedOctave.value = 3;
+//       break;
+//   }
+// };
 
 // Add this function to check if a note is affected by the key signature
 const isNoteAffectedByKeySignature = (noteName: string) => {
@@ -1130,46 +1119,46 @@ const playComposition = async () => {
 };
 
 // Add this new function to adjust the pitch for playback
-const adjustPitchForPlayback = (pitch: string) => {
-  // Extract the note name and octave
-  const noteName = pitch.replace(/[0-9]/g, '');
-  const octave = parseInt(pitch.match(/[0-9]/)?.[0] || '4');
+// const adjustPitchForPlayback = (pitch: string) => {
+//   // Extract the note name and octave
+//   const noteName = pitch.replace(/[0-9]/g, '');
+//   const octave = parseInt(pitch.match(/[0-9]/)?.[0] || '4');
   
-  // Define the note sequence
-  const noteSequence = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+//   // Define the note sequence
+//   const noteSequence = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   
-  // Find the current note index
-  let noteIndex = noteSequence.indexOf(noteName);
-  if (noteIndex === -1) {
-    // Handle flats by converting to equivalent sharps
-    const flatToSharp: Record<string, string> = {
-      'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#',
-      'Cb': 'B', 'Fb': 'E'
-    };
+//   // Find the current note index
+//   let noteIndex = noteSequence.indexOf(noteName);
+//   if (noteIndex === -1) {
+//     // Handle flats by converting to equivalent sharps
+//     const flatToSharp: Record<string, string> = {
+//       'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#',
+//       'Cb': 'B', 'Fb': 'E'
+//     };
     
-    // Check if we have a flat note and convert it
-    for (const [flat, sharp] of Object.entries(flatToSharp)) {
-      if (noteName === flat) {
-        noteIndex = noteSequence.indexOf(sharp);
-        break;
-      }
-    }
+//     // Check if we have a flat note and convert it
+//     for (const [flat, sharp] of Object.entries(flatToSharp)) {
+//       if (noteName === flat) {
+//         noteIndex = noteSequence.indexOf(sharp);
+//         break;
+//       }
+//     }
     
-    // If still not found, return the original pitch
-    if (noteIndex === -1) return pitch;
-  }
+//     // If still not found, return the original pitch
+//     if (noteIndex === -1) return pitch;
+//   }
   
-  // Adjust down by a half step (semitone)
-  noteIndex = (noteIndex - 1 + 12) % 12;
-  let newOctave = octave;
+//   // Adjust down by a half step (semitone)
+//   noteIndex = (noteIndex - 1 + 12) % 12;
+//   let newOctave = octave;
   
-  // Handle octave change if needed - only for B going to C
-  if (noteName === 'C') {
-    newOctave = octave - 1;
-  }
+//   // Handle octave change if needed - only for B going to C
+//   if (noteName === 'C') {
+//     newOctave = octave - 1;
+//   }
   
-  return noteSequence[noteIndex] + newOctave;
-};
+//   return noteSequence[noteIndex] + newOctave;
+// };
 
 // Update the existing handleStaffClick function to include the dotted property
 const handleStaffClick = (event: MouseEvent) => {
@@ -1397,40 +1386,40 @@ const getNoteStyle = (note: Note) => {
 const isPlaying = ref(false);
 
 // Add a function to auto-scroll to the currently playing note
-const autoScrollToNote = (note) => {
-  // Calculate the horizontal position of the note
-  const noteXPosition = note.position * 50;
+// const autoScrollToNote = (note) => {
+//   // Calculate the horizontal position of the note
+//   const noteXPosition = note.position * 50;
   
-  // Calculate the visible area boundaries
-  const leftBoundary = scrollPosition.value;
-  const rightBoundary = scrollPosition.value + visibleStaffWidth.value;
+//   // Calculate the visible area boundaries
+//   const leftBoundary = scrollPosition.value;
+//   const rightBoundary = scrollPosition.value + visibleStaffWidth.value;
   
-  // Check if the note is outside the visible area
-  if (noteXPosition < leftBoundary + 100) {
-    // Note is to the left of the visible area or too close to the left edge
-    // Scroll left to show the note with some margin
-    scrollPosition.value = Math.max(0, noteXPosition - 100);
-    updateStaffScroll();
-  } else if (noteXPosition > rightBoundary - 100) {
-    // Note is to the right of the visible area or too close to the right edge
-    // Scroll right to show the note with some margin
-    scrollPosition.value = Math.min(
-      maxScrollPosition.value,
-      noteXPosition - visibleStaffWidth.value + 200
-    );
-    updateStaffScroll();
-  }
-};
+//   // Check if the note is outside the visible area
+//   if (noteXPosition < leftBoundary + 100) {
+//     // Note is to the left of the visible area or too close to the left edge
+//     // Scroll left to show the note with some margin
+//     scrollPosition.value = Math.max(0, noteXPosition - 100);
+//     updateStaffScroll();
+//   } else if (noteXPosition > rightBoundary - 100) {
+//     // Note is to the right of the visible area or too close to the right edge
+//     // Scroll right to show the note with some margin
+//     scrollPosition.value = Math.min(
+//       maxScrollPosition.value,
+//       noteXPosition - visibleStaffWidth.value + 200
+//     );
+//     updateStaffScroll();
+//   }
+// };
 
-// Add a function to update the staff scroll position
+// Fix the updateStaffScroll function
 const updateStaffScroll = () => {
   const staffElement = document.querySelector('.staff');
   if (staffElement) {
-    staffElement.style.transform = `translateX(-${scrollPosition.value}px)`;
+    (staffElement as HTMLElement).style.transform = `translateX(-${scrollPosition.value}px)`;
   }
 };
 
-// Update the stopPlayback function to use the isPlaying ref
+// Update the stopPlayback function
 const stopPlayback = () => {
   isPlaying.value = false;
   currentPlayingNoteId.value = null;
@@ -1460,6 +1449,7 @@ const stopPlayback = () => {
   
   if (pianoSynth) {
     try {
+      // For Sampler, we can use releaseAll
       pianoSynth.releaseAll();
     } catch (e) {
       console.error('Error stopping piano sampler:', e);
@@ -1542,18 +1532,18 @@ const getLedgerLines = (note, position) => {
 };
 
 // Add a chord to the score
-const addChordToScore = () => {
-  if (chordName.value.trim()) {
-    chordSymbols.value.push({
-      id: Date.now().toString(),
-      position: chordInputPosition.value,
-      chordName: chordName.value,
-      top: 70 // Position above the staff
-    });
-    chordName.value = '';
-    showChordInput.value = false;
-  }
-};
+// const addChordToScore = () => {
+//   if (chordName.value.trim()) {
+//     chordSymbols.value.push({
+//       id: Date.now().toString(),
+//       position: chordInputPosition.value,
+//       chordName: chordName.value,
+//       top: 70 // Position above the staff
+//     });
+//     chordName.value = '';
+//     showChordInput.value = false;
+//   }
+// };
 
 // Format chord names with proper musical symbols
 const formatChordName = (name: string) => {
@@ -1572,20 +1562,20 @@ const formatChordName = (name: string) => {
 };
 
 // Handle staff click for chord placement
-const handleChordPlacement = (event: MouseEvent) => {
-  if (!showChordInput.value) return;
+// const handleChordPlacement = (event: MouseEvent) => {
+//   if (!showChordInput.value) return;
   
-  const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  const x = event.clientX - staffRect.left;
-  chordInputPosition.value = Math.floor(x / 50);
+//   const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+//   const x = event.clientX - staffRect.left;
+//   chordInputPosition.value = Math.floor(x / 50);
   
-  // Position the chord input modal near the click
-  const chordModal = document.querySelector('.chord-input-modal') as HTMLElement;
-  if (chordModal) {
-    chordModal.style.left = `${x}px`;
-    chordModal.style.top = '40px';
-  }
-};
+//   // Position the chord input modal near the click
+//   const chordModal = document.querySelector('.chord-input-modal') as HTMLElement;
+//   if (chordModal) {
+//     chordModal.style.left = `${x}px`;
+//     chordModal.style.top = '40px';
+//   }
+// };
 
 // Add example chords for demo
 const addExampleChords = () => {
@@ -1610,13 +1600,17 @@ const getKeySignatureAccidentalForNote = (noteName: string) => {
 const measuresCount = ref(8); // Default number of measures
 const measureWidthPx = ref(120); // Width of each measure in pixels
 
-// Computed properties for staff dimensions
-const staffWidth = computed(() => {
-  return measuresCount.value * measureWidthPx.value;
-});
-const measureWidth = computed(() => measureWidthPx.value);
-const visibleStaffWidth = ref(800); // Width visible in the viewport
+// Change these computed properties to refs
+const staffWidth = ref(measuresCount.value * measureWidthPx.value);
 const scrollPosition = ref(0); // Horizontal scroll position
+
+// Add this near the other staff-related refs
+const visibleStaffWidth = ref(800); // Width visible in the viewport
+
+// Update the computed property to watch for changes
+watch([measuresCount, measureWidthPx], () => {
+  staffWidth.value = measuresCount.value * measureWidthPx.value;
+});
 
 // Add this computed property for maximum scroll position
 const maxScrollPosition = computed(() => {
@@ -1680,17 +1674,17 @@ const handleResize = () => {
 };
 
 // Add back the convertPitchToToneFormat function
-const convertPitchToToneFormat = (pitch: string) => {
-  // First, apply key signature if needed
-  let modifiedPitch = pitch;
+// const convertPitchToToneFormat = (pitch: string) => {
+//   // First, apply key signature if needed
+//   let modifiedPitch = pitch;
   
-  // If the note doesn't have an explicit accidental, check key signature
-  if (!modifiedPitch.includes('#') && !modifiedPitch.includes('b')) {
-    modifiedPitch = getModifiedPitchForKeySignature(modifiedPitch);
-  }
+//   // If the note doesn't have an explicit accidental, check key signature
+//   if (!modifiedPitch.includes('#') && !modifiedPitch.includes('b')) {
+//     modifiedPitch = getModifiedPitchForKeySignature(modifiedPitch);
+//   }
   
-  return modifiedPitch;
-};
+//   return modifiedPitch;
+// };
 
 // Add back the getAccidentalSymbol function
 const getAccidentalSymbol = (note: Note) => {
@@ -2100,99 +2094,87 @@ const saveComposition = () => {
   alert(`Composition "${compositionName.value}" saved successfully!`);
 };
 
-// First, let's check if notes is a computed property or a ref
-// Add a function to safely update notes if it's a computed property
-const updateNotes = (newNotes) => {
-  // If notes is a computed property with a setter, this should work
-  // If it's a ref, this will also work fine
-  
-  try {
-    // Try direct assignment first (for writable refs)
-    notes.value = newNotes;
-    console.log('Notes updated through direct assignment');
-  } catch (error) {
-    console.error('Error updating notes directly:', error);
+// Update the updateNotes function to handle the read-only property
+// const updateNotes = (newNotes) => {
+//   try {
+//     // Instead of direct assignment, use array methods
+//     // Clear the array first
+//     while (notes.value.length > 0) {
+//       notes.value.pop();
+//     }
     
-    // If direct assignment fails, try alternative methods:
+//     // Then add all the new notes
+//     newNotes.forEach(note => {
+//       notes.value.push(note);
+//     });
     
-    // Method 1: If using a store, use the store's methods
-    try {
-      const notationStore = useNotationStore();
-      notationStore.setNotes(newNotes);
-      console.log('Notes updated through store');
-      return;
-    } catch (storeError) {
-      console.error('Error updating notes through store:', storeError);
-    }
+//     console.log('Notes updated through array manipulation');
+//   } catch (error) {
+//     console.error('Error updating notes:', error);
     
-    // Method 2: If notes is managed through a different ref, find and use that
-    try {
-      // Clear existing notes and add new ones
-      while (notes.value.length > 0) {
-        notes.value.pop();
-      }
-      
-      // Add new notes one by one (this avoids replacing the entire array)
-      newNotes.forEach(note => {
-        notes.value.push(note);
-      });
-      
-      console.log('Notes updated through array manipulation');
-    } catch (arrayError) {
-      console.error('Error updating notes through array manipulation:', arrayError);
-      
-      // Last resort - alert the user that loading failed
-      alert('Failed to load notes. Please try again or reload the application.');
-    }
-  }
-};
+//     // Try alternative methods if needed
+//     try {
+//       const notationStore = useNotationStore();
+//       // Add a setNotes method to your store if it doesn't exist
+//       if (typeof notationStore.setNotes === 'function') {
+//         notationStore.setNotes(newNotes);
+//         console.log('Notes updated through store');
+//       } else {
+//         console.error('setNotes method not found in store');
+//       }
+//     } catch (storeError) {
+//       console.error('Error updating notes through store:', storeError);
+//       alert('Failed to load notes. Please try again or reload the application.');
+//     }
+//   }
+// };
 
 // Improve the clearStaffCompletely function to forcefully clear everything
-const clearStaffCompletely = async () => {
-  console.log('Clearing staff completely...');
+// const clearStaffCompletely = async () => {
+//   console.log('Clearing staff completely...');
   
-  // Stop any playback first
-  stopPlayback();
+//   // Stop any playback first
+//   stopPlayback();
   
-  // Store the current length for debugging
-  const originalLength = notes.value.length;
+//   // Store the current length for debugging
+//   const originalLength = notes.value.length;
   
-  // First, mark all existing notes for removal (helps with debugging)
-  document.querySelectorAll('.note').forEach(noteElement => {
-    noteElement.classList.add('to-be-removed');
-    noteElement.style.opacity = '0.3'; // Visual indicator that these will be removed
-  });
+//   // First, mark all existing notes for removal (helps with debugging)
+//   document.querySelectorAll('.note').forEach(noteElement => {
+//     noteElement.classList.add('to-be-removed');
+//     noteElement.style.opacity = '0.3'; // Visual indicator that these will be removed
+//   });
   
-  // Create a fresh empty array for notes (this ensures no references to old notes remain)
-  const emptyArray = [];
-  notes.value = emptyArray;
+//   // Create a fresh empty array for notes (this ensures no references to old notes remain)
+//   const emptyArray = [];
+//   notes.value = emptyArray;
   
-  // Wait for Vue to update
-  await nextTick();
+//   // Wait for Vue to update
+//   await nextTick();
   
-  // Force manual DOM cleanup if needed
-  document.querySelectorAll('.note.to-be-removed').forEach(noteElement => {
-    if (noteElement.parentNode) {
-      noteElement.parentNode.removeChild(noteElement);
-    }
-  });
+//   // Force manual DOM cleanup if needed
+//   document.querySelectorAll('.note.to-be-removed').forEach(noteElement => {
+//     if (noteElement.parentNode) {
+//       noteElement.parentNode.removeChild(noteElement);
+//     }
+//   });
   
-  console.log(`Staff cleared: removed ${originalLength} notes, current length: ${notes.value.length}`);
+//   console.log(`Staff cleared: removed ${originalLength} notes, current length: ${notes.value.length}`);
   
-  // Reset scroll position to beginning
-  scrollPosition.value = 0;
+//   // Reset scroll position to beginning
+//   scrollPosition.value = 0;
   
-  // Reset the DOM transform to avoid ghost notes
-  const staffElement = document.querySelector('.staff');
-  if (staffElement) {
-    staffElement.style.transform = 'translateX(0px)';
-  }
+//   // Reset the DOM transform to avoid ghost notes
+//   const staffElement = document.querySelector('.staff');
+//   if (staffElement) {
+//     staffElement.style.transform = 'translateX(0px)';
+//   }
   
-  // Force garbage collection if possible
-  if (window.gc) window.gc();
+//   // Force garbage collection if possible
+//   if (window.gc) window.gc();
   
-  return new Promise(resolve => setTimeout(resolve, 50)); // Give the browser time to update
-};
+//   return new Promise(resolve => setTimeout(resolve, 50)); // Give the browser time to update
+// };
 
 // Add this CSS to help with the force redraw
 // Add this inside the <style> section:
@@ -2208,77 +2190,77 @@ const clearStaffCompletely = async () => {
 */
 
 // Add a function to completely reset the audio system
-const resetAudioSystem = async () => {
-  console.log('Completely resetting audio system...');
+// const resetAudioSystem = async () => {
+//   console.log('Completely resetting audio system...');
   
-  // Stop any ongoing playback
-  stopPlayback();
+//   // Stop any ongoing playback
+//   stopPlayback();
   
-  // First, release and dispose all current audio nodes
-  if (noteSynth) {
-    try {
-      noteSynth.releaseAll();
-      noteSynth.dispose();
-      noteSynth = null;
-    } catch (e) {
-      console.error('Error disposing noteSynth:', e);
-    }
-  }
+//   // First, release and dispose all current audio nodes
+//   if (noteSynth) {
+//     try {
+//       noteSynth.releaseAll();
+//       noteSynth.dispose();
+//       noteSynth = null;
+//     } catch (e) {
+//       console.error('Error disposing noteSynth:', e);
+//     }
+//   }
   
-  if (pianoSynth) {
-    try {
-      pianoSynth.releaseAll();
-      pianoSynth.dispose();
-      pianoSynth = null;
-    } catch (e) {
-      console.error('Error disposing pianoSynth:', e);
-    }
-  }
+//   if (pianoSynth) {
+//     try {
+//       pianoSynth.releaseAll();
+//       pianoSynth.dispose();
+//       pianoSynth = null;
+//     } catch (e) {
+//       console.error('Error disposing pianoSynth:', e);
+//     }
+//   }
   
-  // Clear all scheduled events
-  try {
-    Tone.Transport.cancel(0);
-    Tone.Transport.stop();
-  } catch (e) {
-    console.error('Error clearing Tone.Transport:', e);
-  }
+//   // Clear all scheduled events
+//   try {
+//     Tone.Transport.cancel(0);
+//     Tone.Transport.stop();
+//   } catch (e) {
+//     console.error('Error clearing Tone.Transport:', e);
+//   }
   
-  // Clear any timeouts
-  if (window.playbackTimeouts) {
-    window.playbackTimeouts.forEach(id => clearTimeout(id));
-    window.playbackTimeouts = [];
-  }
+//   // Clear any timeouts
+//   if (window.playbackTimeouts) {
+//     window.playbackTimeouts.forEach(id => clearTimeout(id));
+//     window.playbackTimeouts = [];
+//   }
   
-  // Re-initialize the audio context if possible
-  try {
-    await Tone.start();
-    Tone.context.resume();
-  } catch (e) {
-    console.log('Could not restart Tone context (may need user interaction):', e);
-  }
+//   // Re-initialize the audio context if possible
+//   try {
+//     await Tone.start();
+//     Tone.context.resume();
+//   } catch (e) {
+//     console.log('Could not restart Tone context (may need user interaction):', e);
+//   }
   
-  // Recreate the synthesizers
-  try {
-    noteSynth = new Tone.Synth({
-      oscillator: { type: 'sine' },
-      envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 }
-    }).toDestination();
+//   // Recreate the synthesizers
+//   try {
+//     noteSynth = new Tone.Synth({
+//       oscillator: { type: 'sine' },
+//       envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 }
+//     }).toDestination();
     
-    pianoSynth = new Tone.Sampler({
-      urls: {
-        'C4': 'C4.mp3',
-        'D#4': 'Ds4.mp3',
-        'F#4': 'Fs4.mp3',
-        'A4': 'A4.mp3',
-      },
-      baseUrl: 'https://tonejs.github.io/audio/salamander/'
-    }).toDestination();
+//     pianoSynth = new Tone.Sampler({
+//       urls: {
+//         'C4': 'C4.mp3',
+//         'D#4': 'Ds4.mp3',
+//         'F#4': 'Fs4.mp3',
+//         'A4': 'A4.mp3',
+//       },
+//       baseUrl: 'https://tonejs.github.io/audio/salamander/'
+//     }).toDestination();
     
-    console.log('Audio system reset complete, new synths created');
-  } catch (e) {
-    console.error('Error recreating synths:', e);
-  }
-};
+//     console.log('Audio system reset complete, new synths created');
+//   } catch (e) {
+//     console.error('Error recreating synths:', e);
+//   }
+// };
 
 // Update the loadComposition function to use the resetAudioSystem
 const loadComposition = async (id) => {
@@ -2650,8 +2632,13 @@ const importCompositions = (event) => {
   
   reader.onload = (e) => {
     try {
-      // Parse the JSON data
-      const importedData = JSON.parse(e.target.result);
+      // Parse the JSON data - handle the string | ArrayBuffer type
+      const result = e.target?.result;
+      if (typeof result !== 'string') {
+        throw new Error('Expected string result from FileReader');
+      }
+      
+      const importedData = JSON.parse(result);
       
       // Check if it's an array (multiple compositions) or a single composition
       if (Array.isArray(importedData)) {
@@ -2704,7 +2691,7 @@ const importCompositions = (event) => {
       }
     } catch (error) {
       console.error('Error importing compositions:', error);
-      alert('Error importing file: ' + error.message);
+      alert('Error importing file: ' + (error as Error).message);
     }
     
     // Reset the file input
@@ -3019,2160 +3006,122 @@ const exportComposition = () => {
 };
 
 // Update importComposition to support time signature
-const handleImportFile = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+// const handleImportFile = (e) => {
+//   const file = e.target.files[0];
+//   if (!file) return;
   
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      // Parse the JSON data
-      const importedData = JSON.parse(e.target.result);
+//   const reader = new FileReader();
+//   reader.onload = (e) => {
+//     try {
+//       // Parse the JSON data
+//       const importedData = JSON.parse(e.target.result);
       
-      // Check if it's an array (multiple compositions) or a single composition
-      if (Array.isArray(importedData)) {
-        // Multiple compositions
-        importedCompositions.value = importedData;
-        showImportModal.value = true;
-      } else {
-        // Single composition
-        importComposition(importedData);
-      }
-    } catch (error) {
-      console.error('Error importing file:', error);
-      alert('Error importing file. Please check the file format.');
-    }
-  };
-  reader.readAsText(file);
-};
+//       // Check if it's an array (multiple compositions) or a single composition
+//       if (Array.isArray(importedData)) {
+//         // Multiple compositions
+//         importedCompositions.value = importedData;
+//         showImportModal.value = true;
+//       } else {
+//         // Single composition
+//         importComposition(importedData);
+//       }
+//     } catch (error) {
+//       console.error('Error importing file:', error);
+//       alert('Error importing file. Please check the file format.');
+//     }
+//   };
+//   reader.readAsText(file);
+// };
 
 // Function to import a single composition
-const importComposition = (composition) => {
-  try {
-    // Clear existing score
-    clearScore();
+// const importComposition = (composition) => {
+//   try {
+//     // Clear existing score
+//     clearScore();
     
-    // Load notes
-    notes.value = composition.notes.map(note => ({
-      ...note,
-      id: note.id || generateId(),
-      type: note.type || 'note',
-      position: note.position || 0,
-      verticalPosition: note.verticalPosition || 0,
-      duration: note.duration || 'quarter',
-      dotted: note.dotted || false,
-      pitch: note.pitch || 'C4'
-    }));
+//     // Load notes
+//     notes.value = composition.notes.map(note => ({
+//       ...note,
+//       id: note.id || generateId(),
+//       type: note.type || 'note',
+//       position: note.position || 0,
+//       verticalPosition: note.verticalPosition || 0,
+//       duration: note.duration || 'quarter',
+//       dotted: note.dotted || false,
+//       pitch: note.pitch || 'C4'
+//     }));
     
-    // Set time signature, defaulting to 4/4 if not provided
-    timeSignature.value = composition.timeSignature || '4/4';
+//     // Set time signature, defaulting to 4/4 if not provided
+//     timeSignature.value = composition.timeSignature || '4/4';
     
-    // Set other musical parameters
-    selectedClef.value = composition.clef || 'treble';
-    keySignature.value = composition.keySignature || 'C'; // FIX: Use keySignature instead of selectedKeySignature
-    tempo.value = composition.tempo || 120;
+//     // Set other musical parameters
+//     selectedClef.value = composition.clef || 'treble';
+//     keySignature.value = composition.keySignature || 'C'; // FIX: Use keySignature instead of selectedKeySignature
+//     tempo.value = composition.tempo || 120;
     
-    // Load chord symbols if present
-    if (composition.chordSymbols) {
-      chordSymbols.value = composition.chordSymbols;
-    }
+//     // Load chord symbols if present
+//     if (composition.chordSymbols) {
+//       chordSymbols.value = composition.chordSymbols;
+//     }
     
-    // Set composition name
-    compositionName.value = composition.name || 'Imported Composition';
+//     // Set composition name
+//     compositionName.value = composition.name || 'Imported Composition';
     
-    // Update UI based on loaded data
-    updateTimeSignature();
-    handleClefChange();
-    updateKeySignature();
+//     // Update UI based on loaded data
+//     updateTimeSignature();
+//     handleClefChange();
+//     updateKeySignature();
     
-    console.log(`Imported composition: ${composition.name}`);
-    alert(`Successfully imported: ${composition.name}`);
-  } catch (error) {
-    console.error('Error during import:', error);
-    alert('Error importing composition. Please check the file format.');
-  }
-};
+//     console.log(`Imported composition: ${composition.name}`);
+//     alert(`Successfully imported: ${composition.name}`);
+//   } catch (error) {
+//     console.error('Error during import:', error);
+//     alert('Error importing composition. Please check the file format.');
+//   }
+// };
 
 // Add timeSignature to exportComposition if it exists
-const exportToFile = () => {
-  // Create a JSON string with the current composition
-  const compositionData = {
-    name: compositionName.value || 'Untitled Composition',
-    notes: notes.value,
-    tempo: tempo.value,
-    clef: selectedClef.value,
-    keySignature: keySignature.value,
-    timeSignature: timeSignature.value, // Add time signature
-    // Add any other properties you want to save
-  };
+// const exportToFile = () => {
+//   // Create a JSON string with the current composition
+//   const compositionData = {
+//     name: compositionName.value || 'Untitled Composition',
+//     notes: notes.value,
+//     tempo: tempo.value,
+//     clef: selectedClef.value,
+//     keySignature: keySignature.value,
+//     timeSignature: timeSignature.value, // Add time signature
+//     // Add any other properties you want to save
+//   };
   
-  const dataStr = JSON.stringify(compositionData);
-  const dataBlob = new Blob([dataStr], { type: 'application/json' });
-  const url = URL.createObjectURL(dataBlob);
+//   const dataStr = JSON.stringify(compositionData);
+//   const dataBlob = new Blob([dataStr], { type: 'application/json' });
+//   const url = URL.createObjectURL(dataBlob);
   
-  // Create a link and trigger download
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${compositionData.name.replace(/\s+/g, '_')}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
+//   // Create a link and trigger download
+//   const a = document.createElement('a');
+//   a.href = url;
+//   a.download = `${compositionData.name.replace(/\s+/g, '_')}.json`;
+//   document.body.appendChild(a);
+//   a.click();
+//   document.body.removeChild(a);
+//   URL.revokeObjectURL(url);
+// };
+
+// Add the missing generateId function
+// const generateId = () => {
+//   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
+// };
+
+// // Add the missing updateKeySignature function
+// const updateKeySignature = () => {
+//   console.log(`Key signature changed to ${keySignature.value}`);
+//   // Update the display based on the key signature
+//   // This would update the accidentals displayed on the staff
+// };
+
+// // Add missing importedCompositions ref and showImportModal
+// const importedCompositions = ref([]);
+// const showImportModal = ref(false);
 </script>
 
-<style scoped>
-/* Mobile-first styles with better responsiveness */
-.notation-editor {
-  max-width: 100%;
-  padding: 10px;
-  overflow-x: hidden;
-  box-sizing: border-box;
-}
-
-/* Responsive controls */
-.controls {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 15px;
-  width: 100%;
-}
-
-.controls-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  width: 100%;
-}
-
-.tempo-control {
-  flex: 1;
-  min-width: 120px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.tempo-control label {
-  white-space: nowrap;
-  font-size: 14px;
-}
-
-.tempo-slider {
-  width: 100%;
-  max-width: 200px;
-}
-
-.clef-selector {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.clef-selector label {
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.custom-select {
-  position: relative;
-  min-width: 120px;
-}
-
-.custom-select select {
-  appearance: none;
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 8px 30px 8px 10px;
-  width: 100%;
-  font-size: 15px;
-  cursor: pointer;
-  outline: none;
-  transition: all 0.2s ease;
-}
-
-.custom-select select:hover {
-  border-color: #2196F3;
-}
-
-.custom-select select:focus {
-  border-color: #2196F3;
-  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
-}
-
-.custom-select .select-icon {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  font-size: 10px;
-  color: #666;
-}
-
-/* Enhance select options (works in some browsers) */
-.custom-select select option {
-  padding: 10px;
-  font-size: 15px;
-}
-
-/* Media query for mobile */
-@media (max-width: 600px) {
-  .custom-select {
-    min-width: 100px;
-  }
-  
-  .custom-select select {
-    padding: 6px 25px 6px 8px;
-    font-size: 14px;
-  }
-}
-
-.playback-controls {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  margin: 10px 0;
-}
-
-.action-button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border: none;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-  position: relative;
-  overflow: hidden;
-}
-
-.action-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-/* Add ripple effect */
-.action-button::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 120%;
-  height: 120%;
-  background: rgba(255,255,255,0.3);
-  border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  opacity: 0;
-  transition: all 0.3s ease;
-}
-
-.action-button:active:not(:disabled)::after {
-  transform: translate(-50%, -50%) scale(1.5);
-  opacity: 1;
-  transition: all 0.2s ease;
-}
-
-.button-icon {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.button-label {
-  font-weight: 500;
-}
-
-.play-button {
-  background-color: #4CAF50;
-  color: white;
-}
-
-.play-button:hover:not(:disabled) {
-  background-color: #43a047;
-  transform: translateY(-2px);
-}
-
-.stop-button {
-  background-color: #f44336;
-  color: white;
-}
-
-.stop-button:hover:not(:disabled) {
-  background-color: #e53935;
-  transform: translateY(-2px);
-}
-
-.clear-button {
-  background-color: #757575;
-  color: white;
-}
-
-.clear-button:hover:not(:disabled) {
-  background-color: #616161;
-  transform: translateY(-2px);
-}
-
-/* Button press animation */
-@keyframes buttonPress {
-  0% { transform: scale(1); }
-  50% { transform: scale(0.95); }
-  100% { transform: scale(1); }
-}
-
-.button-press-animation {
-  animation: buttonPress 0.3s ease;
-}
-
-/* Mobile tabs with better sizing */
-.mobile-tabs {
-  display: flex;
-  margin: 10px 0;
-  width: 100%;
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 10px 5px;
-  background: #f0f0f0;
-  border: none;
-  border-bottom: 2px solid #ddd;
-  font-weight: bold;
-  font-size: 14px;
-  white-space: nowrap;
-}
-
-/* Note controls container with better sizing */
-.note-controls-container, .settings-container {
-  background: #f5f5f5;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 10px;
-  margin-bottom: 10px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.control-section {
-  margin-bottom: 15px;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background-color: #f9f9f9;
-}
-
-.control-section h4 {
-  margin-top: 0;
-  margin-bottom: 8px;
-  color: #333;
-  font-size: 14px;
-  text-align: center;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 5px;
-}
-
-/* Improve button spacing and appearance */
-.scrollable-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 5px;
-}
-
-.note-btn {
-  flex: 0 0 auto;
-  min-width: 40px;
-  height: 40px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: white;
-  font-size: 18px;
-  line-height: 1;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.note-btn.active {
-  background: #2196F3;
-  color: white;
-  border-color: #0d8aee;
-  box-shadow: 0 0 5px rgba(33, 150, 243, 0.5);
-}
-
-/* Style dotted note toggle more prominently */
-.dotted-note-toggle {
-  margin-top: 8px;
-  display: flex;
-  justify-content: center;
-}
-
-.dotted-note-toggle button {
-  width: 100%;
-  max-width: 120px;
-  height: 36px;
-  background: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.dotted-note-toggle button.active {
-  background: #2196F3;
-  box-shadow: 0 0 5px rgba(33, 150, 243, 0.5);
-}
-
-.button-group {
-  display: flex;
-  gap: 5px;
-  width: 100%;
-}
-
-.button-group button {
-  flex: 1;
-}
-
-/* Responsive buttons */
-.note-btn, .octave-btn, .chord-btn, .extend-btn {
-  padding: 8px;
-  border: none;
-  border-radius: 4px;
-  background: #4CAF50;
-  color: white;
-  cursor: pointer;
-  white-space: nowrap;
-  font-size: 14px;
-  min-width: 40px;
-  text-align: center;
-}
-
-/* Staff scroll controls with better positioning */
-.staff-scroll-controls {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  display: flex;
-  gap: 5px;
-  z-index: 10;
-}
-
-.scroll-btn {
-  width: 36px;
-  height: 36px;
-  background: rgba(33, 150, 243, 0.7);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.extend-btn {
-  padding: 0 10px;
-  height: 36px;
-  background: rgba(76, 175, 80, 0.7);
-  color: white;
-  border: none;
-  border-radius: 18px;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-/* Responsive adjustments for different screen sizes */
-@media (max-width: 360px) {
-  /* Extra small screens */
-  .notation-editor {
-    padding: 5px;
-  }
-  
-  .tempo-control label {
-    font-size: 12px;
-  }
-  
-  .tab-btn {
-    padding: 8px 5px;
-    font-size: 12px;
-  }
-  
-  .note-btn, .octave-btn, .chord-btn {
-    padding: 6px;
-    font-size: 12px;
-    min-width: 30px;
-  }
-  
-  .scroll-btn {
-    width: 30px;
-    height: 30px;
-  }
-  
-  .extend-btn {
-    padding: 0 8px;
-    height: 30px;
-    font-size: 11px;
-  }
-}
-
-@media (min-width: 768px) {
-  /* Larger screens */
-  .notation-editor {
-    padding: 20px;
-  }
-  
-  .controls {
-    flex-direction: row;
-    align-items: center;
-  }
-  
-  .mobile-tabs {
-    display: none;
-  }
-  
-  .note-controls-container, .settings-container {
-    display: block !important;
-  }
-  
-  .note-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 15px;
-  }
-  
-  .control-section {
-    flex: 1;
-    min-width: 150px;
-  }
-  
-  .scrollable-buttons {
-    flex-wrap: wrap;
-  }
-  
-  .staff-container {
-  height: 300px;
-  }
-  
-  .scroll-btn {
-    width: 40px;
-    height: 40px;
-  }
-  
-  .extend-btn {
-    padding: 0 15px;
-    height: 40px;
-    font-size: 14px;
-  }
-}
-
-/* Keep other existing styles */
-.clef {
-  width: 60px;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-right: 1px solid #ddd;
-}
-
-.clef img {
-  height: 150px;
-  width: auto;
-  margin-left: 5px;
-  margin-top: -10px;
-  object-fit: contain;
-}
-
-.staff-scroll-container {
-  flex: 1;
-  position: relative;
-  overflow: hidden;
-  width: calc(100% - 60px); /* Subtract clef width */
-}
-
-/* Add these styles for better drag behavior */
-.staff {
-  position: absolute;
-  height: 100%;
-  padding-top: 60px;
-  transition: transform 0.1s ease;
-  min-width: 100%;
-  cursor: grab;
-}
-
-.staff:active {
-  cursor: grabbing;
-  transition: none; /* Disable transition during active dragging for better responsiveness */
-}
-
-.staff-lines {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
-}
-
-.staff-line {
-  position: absolute;
-  width: 100%;
-  height: 1px;
-  background-color: black;
-  left: 0;
-}
-
-/* Make sure the staff lines are positioned correctly */
-.staff-line:nth-child(1) { top: 100px; }
-.staff-line:nth-child(2) { top: 115px; }
-.staff-line:nth-child(3) { top: 130px; }
-.staff-line:nth-child(4) { top: 145px; }
-.staff-line:nth-child(5) { top: 160px; }
-
-.note-controls {
-  display: flex;
-  gap: 5px;
-  padding: 10px;
-  background: #f5f5f5;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.note-btn {
-  padding: 8px 12px;
-  border: none;
-  border-radius: 4px;
-  background: #4CAF50;
-  color: white;
-  cursor: pointer;
-}
-
-.note-btn.active {
-  background: #2196F3;
-}
-
-.octave-range {
-  margin-top: 10px;
-  padding: 10px;
-  background: #f5f5f5;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.octave-buttons {
-  display: flex;
-  gap: 5px;
-  margin-top: 5px;
-}
-
-.octave-btn {
-  padding: 5px 10px;
-  border: none;
-  border-radius: 4px;
-  background: #4CAF50;
-  color: white;
-  cursor: pointer;
-}
-
-.octave-btn.active {
-  background: #2196F3;
-}
-
-.debug-panel {
-  margin-top: 20px;
-  padding: 15px;
-  background: #e3f2fd;
-  border: 1px solid #2196F3;
-  border-radius: 4px;
-}
-
-.debug-controls {
-  display: flex;
-  gap: 20px;
-  margin: 10px 0;
-}
-
-.debug-btn {
-  padding: 8px 12px;
-  border: none;
-  border-radius: 4px;
-  background: #ff5722;
-  color: white;
-  cursor: pointer;
-  margin-top: 5px;
-}
-
-.debug-btn.active {
-  background: #9c27b0;
-}
-
-.debug-hint {
-  font-style: italic;
-  color: #666;
-  margin-top: 10px;
-}
-
-button {
-  transition: all 0.2s;
-}
-
-button:hover {
-  opacity: 0.9;
-}
-
-.play-btn { background: #4CAF50; }
-.stop-btn { background: #f44336; }
-.clear-btn { background: #ff9800; }
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.notes-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 3;
-}
-
-.note {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  z-index: 3;
-  cursor: pointer;
-  transition: all 0.2s;
-  width: 20px;
-  height: 40px;
-}
-
-.note.playing {
-  filter: drop-shadow(0 0 5px #2196F3);
-}
-
-/* Notehead styles */
-.notehead {
-  position: absolute;
-  width: 10px;
-  height: 8px;
-  background: black;
-  border-radius: 50%;
-  left: 5px;
-  top: 16px;
-  transform: rotate(-20deg);
-}
-
-/* Styles for whole and half notes */
-.notehead.whole, .notehead.half {
-  background: white;
-  border: 1px solid black;
-}
-
-/* Specific styles for whole notes */
-.notehead.whole {
-  width: 12px;
-  height: 8px;
-  left: 4px;
-}
-
-/* Remove stem for whole notes */
-.note[data-duration="whole"] .stem,
-.note[data-duration="whole"] .flag {
-  display: none;
-}
-
-/* Ensure whole notes are properly centered */
-.note[data-duration="whole"] {
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Adjust dot position for whole notes */
-.note[data-duration="whole"] .dot {
-  right: -12px;
-  top: 2px;
-}
-
-/* Remove redundant styles */
-/* Removing .whole-note .notehead.whole and .whole-note .stem as they're redundant */
-
-/* For whole and half notes, use hollow noteheads */
-.notehead.half {
-  background: white;
-  border: 1px solid black;
-  height: 7px;
-}
-
-/* Special styling for whole notes */
-.whole-note .notehead.whole {
-  width: 12px;
-  height: 8px;
-  border: 1px solid black;
-  background: white;
-  border-radius: 50%;
-  transform: rotate(-20deg);
-  left: 4px;
-  top: 16px;
-}
-
-/* Make sure whole notes don't have stems */
-.whole-note .stem {
-  display: none;
-}
-
-/* Adjust dot position for whole notes */
-.whole-note .dot {
-  right: -12px;
-  top: 16px;
-}
-
-/* Stem styles */
-.stem {
-  position: absolute;
-  width: 1px;
-  height: 30px;
-  background: black;
-}
-
-.stem.up {
-  bottom: 20px;
-  right: 5px;
-}
-
-.stem.down {
-  top: 20px;
-  left: 5px;
-}
-
-/* Flag styles for eighth and sixteenth notes */
-.flag {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-}
-
-.flag.up {
-  top: 0;
-  right: 5px;
-  border-right: 1px solid black;
-  border-top: 1px solid black;
-  transform: rotate(-30deg);
-}
-
-.flag.down {
-  bottom: 0;
-  left: 5px;
-  border-left: 1px solid black;
-  border-bottom: 1px solid black;
-  transform: rotate(-30deg);
-}
-
-.flag.sixteenth:after {
-  content: '';
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border-right: 1px solid black;
-  border-top: 1px solid black;
-  top: 5px;
-  right: -1px;
-  transform: rotate(0deg);
-}
-
-.flag.sixteenth.down:after {
-  border-right: none;
-  border-top: none;
-  border-left: 1px solid black;
-  border-bottom: 1px solid black;
-  top: auto;
-  right: auto;
-  bottom: 5px;
-  left: -1px;
-}
-
-/* Accidental positioning */
-.accidental {
-  position: absolute;
-  left: -12px;
-  top: 8px;
-  font-size: 18px;
-}
-
-/* Add stem direction classes */
-.note[data-stem="up"] {
-  transform: translate(-50%, -50%);
-}
-
-.note[data-stem="down"] {
-  transform: translate(-50%, -50%) rotate(180deg);
-}
-
-/* Adjust accidental positioning for stem direction */
-.note[data-stem="up"] .accidental {
-  left: -12px;
-  top: 0;
-  transform: none;
-}
-
-.note[data-stem="down"] .accidental {
-  left: 12px;
-  top: 0;
-  transform: rotate(180deg);
-}
-
-/* Chord symbol styles */
-.chord-symbol {
-  position: absolute;
-  font-family: 'Times New Roman', serif;
-  font-size: 16px;
-  font-weight: bold;
-  transform: translateX(-50%);
-  z-index: 4;
-  color: #333;
-}
-
-.chord-controls {
-  margin: 10px 0;
-  display: flex;
-  gap: 10px;
-}
-
-.chord-btn {
-  background-color: #4a6da7;
-  color: white;
-  border: none;
-  padding: 8px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.chord-btn:hover {
-  background-color: #3a5d97;
-}
-
-.chord-input-modal {
-  position: absolute;
-  background: white;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 15px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  z-index: 10;
-}
-
-.modal-header {
-  font-weight: bold;
-  margin-bottom: 10px;
-}
-
-.chord-input-modal input {
-  width: 100%;
-  padding: 8px;
-  margin-bottom: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.modal-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.add-btn {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.cancel-btn {
-  background-color: #f44336;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-/* Key signature styles */
-.key-signature {
-  position: absolute;
-  top: 0;
-  left: 40px; /* Position right after the clef */
-  height: 100%;
-  z-index: 2;
-}
-
-.key-signature-accidental {
-  position: absolute;
-  font-size: 24px;
-  line-height: 0;
-  transform: translate(-50%, -50%); /* Center the accidental on its position */
-  font-family: 'Times New Roman', serif; /* Better for music notation */
-}
-
-.key-signature-control {
-  display: flex;
-  align-items: center;
-  margin-left: 20px;
-}
-
-.key-signature-control label {
-  margin-right: 10px;
-}
-
-.key-signature-control select {
-  padding: 5px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-}
-
-.note.key-signature-affected {
-  color: #2196F3;
-}
-
-/* Restore the missing staff container styles */
-.staff-container {
-  border: 1px solid #ddd;
-  background: white;
-  margin: 10px 0;
-  display: flex;
-  height: 250px;
-  position: relative;
-  overflow: hidden;
-}
-
-/* Restore tab button active styles */
-.tab-btn.active {
-  background: #fff;
-  border-bottom: 2px solid #2196F3;
-  color: #2196F3;
-}
-
-/* Restore active button styles */
-.note-btn.active, .octave-btn.active {
-  background: #2196F3;
-}
-
-/* Restore hover effects */
-.extend-btn:hover {
-  background: rgba(76, 175, 80, 0.9);
-}
-
-.scroll-btn:hover {
-  background: rgba(33, 150, 243, 0.9);
-}
-
-/* Restore measure bar styles */
-.measure-bar {
-  position: absolute;
-  top: 100px;
-  width: 1px;
-  height: 60px;
-  background: black;
-  z-index: 2;
-}
-
-/* Restore ledger line styles */
-.ledger-lines-container {
-  position: absolute;
-  z-index: 2;
-  pointer-events: none; /* Allow clicking through to the note */
-}
-
-.ledger-line {
-  position: absolute;
-  height: 1px;
-  background-color: black;
-  z-index: 2;
-  width: 20px;
-}
-
-/* Ensure ledger lines are visible for all note types */
-.ledger-line.above, .ledger-line.below {
-  display: block;
-  width: 20px;
-  opacity: 1;
-  visibility: visible;
-}
-
-/* Adjust ledger line positioning for whole notes */
-.note[data-duration="whole"] + .ledger-lines-container {
-  transform: none;
-}
-
-/* Make ledger lines slightly wider for whole notes */
-.note[data-duration="whole"] ~ .ledger-lines-container .ledger-line {
-  width: 24px; /* Slightly wider to match the whole note */
-  left: -12px; /* Center the wider ledger line */
-}
-
-/* Remove any transform that might be affecting ledger lines */
-.ledger-lines-container.above,
-.ledger-lines-container.below {
-  transform: none;
-}
-
-/* Add specific styles for bass clef ledger lines */
-.bass-clef-ledger-line {
-  position: absolute;
-  height: 1px;
-  background-color: black;
-  z-index: 2;
-  width: 20px;
-}
-
-/* Restore bass clef specific adjustments */
-.clef img[alt="Bass Clef"] {
-  height: 100px;
-  width: auto;
-  margin-top: 10px;
-  margin-left: 0;
-  transform: scale(0.7);
-}
-
-.dotted-note-toggle {
-  display: flex;
-  gap: 5px;
-}
-
-.dotted-note-toggle button {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  background: #4CAF50;
-  color: white;
-  cursor: pointer;
-}
-
-.dotted-note-toggle button.active {
-  background: #2196F3;
-}
-
-.dot {
-  font-size: 12px;
-  margin-left: 5px;
-}
-
-/* Add styles for the dot */
-.dot {
-  position: absolute;
-  font-size: 16px;
-  font-weight: bold;
-  right: -10px;
-  top: 8px;
-}
-
-/* Adjust dot position for stem direction */
-.note[data-stem="up"] .dot {
-  right: -10px;
-  top: 8px;
-}
-
-.note[data-stem="down"] .dot {
-  left: -10px;
-  bottom: 8px;
-}
-
-/* Update the dotted note toggle styles */
-.dotted-note-toggle {
-  margin-top: 5px;
-}
-
-.dot-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-}
-
-.dot-symbol {
-  font-size: 18px;
-  font-weight: bold;
-  line-height: 1;
-}
-
-/* Make the active state more obvious */
-.dot-btn.active {
-  background: #2196F3;
-  box-shadow: 0 0 5px rgba(33, 150, 243, 0.5);
-}
-
-/* Update the dot styles for notes */
-.dot {
-  position: absolute;
-  font-size: 16px;
-  font-weight: bold;
-  right: -10px;
-  top: 8px;
-}
-
-/* Adjust dot position for stem direction */
-.note[data-stem="up"] .dot {
-  right: -10px;
-  top: 8px;
-}
-
-.note[data-stem="down"] .dot {
-  left: -10px;
-  bottom: 8px;
-}
-
-/* Update ledger line styles for all note types */
-.ledger-lines-container {
-  position: absolute;
-  z-index: 2;
-  pointer-events: none;
-  width: 24px; /* Consistent width for all ledger lines */
-}
-
-.ledger-line {
-  position: absolute;
-  height: 1px;
-  background-color: black;
-  z-index: 2;
-  width: 24px;
-}
-
-/* Position ledger lines relative to the note */
-.ledger-lines-container.above,
-.ledger-lines-container.below {
-  left: -12px; /* Center the ledger lines */
-  transform: none;
-}
-
-/* Ensure ledger lines are visible */
-.ledger-line.above,
-.ledger-line.below {
-  display: block !important;
-  opacity: 1;
-  visibility: visible;
-}
-
-/* Specific positioning for ledger lines */
-.ledger-line:nth-child(1) { top: 0px; }
-.ledger-line:nth-child(2) { top: 15px; }
-.ledger-line:nth-child(3) { top: 30px; }
-.ledger-line:nth-child(4) { top: 45px; }
-.ledger-line:nth-child(5) { top: 60px; }
-
-/* Remove any transforms that might interfere */
-.note ~ .ledger-lines-container {
-  transform: none !important;
-}
-
-/* Ensure proper z-index stacking */
-.note {
-  z-index: 3;
-}
-
-.ledger-lines-container {
-  z-index: 2;
-}
-
-/* Make sure ledger lines extend full width */
-.ledger-line {
-  min-width: 24px;
-  left: 0;
-}
-
-/* Add a visual indicator for right-click functionality */
-.note {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  z-index: 3;
-  cursor: pointer;
-  transition: all 0.2s;
-  width: 20px;
-  height: 40px;
-}
-
-.note:hover {
-  filter: brightness(0.9);
-}
-
-.note:hover::after {
-  content: '×';
-  position: absolute;
-  top: -15px;
-  right: -15px;
-  color: #f44336;
-  font-size: 16px;
-  font-weight: bold;
-  opacity: 0.7;
-  pointer-events: none;
-}
-
-/* Update the hover styles to only show on non-touch devices */
-@media (hover: hover) {
-  .note:hover::after {
-    content: '×';
-    position: absolute;
-    top: -15px;
-    right: -15px;
-    color: #f44336;
-    font-size: 16px;
-    font-weight: bold;
-    opacity: 0.7;
-    pointer-events: none;
-  }
-}
-
-/* Add styles for touch feedback */
-.note.touch-active {
-  opacity: 0.7;
-}
-
-/* Improved mobile note controls */
-.note-controls-container {
-  padding: 10px;
-  background: #f5f5f5;
-  border-top: 1px solid #ddd;
-}
-
-.note-controls-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-/* Make control sections more compact */
-.control-section {
-  margin-bottom: 10px;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background-color: #f9f9f9;
-}
-
-/* Smaller headers */
-.control-section h4 {
-  margin-top: 0;
-  margin-bottom: 5px;
-  font-size: 12px;
-  text-align: center;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 3px;
-}
-
-/* Make buttons smaller and more touch-friendly */
-.note-btn, .octave-btn {
-  flex: 0 0 auto;
-  min-width: 36px;
-  height: 36px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: white;
-  font-size: 16px;
-  line-height: 1;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-/* Ensure the scrollable buttons don't overflow */
-.scrollable-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 5px;
-  max-height: none;
-  overflow: visible;
-}
-
-/* Adjust button groups for the type section */
-.button-group {
-  display: flex;
-  gap: 5px;
-  justify-content: center;
-}
-
-.button-group button {
-  flex: 1;
-}
-
-/* Make sure octave buttons are always visible */
-.octave-section .scrollable-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-}
-
-.octave-btn {
-  flex: 0 0 calc(20% - 5px);
-  margin: 0;
-}
-
-/* Ensure active state is clearly visible */
-.note-btn.active, .octave-btn.active {
-  background: #2196F3;
-  color: white;
-  border-color: #0d8aee;
-  box-shadow: 0 0 5px rgba(33, 150, 243, 0.5);
-}
-
-/* Mobile-specific adjustments */
-@media (max-width: 480px) {
-  .note-controls-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  
-  .note-btn, .octave-btn {
-    min-width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
-  
-  .octave-btn {
-    min-width: 25px;
-  }
-}
-
-/* Fix button icon visibility */
-.note-btn, .octave-btn {
-  flex: 0 0 auto;
-  min-width: 36px;
-  height: 36px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: white;
-  color: #333; /* Ensure text is visible */
-  font-size: 16px;
-  font-weight: bold; /* Make text more visible */
-  line-height: 1;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-shadow: none; /* Remove any text shadows */
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1); /* Add subtle shadow for depth */
-}
-
-/* Ensure button text is visible in all states */
-.note-btn:not(.active), .octave-btn:not(.active) {
-  color: #333; /* Dark text on light background for contrast */
-  background: #f7f7f7; /* Slightly off-white background */
-  border-color: #ddd;
-}
-
-/* Style active state with higher contrast */
-.note-btn.active, .octave-btn.active {
-  background: #2196F3;
-  color: white;
-  border-color: #0d8aee;
-  box-shadow: 0 0 5px rgba(33, 150, 243, 0.5);
-  font-weight: bold;
-}
-
-/* Add specific styles for duration buttons to ensure symbols are visible */
-.duration-section .note-btn {
-  font-family: 'Times New Roman', serif; /* Better for music symbols */
-  font-size: 20px; /* Larger for better visibility */
-  font-weight: normal; /* Normal weight for symbols */
-}
-
-/* Add specific styles for accidental buttons */
-.accidental-section .note-btn {
-  font-size: 18px;
-  font-weight: normal;
-}
-
-/* Octave buttons should be very clear */
-.octave-section .octave-btn {
-  font-weight: bold;
-  font-size: 16px;
-}
-
-/* Add styles for saved compositions */
-.saved-compositions-container {
-  margin-top: 20px;
-  padding: 15px;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.save-composition-form {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.save-btn {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.no-saved-compositions {
-  text-align: center;
-  color: #666;
-}
-
-.saved-composition-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.saved-composition-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 5px;
-  background: #f9f9f9;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.composition-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.composition-name {
-  font-weight: bold;
-}
-
-.composition-date {
-  font-size: 12px;
-  color: #666;
-}
-
-.composition-actions {
-  display: flex;
-  gap: 5px;
-}
-
-.load-btn, .delete-btn {
-  background-color: #f44336;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-/* Styles for saved compositions */
-.saved-compositions-container {
-  padding: 15px;
-  background: #f5f5f5;
-}
-
-.save-composition-form {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 15px;
-}
-
-.composition-name-input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.save-btn {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 15px;
-  cursor: pointer;
-  font-weight: bold;
-}
-
-.save-btn:hover {
-  background-color: #45a049;
-}
-
-.no-saved-compositions {
-  text-align: center;
-  padding: 20px;
-  color: #666;
-  font-style: italic;
-}
-
-.saved-composition-list {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.saved-composition-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px;
-  border-bottom: 1px solid #ddd;
-  background: white;
-  margin-bottom: 5px;
-  border-radius: 4px;
-}
-
-.composition-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.composition-name {
-  font-weight: bold;
-  color: #333;
-}
-
-.composition-date {
-  font-size: 12px;
-  color: #777;
-}
-
-.composition-actions {
-  display: flex;
-  gap: 5px;
-}
-
-.load-btn {
-  background-color: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 5px 10px;
-  cursor: pointer;
-}
-
-.delete-btn {
-  background-color: #f44336;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 5px 10px;
-  cursor: pointer;
-}
-
-/* Make tabs fit the new third option */
-.mobile-tabs {
-  display: flex;
-}
-
-.mobile-tabs .tab-btn {
-  flex: 1;
-  padding: 10px;
-  text-align: center;
-  background: #f0f0f0;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-}
-
-.mobile-tabs .tab-btn.active {
-  background: white;
-  border-bottom: 2px solid #2196F3;
-  font-weight: bold;
-}
-
-/* Add CSS for force-redraw animation */
-.force-redraw {
-  animation: flash 0.1s;
-}
-
-@keyframes flash {
-  0% { opacity: 0.9; }
-  100% { opacity: 1; }
-}
-
-/* Add styles for edit mode in saved compositions */
-.edit-name-form {
-  display: flex;
-  gap: 5px;
-  margin-top: 5px;
-}
-
-.rename-input {
-  flex: 1;
-  padding: 4px 8px;
-  border: 1px solid #2196F3;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.save-rename-btn, .cancel-rename-btn {
-  padding: 4px 8px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.save-rename-btn {
-  background-color: #4CAF50;
-  color: white;
-}
-
-.cancel-rename-btn {
-  background-color: #f44336;
-  color: white;
-}
-
-/* Update button */
-.update-btn {
-  background-color: #FF9800;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 5px 10px;
-  cursor: pointer;
-  margin-left: 5px;
-}
-
-/* Import/Export controls */
-.import-export-controls {
-  display: flex;
-  gap: 10px;
-  margin-top: 15px;
-  margin-bottom: 15px;
-  justify-content: center;
-}
-
-.export-btn, .import-btn {
-  background-color: #3F51B5;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 15px;
-  cursor: pointer;
-  font-size: 14px;
-  display: inline-block;
-  text-align: center;
-}
-
-.export-btn:hover, .import-btn:hover {
-  background-color: #303F9F;
-}
-
-.export-btn:disabled {
-  background-color: #9E9E9E;
-  cursor: not-allowed;
-}
-
-.action-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  background: #4CAF50;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.action-btn:hover {
-  background-color: #45a049;
-}
-
-.btn-icon {
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.btn-text {
-  font-size: 14px;
-  font-weight: normal;
-}
-
-.btn-disabled {
-  background-color: #9E9E9E;
-  cursor: not-allowed;
-}
-
-.custom-select {
-  position: relative;
-  display: inline-block;
-}
-
-.select-icon {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #999;
-}
-
-.select-icon::after {
-  content: "\25BC";
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #999;
-}
-
-.select-icon::before {
-  content: "\25B2";
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #999;
-}
-
-.select-icon::after,
-.select-icon::before {
-  font-size: 12px;
-  line-height: 1;
-  pointer-events: none;
-}
-
-/* Time signature selector styles */
-.time-signature-selector {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.time-signature-selector label {
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.custom-select select {
-  appearance: none;
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 8px 30px 8px 10px;
-  width: 100%;
-  font-size: 15px;
-  cursor: pointer;
-  outline: none;
-  transition: all 0.2s ease;
-}
-
-.custom-select select:hover {
-  border-color: #2196F3;
-}
-
-.custom-select select:focus {
-  border-color: #2196F3;
-  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
-}
-
-.custom-select .select-icon {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  font-size: 10px;
-  color: #666;
-}
-
-/* Enhance select options (works in some browsers) */
-.custom-select select option {
-  padding: 10px;
-  font-size: 15px;
-}
-
-/* Media query for mobile */
-@media (max-width: 600px) {
-  .custom-select {
-    min-width: 100px;
-  }
-  
-  .custom-select select {
-    padding: 6px 25px 6px 8px;
-    font-size: 14px;
-  }
-}
-
-/* Add this inside the staff div, after the measure bars section */
-.time-signature-display {
-  position: absolute;
-  top: 100px;
-  left: 70px;
-  display: flex;
-  gap: 5px;
-  z-index: 5;
-}
-
-/* Add this inside the staff div, after the measure bars section */
-.time-signature-display .time-signature-numerator {
-  font-size: 16px;
-  font-weight: bold;
-}
-
-/* Add this inside the staff div, after the measure bars section */
-.time-signature-display .time-signature-denominator {
-  font-size: 14px;
-  color: #666;
-}
-
-/* Measure bars with proper musical implementation */
-.barline {
-  position: absolute;
-  top: 100px;
-  width: 1px;
-  height: 60px;
-  background: black;
-  z-index: 2;
-}
-
-/* Add repeat dots for repeat barlines */
-.repeat-dots {
-  position: absolute;
-  top: 100px;
-  left: 70px;
-  display: flex;
-  gap: 5px;
-  z-index: 5;
-}
-
-/* Beat markers (optional, for visual aid) */
-.beat-marker {
-  position: absolute;
-  top: 100px;
-  width: 1px;
-  height: 60px;
-  background: black;
-  z-index: 2;
-}
-
-/* Barline styling */
-.barline {
-  position: absolute;
-  top: 97.5px; /* Align with staff */
-  width: 2px;
-  height: 65px; /* Cover all 5 lines */
-  background-color: #000;
-  z-index: 1;
-}
-
-.barline-single {
-  width: 1px;
-}
-
-.barline-double {
-  width: 5px;
-  position: relative;
-}
-
-.barline-double::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 1px;
-  height: 100%;
-  background-color: #000;
-}
-
-.barline-double::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 1px;
-  height: 100%;
-  background-color: #000;
-}
-
-.barline-final {
-  width: 6px;
-  position: relative;
-}
-
-.barline-final::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 1px;
-  height: 100%;
-  background-color: #000;
-}
-
-.barline-final::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 3px;
-  height: 100%;
-  background-color: #000;
-}
-
-.barline-repeat-start,
-.barline-repeat-end {
-  width: 10px;
-  position: relative;
-}
-
-.barline-repeat-start::before,
-.barline-repeat-end::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 3px;
-  height: 100%;
-  background-color: #000;
-}
-
-.barline-repeat-start::after,
-.barline-repeat-end::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 1px;
-  height: 100%;
-  background-color: #000;
-}
-
-.repeat-dots {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Time signature display */
-.time-signature-display {
-  position: absolute;
-  top: 107px; /* Align with staff */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  z-index: 2;
-}
-
-.time-signature-numerator,
-.time-signature-denominator {
-  font-size: 24px;
-  font-weight: bold;
-  line-height: 1;
-}
-
-/* Fix the time signature display positioning and styling */
-.time-signature-display {
-  position: absolute;
-  top: 110px; /* Align with staff */
-  left: 70px; /* Position after clef */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  z-index: 3; /* Make sure it's above the staff lines */
-  width: 20px;
-  text-align: center;
-}
-
-.time-signature-numerator,
-.time-signature-denominator {
-  font-size: 24px;
-  font-weight: bold;
-  line-height: 1;
-  font-family: 'Times New Roman', serif; /* Better for music notation */
-}
-
-.time-signature-numerator {
-  border-bottom: 1px solid transparent; /* Optional: adds spacing */
-  margin-bottom: 2px;
-}
-
-/* Fix the time signature display positioning and styling */
-.time-signature-display {
-  position: absolute;
-  top: 110px; /* Align with staff */
-  left: 70px; /* Position after clef */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  z-index: 3; /* Make sure it's above the staff lines */
-  width: 20px;
-  text-align: center;
-}
-
-.time-signature-numerator,
-.time-signature-denominator {
-  font-size: 24px;
-  font-weight: bold;
-  line-height: 1;
-  font-family: 'Times New Roman', serif; /* Better for music notation */
-}
-
-.time-signature-numerator {
-  border-bottom: 1px solid transparent; /* Optional: adds spacing */
-  margin-bottom: 2px;
-}
-
-/* Improved key signature styling */
-.key-signature {
-  position: absolute;
-  top: 0;
-  left: 40px; /* Position right after the clef */
-  height: 100%;
-  z-index: 2;
-}
-
-.key-signature-accidental {
-  position: absolute;
-  font-size: 24px;
-  line-height: 0;
-  transform: translate(-50%, -50%); /* Center the accidental on its position */
-  font-family: 'Times New Roman', serif; /* Better for music notation */
-}
-
-/* Add measure number styling */
-.measure-number {
-  position: absolute;
-  top: 75px; /* Position above the staff */
-  left: -8px; /* Better align with the barline */
-  font-size: 12px;
-  color: #666;
-  font-weight: 500;
-}
-
-/* Option to only show measure numbers at regular intervals */
-.measure-number[data-interval="true"] {
-  font-weight: bold;
-  color: #333;
-}
-</style> 
+<style scoped src="@/assets/styles/global.css"/>
