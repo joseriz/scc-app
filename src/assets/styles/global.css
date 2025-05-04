@@ -2064,3 +2064,95 @@
     font-weight: bold;
     color: #333;
   }
+  
+  /* Add these styles for the playback measure controls */
+  .playback-measure-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #f5f5f5;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+  }
+  
+  .control-label {
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 5px;
+  }
+  
+  .measure-range-inputs {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+  }
+  
+  .measure-input {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  
+  .measure-number-input {
+    width: 60px;
+    padding: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    text-align: center;
+  }
+  
+  .measure-hint {
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
+  }
+  
+  .auto-scroll-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 5px;
+  }
+  
+  .auto-scroll-toggle input[type="checkbox"] {
+    margin: 0;
+  }
+  
+  /* Make the controls responsive */
+  @media (min-width: 768px) {
+    .playback-measure-controls {
+      flex-direction: row;
+      align-items: center;
+      gap: 20px;
+    }
+    
+    .control-label {
+      margin-bottom: 0;
+      white-space: nowrap;
+    }
+    
+    .auto-scroll-toggle {
+      margin-top: 0;
+      margin-left: auto;
+    }
+  }
+  
+  /* Add styles for the measure visibility toggle */
+  .measure-visibility-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+  }
+  
+  .measure-visibility-toggle input[type="checkbox"] {
+    margin: 0;
+  }
+  
+  .measure-visibility-toggle label {
+    font-size: 14px;
+    color: #333;
+  }

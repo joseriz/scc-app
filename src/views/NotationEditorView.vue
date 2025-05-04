@@ -63,6 +63,54 @@
       </div>
     </div>
 
+    <!-- Add this to the time signature selector section -->
+    <div class="measure-visibility-toggle">
+      <input 
+        type="checkbox" 
+        id="show-measures" 
+        v-model="showMeasureNumbers"
+      />
+      <label for="show-measures">Show measure numbers</label>
+    </div>
+
+    <!-- Add this after the playback controls section, inside the controls-row div -->
+    <div class="playback-measure-controls">
+      <div class="control-label">Playback Range:</div>
+      <div class="measure-range-inputs">
+        <div class="measure-input">
+          <label for="start-measure">From:</label>
+          <input 
+            type="number" 
+            id="start-measure" 
+            v-model.number="playbackStartMeasure" 
+            min="1" 
+            :max="barlines.length"
+            class="measure-number-input"
+          />
+        </div>
+        <div class="measure-input">
+          <label for="end-measure">To:</label>
+          <input 
+            type="number" 
+            id="end-measure" 
+            v-model.number="playbackEndMeasure" 
+            min="0" 
+            :max="barlines.length"
+            class="measure-number-input"
+          />
+          <span class="measure-hint">(0 = end)</span>
+        </div>
+      </div>
+      <div class="auto-scroll-toggle">
+        <input 
+          type="checkbox" 
+          id="auto-scroll" 
+          v-model="autoScrollToPlayingNote"
+        />
+        <label for="auto-scroll">Auto-scroll to playing notes</label>
+      </div>
+    </div>
+
     <!-- Staff container with improved mobile layout -->
     <div class="staff-container">
       <div class="clef">
@@ -97,8 +145,8 @@
              @mousedown="startDrag"
              @touchstart="startDrag"
              :style="{
-               width: `${staffWidth.value}px`,
-               transform: `translateX(-${scrollPosition.value}px)`
+               width: `${staffWidth}px`,
+               transform: `translateX(-${scrollPosition}px)`
              }">
           <!-- Staff lines -->
           <div class="staff-lines">
@@ -126,8 +174,8 @@
               </div>
             </template>
             
-            <!-- Add measure number (only show for the first barline and then every measure) -->
-            <div v-if="barline.measureNumber > 0" class="measure-number">
+            <!-- Add measure number (only show if showMeasureNumbers is true) -->
+            <div v-if="showMeasureNumbers && barline.measureNumber > 0" class="measure-number">
               {{ barline.measureNumber }}
             </div>
           </div>
@@ -550,8 +598,45 @@ const availableAccidentals = [
   { value: 'flat', label: '♭' }
 ];
 
-// Add computed property for notes
-const notes = computed(() => notationStore.notes);
+// Add these type definitions at the top of your script section
+interface Note {
+  id: string;
+  type: "note" | "rest";
+  pitch?: string;
+  duration: string;
+  position: number;
+  verticalPosition: number;
+  dotted?: boolean;
+  lyric?: string;
+}
+
+interface Composition {
+  id: string;
+  name: string;
+  dateCreated: number;
+  notes: Note[];
+  clef: string;
+  keySignature: string;
+  timeSignature?: string;
+  tempo: number;
+  chordSymbols: any[];
+  selectedNoteType: string;
+  selectedNoteDuration: string;
+  selectedOctave: number;
+  isDottedNote: boolean;
+}
+
+// Add window property declarations
+declare global {
+  interface Window {
+    playbackTimeouts: number[];
+    debugMonitorInterval: number | null;
+    debugMonitorRemover: () => void;
+  }
+}
+
+// Then update your notes ref to use this type
+const notes = ref<Note[]>([]);
 
 // Create a piano-like synth for playback
 // const createPianoSynth = () => {
@@ -1027,107 +1112,9 @@ const playNoteSound = async (pitch: string, duration: string = "8n", isDotted: b
 };
 
 // Ensure playComposition uses the correct duration mapping for playNoteSound
-const playComposition = async () => {
-  if (isPlaying.value) {
-    // If already playing, stop first
-    stopPlayback();
-    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to ensure everything is stopped
-  }
-  
-  // Make sure we have notes to play
-  if (notes.value.length === 0) {
-    alert('No notes to play');
-    return;
-  }
-  
-  console.log(`Starting playback with ${notes.value.length} notes`);
-  
-  // Start Tone.js context (this requires user interaction)
-  await startToneJs();
-  
-  isPlaying.value = true;
-  
-  // Sort notes by position for proper playback order
-  const sortedNotes = [...notes.value].sort((a, b) => a.position - b.position);
-  
-  // Initialize array to track timeout IDs for cleanup
-  if (!window.playbackTimeouts) window.playbackTimeouts = [];
-  window.playbackTimeouts = [];
-  
-  // Clear any existing timeouts
-  window.playbackTimeouts.forEach(id => clearTimeout(id));
-  window.playbackTimeouts = [];
-  
-  // Play notes in sequence with proper timing
-  let totalDelay = 0;
-  
-  for (const note of sortedNotes) {
-    // console.log(`Scheduling ${note.pitch || 'rest'} at position ${note.position}`);
-    
-    // Calculate delay for this note
-    const secondsPerBeat = 60 / tempo.value;
-    
-    // Map durations to relative lengths
-    const durationMap = {
-      'whole': 4,
-      'half': 2,
-      'quarter': 1,
-      'eighth': 0.5,
-      'sixteenth': 0.25
-    };
-    
-    // Map durations to Tone.js format
-    const toneDurationMap = {
-      'whole': '1n',
-      'half': '2n',
-      'quarter': '4n',
-      'eighth': '8n',
-      'sixteenth': '16n'
-    };
-    
-    // Calculate the wait duration in seconds
-    let waitDurationSeconds = (durationMap[note.duration] || 1) * secondsPerBeat;
-    if (note.dotted) {
-      waitDurationSeconds *= 1.5;
-    }
-    
-    // Function to play this note at the right time
-    const playNoteWithDelay = (noteToPlay, delay) => {
-      const timeoutId = setTimeout(() => {
-        currentPlayingNoteId.value = noteToPlay.id;
-        
-        if (noteToPlay.type === 'note' && noteToPlay.pitch) {
-          // Play the note using the Tone.js duration format ('4n', '8n', etc.)
-          const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
-          playNoteSound(noteToPlay.pitch, toneDuration, noteToPlay.dotted);
-        }
-        
-        // Schedule the end of this note
-        const noteEndTimeoutId = setTimeout(() => {
-          if (currentPlayingNoteId.value === noteToPlay.id) {
-            currentPlayingNoteId.value = null;
-          }
-        }, waitDurationSeconds * 1000);
-        
-        window.playbackTimeouts.push(noteEndTimeoutId);
-      }, delay);
-      
-      window.playbackTimeouts.push(timeoutId);
-    };
-    
-    // Schedule this note
-    playNoteWithDelay(note, totalDelay * 1000);
-    totalDelay += waitDurationSeconds;
-  }
-  
-  // Stop playing after all notes have played
-  const finalTimeoutId = setTimeout(() => {
-    isPlaying.value = false;
-    currentPlayingNoteId.value = null;
-    console.log('Playback complete');
-  }, totalDelay * 1000 + 100); // Add a small buffer
-  
-  window.playbackTimeouts.push(finalTimeoutId);
+const playComposition = () => {
+  // Call the playScore function which respects measure boundaries
+  playScore();
 };
 
 // Add this new function to adjust the pitch for playback
@@ -1427,7 +1414,7 @@ const isPlaying = ref(false);
 const updateStaffScroll = () => {
   const staffElement = document.querySelector('.staff');
   if (staffElement) {
-    (staffElement as HTMLElement).style.transform = `translateX(-${scrollPosition.value}px)`;
+    (staffElement as HTMLElement).style.transform = `translateX(-${scrollPosition}px)`;
   }
 };
 
@@ -1641,7 +1628,7 @@ const extendStaff = () => {
   nextTick(() => {
     const staffElement = document.querySelector('.staff');
     if (staffElement) {
-      staffElement.style.width = `${staffWidth.value}px`;
+      (staffElement as HTMLElement).style.width = `${staffWidth.value}px`;
       
       // Make sure staff lines extend across the full width
       const staffLines = document.querySelectorAll('.staff-line');
@@ -1667,7 +1654,7 @@ const scrollStaff = (direction: 'left' | 'right') => {
   // Apply the scroll position directly to the staff element
   const staffElement = document.querySelector('.staff');
   if (staffElement) {
-    staffElement.style.transform = `translateX(-${scrollPosition.value}px)`;
+    (staffElement as HTMLElement).style.transform = `translateX(-${scrollPosition.value}px)`;
   }
   
   console.log(`Scrolled ${direction}: position=${scrollPosition.value}, max=${maxScrollPosition.value}`);
@@ -2275,137 +2262,51 @@ const saveComposition = () => {
 // };
 
 // Update the loadComposition function to use the resetAudioSystem
-const loadComposition = async (id) => {
-  const composition = savedCompositions.value.find(comp => comp.id === id);
-  if (!composition) {
-    console.error('Composition not found:', id);
-    return;
-  }
-  
-  // Store the current composition ID
-  currentCompositionId.value = id;
-  console.log('Loading composition:', composition);
-  
-  // Confirm before loading and overwriting current composition
-  if (notes.value.length > 0) {
-    if (!confirm('Loading this composition will replace your current work. Continue?')) {
-      return;
-    }
-  }
-  
+const loadComposition = (compositionId: string) => {
   try {
-    // Stop any playback
-    stopPlayback();
-    
-    // Force notes array reset - this is the most important part
-    await forceResetNotesArray();
-    
-    // Give the browser time to process changes
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
-    console.log('Notes array completely reset, now loading new notes...');
-    
-    // Create proper Note objects from the saved data
-    const loadedNotes = composition.notes.map(note => {
-      return {
-        id: note.id || Date.now().toString(),
-        type: note.type || 'note',
-        position: note.position || 0,
-        verticalPosition: note.verticalPosition !== undefined ? note.verticalPosition : 0,
-        duration: note.duration || 'quarter',
-        dotted: note.dotted !== undefined ? note.dotted : false,
-        pitch: note.pitch
-      };
-    });
-    
-    // Wait for another tick before adding notes
-    await nextTick();
-    
-    // Add the notes individually
-    for (const note of loadedNotes) {
-      notes.value.push(note);
-      await nextTick();
-    }
-    
-    // Set properties from the composition
-    try {
-      tempo.value = composition.tempo || 120;
+    const composition = notationStore.getComposition(compositionId) as Composition;
+    if (composition) {
+      // Clear current score
+      clearScore();
+      
+      // Set composition name
+      compositionName.value = composition.name;
+      
+      // Load notes
+      notes.value = composition.notes;
+      
+      // Load other settings
       selectedClef.value = composition.clef || 'treble';
       keySignature.value = composition.keySignature || 'C';
+      tempo.value = composition.tempo || 120;
+      
+      // Load chord symbols if they exist
+      if (composition.chordSymbols && composition.chordSymbols.length) {
+        chordSymbols.value = composition.chordSymbols;
+      }
       
       // Load time signature if it exists
       if (composition.timeSignature) {
         timeSignature.value = composition.timeSignature;
         updateTimeSignature(); // Update UI based on time signature
       }
-    } catch (e) {
-      console.warn('Error updating some properties:', e);
     }
-    
-    // Force update of staff display
-    updateStaffDisplay();
-    
-    console.log('Composition loaded successfully with', notes.value.length, 'notes');
-    
-    // Switch to notes tab
-    activeTab.value = 'notes';
-    
-    alert('Composition loaded successfully!');
-  } catch (error) {
-    console.error('Error loading composition:', error);
-    alert('Error loading composition: ' + error.message);
+  } catch (e) {
+    console.error('Error loading composition:', e);
   }
 };
 
 // Update updateStaffDisplay to accept an optional width parameter
-const updateStaffDisplay = async (width?: number) => {
-  // Use nextTick to ensure Vue has updated the DOM
-  await nextTick();
-  
-  // Update staff width if specified
+const updateStaffDisplay = (width?: number) => {
   const staffElement = document.querySelector('.staff');
   if (staffElement) {
     // Use the provided width or the current staffWidth.value
     const displayWidth = width || staffWidth.value;
-    staffElement.style.width = `${displayWidth}px`;
+    (staffElement as HTMLElement).style.width = `${displayWidth}px`;
     console.log(`Set staff width to ${displayWidth}px`);
   } else {
     console.warn('Staff element not found');
   }
-  
-  // Force redraw of each note
-  notes.value.forEach((note, index) => {
-    console.log(`Verifying note ${index} display:`, note);
-    
-    // Check if note elements exist and are visible
-    const noteElement = document.querySelector(`.note[data-id="${note.id}"]`);
-    if (!noteElement) {
-      console.warn(`Note element for ${note.id} not found in DOM`);
-    }
-  });
-  
-  // Update staff scroll position to show notes if they're off-screen
-  if (notes.value.length > 0) {
-    // Find the first note position
-    const firstNotePosition = Math.min(...notes.value.map(note => note.position));
-    const xPos = firstNotePosition * 50;
-    
-    // Scroll to show this position
-    if (xPos > 0) {
-      scrollPosition.value = Math.max(0, xPos - 100);
-      console.log(`Set scroll position to ${scrollPosition.value}`);
-    } else {
-      scrollPosition.value = 0;
-    }
-    
-    // Apply the scroll position
-    const staffElement = document.querySelector('.staff');
-    if (staffElement) {
-      staffElement.style.transform = `translateX(-${scrollPosition.value}px)`;
-    }
-  }
-  
-  console.log('Staff updated, notes:', notes.value);
 };
 
 // Improve saveToLocalStorage to handle potential errors
@@ -2839,8 +2740,7 @@ const timeSignatureNumerator = computed(() => timeSignature.value.split('/')[0])
 const timeSignatureDenominator = computed(() => timeSignature.value.split('/')[1]);
 const showBeatMarkers = ref(false); // Set to true for debugging
 
-// Fix the duplicate measureWidth identifier by renaming
-// Rename this computed property to avoid the conflict
+// Make sure this computed property is correctly calculating measure width
 const measureWidthByTimeSignature = computed(() => {
   const [numerator, denominator] = timeSignature.value.split('/').map(n => parseInt(n));
   
@@ -2863,7 +2763,9 @@ const measureWidthByTimeSignature = computed(() => {
   if (beatUnit === 2) beatWidth = quarterNoteWidth * 2; // Half note
   if (beatUnit === 8) beatWidth = quarterNoteWidth / 2; // Eighth note
   
-  return beatsPerMeasure * beatWidth;
+  const width = beatsPerMeasure * beatWidth;
+  console.log(`Measure width for ${timeSignature.value}: ${width}px`);
+  return width;
 });
 
 // Generate barlines with proper musical positioning and measure numbers
@@ -3150,6 +3052,184 @@ const getLyricStyle = (note: Note) => {
     fontWeight: note.id === currentPlayingNoteId.value ? 'bold' : 'normal'
   };
 };
+
+// Add these refs for playback control
+const playbackStartMeasure = ref(1);
+const playbackEndMeasure = ref(0); // 0 means play to the end
+const autoScrollToPlayingNote = ref(true);
+
+// Add this helper function to calculate which measure a note is in
+const getNotesMeasure = (note: Note) => {
+  // Calculate the horizontal position in pixels
+  const notePosition = note.position * 50;
+  
+  // Calculate the initial position (where measure 1 starts)
+  const keySignatureWidth = currentKeySignatureAccidentals.value.length * 10;
+  const initialPosition = 70 + keySignatureWidth + 20; // clef + key sig + time sig
+  
+  // If the note is before the first measure, return 0
+  if (notePosition < initialPosition) {
+    return 0;
+  }
+  
+  // Calculate the relative position from the start of the first measure
+  const relativePosition = notePosition - initialPosition;
+  
+  // Calculate which measure this note is in
+  // Use measureWidthByTimeSignature for correct measure width based on time signature
+  return Math.floor(relativePosition / measureWidthByTimeSignature.value) + 1;
+};
+
+// Now update the playScore function to use this helper
+const playScore = () => {
+  if (isPlaying.value) return;
+  
+  isPlaying.value = true;
+  currentPlayingNoteId.value = null;
+  
+  // Initialize Tone.js if needed
+  initializeToneJs();
+  
+  // Get all notes and sort them by position
+  const allNotes = [...notes.value];
+  const sortedNotes = allNotes.sort((a, b) => a.position - b.position);
+  
+  // Calculate measure boundaries
+  const measureWidth = measureWidthByTimeSignature.value;
+  const initialPosition = 70 + (currentKeySignatureAccidentals.value.length * 10) + 20;
+  
+  console.log(`Playback range: measures ${playbackStartMeasure.value} to ${playbackEndMeasure.value || 'end'}`);
+  console.log(`Measure width: ${measureWidth}px, Initial position: ${initialPosition}px`);
+  
+  // Filter notes based on selected measures
+  let filteredNotes = sortedNotes;
+  if (playbackStartMeasure.value > 1 || (playbackEndMeasure.value > 0)) {
+    filteredNotes = sortedNotes.filter(note => {
+      const noteMeasure = getNotesMeasure(note);
+      
+      // Check if the note is within the selected measure range
+      const isAfterStart = noteMeasure >= playbackStartMeasure.value;
+      const isBeforeEnd = playbackEndMeasure.value === 0 || noteMeasure <= playbackEndMeasure.value;
+      
+      console.log(`Note ${note.id} at position ${note.position * 50}px is in measure ${noteMeasure}, include: ${isAfterStart && isBeforeEnd}`);
+      
+      return isAfterStart && isBeforeEnd;
+    });
+  }
+  
+  console.log(`Playing ${filteredNotes.length} notes out of ${sortedNotes.length} total notes`);
+  
+  // Initialize array to track timeout IDs for cleanup
+  if (!window.playbackTimeouts) window.playbackTimeouts = [];
+  window.playbackTimeouts = [];
+  
+  // Clear any existing timeouts
+  window.playbackTimeouts.forEach(id => clearTimeout(id));
+  window.playbackTimeouts = [];
+  
+  // Play notes in sequence with proper timing
+  let totalDelay = 0;
+  
+  for (const note of filteredNotes) {
+    // Calculate delay for this note
+    const secondsPerBeat = 60 / tempo.value;
+    
+    // Map durations to relative lengths
+    const durationMap = {
+      'whole': 4,
+      'half': 2,
+      'quarter': 1,
+      'eighth': 0.5,
+      'sixteenth': 0.25
+    };
+    
+    // Map durations to Tone.js format
+    const toneDurationMap = {
+      'whole': '1n',
+      'half': '2n',
+      'quarter': '4n',
+      'eighth': '8n',
+      'sixteenth': '16n'
+    };
+    
+    // Calculate the wait duration in seconds
+    let waitDurationSeconds = (durationMap[note.duration] || 1) * secondsPerBeat;
+    if (note.dotted) {
+      waitDurationSeconds *= 1.5;
+    }
+    
+    // Function to play this note at the right time
+    const playNoteWithDelay = (noteToPlay, delay) => {
+      const timeoutId = setTimeout(() => {
+        currentPlayingNoteId.value = noteToPlay.id;
+        
+        // Auto-scroll to the playing note if enabled
+        if (autoScrollToPlayingNote.value) {
+          autoScrollToNote(noteToPlay);
+        }
+        
+        if (noteToPlay.type === 'note' && noteToPlay.pitch) {
+          // Play the note using the Tone.js duration format ('4n', '8n', etc.)
+          const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
+          playNoteSound(noteToPlay.pitch, toneDuration, noteToPlay.dotted);
+        }
+        
+        // Schedule the end of this note
+        const noteEndTimeoutId = setTimeout(() => {
+          if (currentPlayingNoteId.value === noteToPlay.id) {
+            currentPlayingNoteId.value = null;
+          }
+        }, waitDurationSeconds * 1000);
+        
+        window.playbackTimeouts.push(noteEndTimeoutId);
+      }, delay);
+      
+      window.playbackTimeouts.push(timeoutId);
+    };
+    
+    // Schedule this note
+    playNoteWithDelay(note, totalDelay * 1000);
+    totalDelay += waitDurationSeconds;
+  }
+  
+  // Stop playing after all notes have played
+  const finalTimeoutId = setTimeout(() => {
+    isPlaying.value = false;
+    currentPlayingNoteId.value = null;
+    console.log('Playback complete');
+  }, totalDelay * 1000 + 100); // Add a small buffer
+  
+  window.playbackTimeouts.push(finalTimeoutId);
+};
+
+// Add the autoScrollToNote function
+const autoScrollToNote = (note: Note) => {
+  // Calculate the horizontal position of the note
+  const noteXPosition = note.position * 50;
+  
+  // Calculate the visible area boundaries
+  const leftBoundary = scrollPosition.value;
+  const rightBoundary = scrollPosition.value + visibleStaffWidth.value;
+  
+  // Check if the note is outside the visible area
+  if (noteXPosition < leftBoundary + 100) {
+    // Note is to the left of the visible area or too close to the left edge
+    // Scroll left to show the note with some margin
+    scrollPosition.value = Math.max(0, noteXPosition - 100);
+    updateStaffScroll();
+  } else if (noteXPosition > rightBoundary - 100) {
+    // Note is to the right of the visible area or too close to the right edge
+    // Scroll right to show the note with some margin
+    scrollPosition.value = Math.min(
+      maxScrollPosition.value,
+      noteXPosition - visibleStaffWidth.value + 200
+    );
+    updateStaffScroll();
+  }
+};
+
+// Add this ref for measure visibility
+const showMeasureNumbers = ref(true); // Default to shown
 </script>
 
 <style scoped src="@/assets/styles/global.css"/>
