@@ -1835,11 +1835,21 @@
   /* Measure bars with proper musical implementation */
   .barline {
     position: absolute;
-    top: 100px;
+    top: 100px; /* Align exactly with the top staff line */
     width: 1px;
-    height: 60px;
-    background: black;
+    height: 60px; /* Make sure it covers all 5 staff lines */
+    background-color: #000;
     z-index: 2;
+  }
+  
+  /* Ensure all barline types maintain proper alignment */
+  .barline-single,
+  .barline-double,
+  .barline-final,
+  .barline-repeat-start,
+  .barline-repeat-end {
+    top: 100px; /* Ensure consistent alignment for all barline types */
+    height: 60px;
   }
   
   /* Add repeat dots for repeat barlines */
@@ -1863,15 +1873,6 @@
   }
   
   /* Barline styling */
-  .barline {
-    position: absolute;
-    top: 97.5px; /* Align with staff */
-    width: 2px;
-    height: 65px; /* Cover all 5 lines */
-    background-color: #000;
-    z-index: 1;
-  }
-  
   .barline-single {
     width: 1px;
   }
@@ -2053,7 +2054,7 @@
   .measure-number {
     position: absolute;
     top: 75px; /* Position above the staff */
-    left: -8px; /* Better align with the barline */
+    left: -8px; /* Center with the barline */
     font-size: 12px;
     color: #666;
     font-weight: 500;
@@ -2204,4 +2205,36 @@
     justify-content: center;
     min-width: 40px;
     min-height: 40px;
+  }
+
+  /* Consolidated barline styling with correct alignment */
+  .barline {
+    position: absolute;
+    top: 100px; /* Align exactly with the top staff line */
+    width: 1px; /* Default width for single barlines */
+    height: 60px; /* Cover all 5 staff lines */
+    background-color: #000;
+    z-index: 2;
+  }
+
+  .barline-single {
+    /* Single barline is the default */
+  }
+
+  .barline-double {
+    width: 5px;
+    position: relative;
+  }
+
+  /* Ensure the pseudo-elements also align properly */
+  .barline-double::before,
+  .barline-double::after,
+  .barline-final::before,
+  .barline-final::after,
+  .barline-repeat-start::before,
+  .barline-repeat-start::after,
+  .barline-repeat-end::before,
+  .barline-repeat-end::after {
+    top: 0; /* Align with parent */
+    height: 100%; /* Full height of parent */
   }

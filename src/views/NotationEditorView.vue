@@ -660,7 +660,7 @@ const availableAccidentals = [
 // Add these type definitions at the top of your script section
 interface Note {
   id: string;
-  type: "note" | "rest";
+  type: "note" | "rest";  // Restrict to these literal types
   pitch?: string;
   duration: string;
   position: number;
@@ -669,6 +669,7 @@ interface Note {
   lyric?: string;
 }
 
+// Update the Composition interface to include all required properties
 interface Composition {
   id: string;
   name: string;
@@ -678,17 +679,19 @@ interface Composition {
   keySignature: string;
   timeSignature?: string;
   tempo: number;
-  chordSymbols: any[];
+  chordSymbols: ChordSymbol[];
   selectedNoteType: string;
-  selectedNoteDuration: string;
+  selectedDuration: string;
   selectedOctave: number;
   isDottedNote: boolean;
+  staffWidth?: number;
+  selectedAccidental?: string;
 }
 
 // Add window property declarations
 declare global {
   interface Window {
-    playbackTimeouts: number[];
+    playbackTimeouts: NodeJS.Timeout[];
     debugMonitorInterval: number | null;
     debugMonitorRemover: () => void;
   }
@@ -817,7 +820,7 @@ onMounted(async () => {
     // Make sure the staff is wide enough
     const staffElement = document.querySelector('.staff');
     if (staffElement) {
-      staffElement.style.width = `${staffWidth.value}px`;
+      (staffElement as HTMLElement).style.width = `${staffWidth.value}px`;
       console.log(`Staff width set to: ${staffWidth.value}px`);
     }
     
@@ -1253,9 +1256,9 @@ const handleStaffClick = (event: MouseEvent) => {
     // Only update if we have a valid pitch or it's a rest
     if (pitch || selectedNoteType.value === 'rest') {
       // Create the updated note
-      const updatedNote = {
+      const updatedNote: Note = {
         ...existingNote,
-        type: selectedNoteType.value,
+        type: selectedNoteType.value as "note" | "rest",
         verticalPosition,
         duration: selectedDuration.value,
         dotted: isDottedNote.value, // Add the dotted property
@@ -1288,9 +1291,9 @@ const handleStaffClick = (event: MouseEvent) => {
   // Only add a note if we have a valid pitch or it's a rest
   if (pitch || selectedNoteType.value === 'rest') {
     // Create a new note
-    const newNote = {
+    const newNote: Note = {
       id: Date.now().toString(),
-      type: selectedNoteType.value,
+      type: selectedNoteType.value as "note" | "rest",
       position,
       verticalPosition,
       duration: selectedDuration.value,
@@ -2092,7 +2095,7 @@ interface SavedComposition {
 // Update the savedCompositions ref to use this type
 const savedCompositions = ref<SavedComposition[]>([]);
 
-// Fix the saveComposition function to properly handle duplicate names
+// Then update the saveComposition function
 const saveComposition = () => {
   // Validate that the composition name is not empty
   if (!compositionName.value.trim()) {
@@ -2132,8 +2135,8 @@ const saveComposition = () => {
     }
   }
   
-  // Create a new composition
-  const newComposition = {
+  // Create a new composition with the correct type
+  const newComposition: Composition = {
     id: Date.now().toString(),
     name: compositionName.value.trim(),
     dateCreated: Date.now(),
@@ -2143,10 +2146,12 @@ const saveComposition = () => {
     keySignature: keySignature.value,
     timeSignature: timeSignature.value,
     selectedNoteType: selectedNoteType.value,
-    selectedNoteDuration: selectedDuration.value,
+    selectedDuration: selectedDuration.value,
     selectedOctave: selectedOctave.value,
     isDottedNote: isDottedNote.value,
-    chordSymbols: chordSymbols.value
+    chordSymbols: chordSymbols.value,
+    staffWidth: staffWidth.value,
+    selectedAccidental: selectedAccidental.value
   };
   
   // Save the composition
@@ -2360,7 +2365,7 @@ const loadComposition = (compositionId: string) => {
     tempo.value = composition.tempo || 120;
     
     // Load chord symbols if they exist
-    if (composition.chordSymbols && composition.chordSymbols.length) {
+    if (composition.chordSymbols && Array.isArray(composition.chordSymbols)) {
       chordSymbols.value = composition.chordSymbols;
     }
     
@@ -2509,11 +2514,13 @@ const updateComposition = (id: string) => {
   composition.tempo = tempo.value;
   composition.clef = selectedClef.value;
   composition.keySignature = keySignature.value;
-  composition.timeSignature = timeSignature.value;
+  if (!composition.timeSignature) composition.timeSignature = timeSignature.value;
+  else composition.timeSignature = timeSignature.value;
   composition.selectedNoteType = selectedNoteType.value;
-  composition.selectedNoteDuration = selectedDuration.value;
+  composition.selectedDuration = selectedDuration.value;
   composition.selectedOctave = selectedOctave.value;
   composition.isDottedNote = isDottedNote.value;
+  if (!composition.chordSymbols) composition.chordSymbols = [];
   composition.chordSymbols = chordSymbols.value;
   
   // Save to localStorage
