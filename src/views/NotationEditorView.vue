@@ -375,8 +375,9 @@
                       :key="duration.value"
                       @click="selectedDuration = duration.value"
                       :class="['note-btn', { active: selectedDuration === duration.value }]">
-                <!-- Conditionally display note or rest symbol -->
-                {{ selectedNoteType === 'note' ? duration.noteLabel : duration.restLabel }}
+                {{ selectedNoteType === 'note' 
+                  ? (usesFallbackSymbols ? duration.fallbackNoteLabel : duration.noteLabel) 
+                  : (usesFallbackSymbols ? duration.fallbackRestLabel : duration.restLabel) }}
               </button>
             </div>
             <div class="dotted-note-toggle">
@@ -611,13 +612,43 @@ const showNotePositions = ref(false);
 const currentPlayingNoteId = ref<string | null>(null);
 const selectedClef = ref('treble');
 
-// Update availableDurations to include both note and rest symbols
+// Create a safer version of availableDurations with fallback characters
 const availableDurations = [
-  { value: 'whole', noteLabel: '𝅝', restLabel: '𝄻' }, // Whole Note / Whole Rest
-  { value: 'half', noteLabel: '𝅗𝅥', restLabel: '𝄼' }, // Half Note / Half Rest
-  { value: 'quarter', noteLabel: '♩', restLabel: '𝄽' }, // Quarter Note / Quarter Rest
-  { value: 'eighth', noteLabel: '♪', restLabel: '𝄾' }, // Eighth Note / Eighth Rest
-  { value: 'sixteenth', noteLabel: '♬', restLabel: '𝄿' } // Sixteenth Note / Sixteenth Rest
+  { 
+    value: 'whole', 
+    noteLabel: '𝅝', // Unicode for whole note
+    restLabel: '𝄻', // Unicode for whole rest
+    fallbackNoteLabel: 'W', // Fallback for devices that can't display the symbol
+    fallbackRestLabel: 'WR' 
+  },
+  { 
+    value: 'half', 
+    noteLabel: '𝅗𝅥', 
+    restLabel: '𝄼',
+    fallbackNoteLabel: 'H',
+    fallbackRestLabel: 'HR'
+  },
+  { 
+    value: 'quarter', 
+    noteLabel: '♩', 
+    restLabel: '𝄽',
+    fallbackNoteLabel: 'Q',
+    fallbackRestLabel: 'QR'
+  },
+  { 
+    value: 'eighth', 
+    noteLabel: '♪', 
+    restLabel: '𝄾',
+    fallbackNoteLabel: 'E',
+    fallbackRestLabel: 'ER'
+  },
+  { 
+    value: 'sixteenth', 
+    noteLabel: '♬', 
+    restLabel: '𝄿',
+    fallbackNoteLabel: 'S',
+    fallbackRestLabel: 'SR'
+  }
 ];
 
 const availableAccidentals = [
@@ -3499,6 +3530,35 @@ const confirmClearScore = () => {
     clearScore();
   }
 };
+
+// Add this function to detect if musical symbols are properly displayed
+const usesFallbackSymbols = ref(false);
+
+// Check if the device needs fallback symbols
+onMounted(() => {
+  // Try to detect iOS
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  
+  // Default to fallback symbols on iOS
+  usesFallbackSymbols.value = isIOS;
+  
+  // Additional check: try to measure a rendered symbol
+  const testElement = document.createElement('span');
+  testElement.style.fontFamily = 'Bravura, serif';
+  testElement.style.fontSize = '20px';
+  testElement.style.visibility = 'hidden';
+  testElement.innerText = '♩'; // Test with a quarter note
+  document.body.appendChild(testElement);
+  
+  // If the width is too small, it's likely showing a square or placeholder
+  const width = testElement.offsetWidth;
+  if (width < 5) {
+    usesFallbackSymbols.value = true;
+  }
+  
+  document.body.removeChild(testElement);
+});
 </script>
 
-<style scoped src="@/assets/styles/global.css"/>
+<style scoped src="@/assets/styles/global.css">
+</style>
