@@ -502,7 +502,7 @@
     top: 0;
     left: 0;
     width: 100%;
-    height: 100%;
+    height: 60px;
     z-index: 1;
   }
   
@@ -628,6 +628,7 @@
     width: 100%;
     height: 100%;
     z-index: 3;
+    overflow: visible;
   }
   
   .note {
@@ -643,6 +644,7 @@
     width: 30px; /* Give notes some width */
     height: 20px; /* Give notes some height */
     transform: translate(-50%, -50%); /* Center based on element size */
+    margin-bottom: 0; /* Remove the previous margin */
   }
   
   /* Increase size specifically for rests */
@@ -950,9 +952,11 @@
     background: white;
     margin: 10px 0;
     display: flex;
-    height: 250px;
+    height: 300px;
     position: relative;
     overflow: hidden;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
   }
   
   /* Restore tab button active styles */
@@ -2237,4 +2241,78 @@
   .barline-repeat-end::after {
     top: 0; /* Align with parent */
     height: 100%; /* Full height of parent */
+  }
+
+  /* Lyrics styling */
+  .lyrics-control-section {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #f0f7ff;
+    border: 1px solid #cce5ff;
+    border-radius: 6px;
+  }
+
+  .lyrics-input-container {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .lyric-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  .add-lyric-btn {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+
+  .add-lyric-btn:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+  }
+
+  .lyrics-help-text {
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
+    margin-top: 5px;
+  }
+
+  /* Style for lyrics under notes */
+  .lyric {
+    position: absolute;
+    left: 50%; /* Center horizontally relative to the note's position */
+    transform: translateX(-50%);
+    font-size: 14px;
+    color: #333;
+    font-family: 'Times New Roman', serif;
+    white-space: nowrap;
+    text-align: center;
+    pointer-events: none;
+    line-height: 1.2;
+  }
+
+  .lyric.playing {
+    color: #f44336;
+    font-weight: bold;
+  }
+
+  /* Ensure notes with lyrics have proper spacing */
+  .note {
+    margin-bottom: 0; /* Remove the previous margin */
+  }
+
+  /* Add a class for notes with lyrics to help with spacing */
+  .note.has-lyric {
+    /* No special styling needed here, just for selection */
   }

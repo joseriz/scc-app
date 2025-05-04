@@ -260,14 +260,15 @@
                  :class="{
                    'rest': note.type === 'rest',
                    'playing': note.id === currentPlayingNoteId,
-                   'selected': note.id === selectedNoteId, // Add class for selected note
+                   'selected': note.id === selectedNoteId,
                    'key-signature-affected': note.type === 'note' &&
                                             note.pitch &&
                                             !note.pitch.includes('#') &&
                                             !note.pitch.includes('b') &&
                                             isNoteAffectedByKeySignature(note.pitch.charAt(0)),
                    'dotted': note.dotted,
-                   'whole-note': note.duration === 'whole'
+                   'whole-note': note.duration === 'whole',
+                   'has-lyric': note.lyric
                  }"
                  :style="getNoteStyle(note)"
                  :data-duration="note.duration"
@@ -317,16 +318,16 @@
                      getAccidentalSymbolForKeySignature(getKeySignatureAccidentalForNote(note.pitch.charAt(0))) }}
               </span>
 
-              <!-- Lyric Display -->
+              <!-- REMOVE Lyric Display from inside the note div -->
+              <!--
               <span v-if="note.lyric"
                     class="lyric"
-                    :class="{ 'playing': note.id === currentPlayingNoteId }"
-                    :data-note-id="note.id"
-                    :style="getLyricStyle(note)">
+                    :class="{ 'playing': note.id === currentPlayingNoteId }">
                 {{ note.lyric }}
               </span>
+              -->
             </div>
-            
+
             <!-- Chord symbols -->
             <div v-for="chord in chordSymbols" 
                  :key="chord.id"
@@ -336,6 +337,19 @@
                    top: `${chord.top}px`
                  }">
               {{ formatChordName(chord.chordName) }}
+            </div>
+
+            <!-- ADD Lyric Rendering - Separate loop outside the notes loop -->
+            <div v-for="note in notes.filter(n => n.lyric)"
+                 :key="`lyric-${note.id}`"
+                 class="lyric"
+                 :class="{ 'playing': note.id === currentPlayingNoteId }"
+                 :style="{
+                   left: `${note.position * 50}px`,
+                   /* Increase this value again */
+                   top: '230px' /* Was 215px, adjust as needed */
+                 }">
+              {{ note.lyric }}
             </div>
           </div>
         </div>
@@ -589,6 +603,31 @@
   <button @click="toggleDebugMonitor" style="position: fixed; bottom: 10px; left: 10px; z-index: 9999; background: #ff5722; color: white; border: none; padding: 5px 10px; border-radius: 4px;">
     Toggle Debug
   </button>
+
+  <!-- Add this after the note controls section, inside the Notes tab -->
+  <div v-if="activeTab === 'notes'" class="lyrics-control-section">
+    <h4>Lyrics</h4>
+    <div class="lyrics-input-container">
+      <input 
+        type="text" 
+        v-model="currentLyric" 
+        placeholder="Enter lyric for selected note" 
+        :disabled="!selectedNoteId"
+        @keypress="handleLyricInputKeypress"
+        class="lyric-input"
+      />
+      <button 
+        @click="selectedNoteId ? setLyricForNote(selectedNoteId, currentLyric) : null" 
+        :disabled="!selectedNoteId"
+        class="add-lyric-btn"
+      >
+        Add Lyric
+      </button>
+    </div>
+    <p class="lyrics-help-text">
+      Select a note first, then enter a lyric and press Enter or click "Add Lyric"
+    </p>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -3565,6 +3604,38 @@ onMounted(() => {
   
   document.body.removeChild(testElement);
 });
+
+// Add a new ref for the current lyric input
+const currentLyric = ref('');
+
+// Add a function to set lyrics for the selected note
+const setLyricForNote = (noteId: string, lyric: string) => {
+  const noteIndex = notes.value.findIndex(note => note.id === noteId);
+  if (noteIndex !== -1) {
+    // Create a new note object with the lyric added
+    const updatedNote = {
+      ...notes.value[noteIndex],
+      lyric: lyric.trim()
+    };
+    
+    // Replace the note in the array
+    notes.value.splice(noteIndex, 1, updatedNote);
+    
+    // Clear the current lyric input
+    currentLyric.value = '';
+    
+    // Clear the selected note
+    selectedNoteId.value = null;
+  }
+};
+
+// Add a function to handle lyric input keypress events
+const handleLyricInputKeypress = (event: KeyboardEvent) => {
+  if (event.key === 'Enter' && selectedNoteId.value) {
+    setLyricForNote(selectedNoteId.value, currentLyric.value);
+    event.preventDefault();
+  }
+};
 </script>
 
 <style scoped src="@/assets/styles/global.css">
