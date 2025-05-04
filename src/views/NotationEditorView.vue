@@ -660,12 +660,24 @@
       Select a note first, then enter a lyric and press Enter or click "Add Lyric"
     </p>
   </div>
+
+  <!-- Add this near the top of your template, after the opening <div class="notation-editor"> -->
+  <div class="help-button-container">
+    <button class="help-button" @click="showHelp = true">
+      <span class="help-icon">?</span>
+      <span class="help-text">Help</span>
+    </button>
+  </div>
+
+  <!-- Add this at the end of your template, just before the closing </div> -->
+  <HelpGuide :is-visible="showHelp" @close="showHelp = false" />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, reactive, watch } from 'vue';
 import * as Tone from 'tone';
 import { useNotationStore } from '@/stores/notation';
+import HelpGuide from '@/components/HelpGuide.vue';
 
 // Store
 const notationStore = useNotationStore();
@@ -762,7 +774,7 @@ interface Composition {
 // Add window property declarations
 declare global {
   interface Window {
-    playbackTimeouts: number[]; // Correct type for browser setTimeout IDs
+    playbackTimeouts: ReturnType<typeof setTimeout>[]; // Change from number[] to ReturnType<typeof setTimeout>[]
     debugMonitorInterval: number | null;
     debugMonitorRemover: () => void;
     // Add this if you use it, otherwise remove
@@ -3692,6 +3704,9 @@ const handleLyricInputKeypress = (event: KeyboardEvent) => {
     event.preventDefault();
   }
 };
+
+// Add a new ref for the show help state
+const showHelp = ref(false);
 </script>
 
 <style scoped src="@/assets/styles/global.css">
