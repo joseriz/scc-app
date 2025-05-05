@@ -848,8 +848,11 @@ const initializeToneJs = async () => {
             'F#4': 'Fs4.mp3',
             'A4': 'A4.mp3',
           },
-          release: 1,
-          baseUrl: 'https://tonejs.github.io/audio/salamander/'
+          // Change this to use local files instead of external URL
+          baseUrl: '/audio/',
+          onload: () => {
+            console.log('Piano samples loaded successfully');
+          }
         }).toDestination();
       } catch (error) {
         console.error('Error initializing piano sampler:', error);
