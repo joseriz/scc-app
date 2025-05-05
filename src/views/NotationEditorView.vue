@@ -1,23 +1,15 @@
 <template>
   <!-- Add responsive meta tag -->
   <div class="notation-editor">
-    <!-- Make controls more mobile-friendly -->
-    <div class="controls">
-      <div class="controls-row">
-        <div class="tempo-control">
-          <label>Tempo: {{ tempo }}</label>
-          <input 
-            type="range" 
-            v-model="tempo" 
-            min="40" 
-            max="240" 
-            class="tempo-slider"
-          />
-        </div>
-        
-        <div class="clef-selector">
+    <!-- Header with logo and essential musical settings -->
+    <div class="app-header">
+      <img src="@/assets/st-cecilia-logo.png" alt="St Cecilia's Songbook" class="app-logo">
+      
+      <!-- Musical settings in a compact row -->
+      <div class="musical-settings">
+        <div class="setting-item">
           <label for="clef-select">Clef:</label>
-          <div class="custom-select">
+          <div class="custom-select compact">
             <select id="clef-select" v-model="selectedClef" @change="handleClefChange">
               <option value="treble">𝄞 Treble</option>
               <option value="bass">𝄢 Bass</option>
@@ -25,11 +17,10 @@
             <div class="select-icon">▼</div>
           </div>
         </div>
-
-        <!-- ADD THE KEY SIGNATURE SELECTOR HERE -->
-        <div class="key-signature-selector">
+        
+        <div class="setting-item">
           <label for="key-signature">Key:</label>
-          <div class="custom-select">
+          <div class="custom-select compact">
             <select id="key-signature" v-model="keySignature" @change="changeKeySignature(keySignature)">
               <option value="C">C Maj (0)</option>
               <option value="G">G Maj (1♯)</option>
@@ -50,119 +41,28 @@
             <div class="select-icon">▼</div>
           </div>
         </div>
-        <!-- END OF ADDED KEY SIGNATURE SELECTOR -->
-      </div>
-      
-      <div class="controls-row">
-        <div class="playback-controls">
-          <button 
-            @click="togglePlayback" 
-            class="action-button play-button"
-            :class="{
-              'play-button': !isPlaying && !isPaused,
-              'pause-button': isPlaying && !isPaused,
-              'resume-button': isPaused
-            }"
-          >
-            <span class="button-icon">
-              <span v-if="!isPlaying && !isPaused">▶</span>
-              <span v-else-if="isPlaying && !isPaused">⏸</span>
-              <span v-else-if="isPaused">⏯</span>
-            </span>
-            <span class="button-label">
-              {{ !isPlaying && !isPaused ? 'Play' : (isPlaying && !isPaused ? 'Pause' : 'Resume') }}
-            </span>
-          </button>
-          
-          <button @click="stopPlayback" class="action-button stop-button" :disabled="!isPlaying && !isPaused">
-            <span class="button-icon">■</span>
-            <span class="button-label">Stop</span>
-          </button>
-          
-          <!-- Update the clear button to be disabled during playback -->
-          <button 
-            @click="isPlaying || isPaused ? restartPlayback() : confirmClearScore()" 
-            class="action-button"
-            :class="{
-              'clear-button': !isPlaying && !isPaused,
-              'restart-button': isPlaying || isPaused
-            }"
-            @mousedown="animateButton"
-          >
-            <span class="button-icon">
-              <span v-if="!isPlaying && !isPaused">✕</span>
-              <span v-else>⟲</span>
-            </span>
-            <span class="button-label">
-              {{ !isPlaying && !isPaused ? 'Clear' : 'Restart' }}
-            </span>
-          </button>
+        
+        <div class="setting-item">
+          <label for="time-signature">Time:</label>
+          <div class="custom-select compact">
+            <select id="time-signature" v-model="timeSignature" @change="updateTimeSignature">
+              <option value="4/4">4/4</option>
+              <option value="3/4">3/4</option>
+              <option value="2/4">2/4</option>
+              <option value="6/8">6/8</option>
+              <option value="9/8">9/8</option>
+              <option value="12/8">12/8</option>
+            </select>
+            <div class="select-icon">▼</div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Add this after the clef selector -->
-    <div class="time-signature-selector">
-      <label for="time-signature">Time:</label>
-      <div class="custom-select">
-        <select id="time-signature" v-model="timeSignature" @change="updateTimeSignature">
-          <option value="4/4">4/4</option>
-          <option value="3/4">3/4</option>
-          <option value="2/4">2/4</option>
-          <option value="6/8">6/8</option>
-          <option value="9/8">9/8</option>
-          <option value="12/8">12/8</option>
-        </select>
-        <div class="select-icon">▼</div>
-      </div>
-    </div>
-
-    <!-- Add this to the time signature selector section -->
-    <div class="measure-visibility-toggle">
-      <input 
-        type="checkbox" 
-        id="show-measures" 
-        v-model="showMeasureNumbers"
-      />
-      <label for="show-measures">Show measure numbers</label>
-    </div>
-
-    <!-- Add this after the playback controls section, inside the controls-row div -->
-    <div class="playback-measure-controls">
-      <div class="control-label">Playback Range:</div>
-      <div class="measure-range-inputs">
-        <div class="measure-input">
-          <label for="start-measure">From:</label>
-          <input 
-            type="number" 
-            id="start-measure" 
-            v-model.number="playbackStartMeasure" 
-            min="1" 
-            :max="barlines.length"
-            class="measure-number-input"
-          />
-        </div>
-        <div class="measure-input">
-          <label for="end-measure">To:</label>
-          <input 
-            type="number" 
-            id="end-measure" 
-            v-model.number="playbackEndMeasure" 
-            min="0" 
-            :max="barlines.length"
-            class="measure-number-input"
-          />
-          <span class="measure-hint">(0 = end)</span>
-        </div>
-      </div>
-      <div class="auto-scroll-toggle">
-        <input 
-          type="checkbox" 
-          id="auto-scroll" 
-          v-model="autoScrollToPlayingNote"
-        />
-        <label for="auto-scroll">Auto-scroll to playing notes</label>
-      </div>
+    <!-- Tempo control in its own row -->
+    <div class="tempo-container">
+      <label>Tempo: {{ tempo }}</label>
+      <input type="range" v-model="tempo" min="40" max="240" class="tempo-slider" />
     </div>
 
     <!-- Staff container with improved mobile layout -->
@@ -394,11 +294,99 @@
         </button>
       </div>
     </div>
+    
+    <!-- Playback controls positioned right above the staff -->
+    <div class="playback-controls-container">
+      <div class="playback-controls">
+        <button @click="togglePlayback" class="action-button play-button" :class="{
+          'play-button': !isPlaying && !isPaused,
+          'pause-button': isPlaying && !isPaused,
+          'resume-button': isPaused
+        }">
+          <span class="button-icon">
+            <span v-if="!isPlaying && !isPaused">▶</span>
+            <span v-else-if="isPlaying && !isPaused">⏸</span>
+            <span v-else-if="isPaused">⏯</span>
+          </span>
+          <span class="button-label">{{ !isPlaying && !isPaused ? 'Play' : (isPlaying && !isPaused ? 'Pause' : 'Resume') }}</span>
+        </button>
+        
+        <button @click="stopPlayback" class="action-button stop-button" :disabled="!isPlaying && !isPaused">
+          <span class="button-icon">■</span>
+          <span class="button-label">Stop</span>
+        </button>
+        
+        <button @click="isPlaying || isPaused ? restartPlayback() : confirmClearScore()" 
+          class="action-button" :class="{
+            'clear-button': !isPlaying && !isPaused,
+            'restart-button': isPlaying || isPaused
+          }">
+          <span class="button-icon">
+            <span v-if="!isPlaying && !isPaused">✕</span>
+            <span v-else>⟲</span>
+          </span>
+          <span class="button-label">{{ !isPlaying && !isPaused ? 'Clear' : 'Restart' }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Add this right after the playback controls container -->
+    <div class="playback-settings">
+      <div class="playback-range">
+        <div class="control-label">Playback Range:</div>
+        <div class="measure-range-inputs">
+          <div class="measure-input">
+            <label for="start-measure">From:</label>
+            <input 
+              type="number" 
+              id="start-measure" 
+              v-model.number="playbackStartMeasure" 
+              min="1" 
+              :max="barlines.length"
+              class="measure-number-input"
+            />
+          </div>
+          <div class="measure-input">
+            <label for="end-measure">To:</label>
+            <input 
+              type="number" 
+              id="end-measure" 
+              v-model.number="playbackEndMeasure" 
+              min="0" 
+              :max="barlines.length"
+              class="measure-number-input"
+            />
+            <span class="measure-hint">(0 = end)</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="playback-options">
+        <div class="auto-scroll-toggle">
+          <input 
+            type="checkbox" 
+            id="auto-scroll" 
+            v-model="autoScrollToPlayingNote"
+          />
+          <label for="auto-scroll">Auto-scroll to playing notes</label>
+        </div>
+        
+        <div class="measure-visibility-toggle">
+          <input 
+            type="checkbox" 
+            id="show-measures" 
+            v-model="showMeasureNumbers"
+          />
+          <label for="show-measures">Show measure numbers</label>
+        </div>
+      </div>
+    </div>
 
     <!-- Mobile-optimized note controls with tabs -->
     <div class="mobile-tabs">
       <button @click="activeTab = 'notes'" :class="['tab-btn', { active: activeTab === 'notes' }]">Notes</button>
-      <button @click="activeTab = 'settings'" :class="['tab-btn', { active: activeTab === 'settings' }]">Settings</button>
+      <!-- Hiding Settings tab for now -->
+      <!-- <button @click="activeTab = 'settings'" :class="['tab-btn', { active: activeTab === 'settings' }]">Settings</button> -->
       <button @click="activeTab = 'saved'" :class="['tab-btn', { active: activeTab === 'saved' }]">Saved</button>
     </div>
 
@@ -632,9 +620,9 @@
       </div>
     </div>
   </div>
-  <button @click="toggleDebugMonitor" style="position: fixed; bottom: 10px; left: 10px; z-index: 9999; background: #ff5722; color: white; border: none; padding: 5px 10px; border-radius: 4px;">
+  <!-- <button @click="toggleDebugMonitor" style="position: fixed; bottom: 10px; left: 10px; z-index: 9999; background: #ff5722; color: white; border: none; padding: 5px 10px; border-radius: 4px;">
     Toggle Debug
-  </button>
+  </button> -->
 
   <!-- Add this after the note controls section, inside the Notes tab -->
   <div v-if="activeTab === 'notes'" class="lyrics-control-section">
@@ -3514,7 +3502,7 @@ const pausePlayback = () => {
 
         // Store the timeout info for resuming later
         pausedTimeouts.value.push({
-          id, // id is already a number here
+          id: id as unknown as number, // Convert Timeout to number
           remainingTime,
           callback: timeoutInfo.callback
         });

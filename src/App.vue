@@ -1,8 +1,8 @@
 <template>
   <div class="app">
-    <header>
+    <!-- <header>
       <h1>Music Notation App</h1>
-    </header>
+    </header> -->
     <main>
       <RouterView />
     </main>

@@ -2473,3 +2473,245 @@
   /* .note.selected {
     z-index: 10;
   } */
+
+/* Simplified logo styling */
+.logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: linear-gradient(135deg, rgba(255,240,245,0.3), rgba(240,248,255,0.3));
+  border-radius: 8px;
+}
+
+.app-logo {
+  max-width: 120px;
+  height: auto;
+}
+
+/* Responsive adjustments for the logo */
+@media (min-width: 768px) {
+  .logo-container {
+    padding: 12px;
+  }
+  
+  .app-logo {
+    max-width: 140px;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo-container {
+    padding: 8px;
+    margin-bottom: 10px;
+  }
+  
+  .app-logo {
+    max-width: 100px;
+  }
+}
+
+/* Improved layout styling */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px;
+  background: linear-gradient(135deg, rgba(255,240,245,0.2), rgba(240,248,255,0.2));
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.app-logo {
+  height: 45px;
+  width: auto;
+  margin-right: 10px;
+}
+
+.musical-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tempo-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px;
+  background-color: #f8f8f8;
+  border-radius: 8px;
+}
+
+.tempo-slider {
+  flex: 1;
+  min-width: 120px;
+}
+
+.playback-controls-container {
+  margin: 10px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.playback-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  background-color: rgba(248, 248, 248, 0.8);
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .app-header {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .app-logo {
+    margin-right: 0;
+    margin-bottom: 8px;
+  }
+  
+  .musical-settings {
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .setting-item {
+    min-width: 45%;
+    justify-content: center;
+  }
+  
+  .tempo-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .tempo-container label {
+    text-align: center;
+    margin-bottom: 5px;
+  }
+}
+
+/* Playback settings styling */
+.playback-settings {
+  margin: 10px 0 15px;
+  padding: 10px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+.playback-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.control-label {
+  font-weight: 500;
+  color: #333;
+  min-width: 120px;
+}
+
+.measure-range-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: center;
+}
+
+.measure-input {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.measure-number-input {
+  width: 60px;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.measure-hint {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+}
+
+.playback-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.auto-scroll-toggle,
+.measure-visibility-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .playback-range {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .measure-range-inputs {
+    width: 100%;
+  }
+  
+  .playback-options {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
+/* Update logo size */
+.app-logo {
+  height: 100px; /* Increased from 45px to 100px */
+  width: auto;
+  margin-right: 15px;
+}
+
+/* Adjust responsive styles for the larger logo */
+@media (max-width: 600px) {
+  .app-header {
+    flex-direction: column;
+    align-items: center;
+    gap: 15px; /* Increased gap to accommodate larger logo */
+  }
+  
+  .app-logo {
+    height: 100px; /* Keep minimum size on mobile */
+    margin-right: 0;
+    margin-bottom: 10px;
+  }
+  
+  /* Other responsive styles remain the same */
+}
+
+/* Hide debug button */
+.toggle-debug-btn {
+  display: none !important;
+}
