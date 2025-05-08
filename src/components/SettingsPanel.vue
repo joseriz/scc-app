@@ -10,12 +10,12 @@
     </div>
 
     <!-- Debug toggle -->
-    <div class="control-section">
+    <!-- <div class="control-section">
       <h4>Debug</h4>
       <button @click="$emit('toggleDebugMode')" :class="['note-btn', { active: debugMode }]">
         Debug Mode
       </button>
-    </div>
+    </div> -->
   </div>
 </template>
 

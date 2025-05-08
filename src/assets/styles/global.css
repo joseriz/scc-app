@@ -667,7 +667,7 @@
     background: black;
     border-radius: 50%;
     left: 5px;
-    top: 16px;
+    top: 16px; /* Reverted from 6px back to 16px */
     transform: rotate(-20deg);
   }
   
@@ -724,7 +724,7 @@
     border-radius: 50%;
     transform: rotate(-20deg);
     left: 4px;
-    top: 16px;
+    top: 6px; /* Explicitly set to 6px for whole note correction */
   }
   
   /* Make sure whole notes don't have stems */
@@ -2824,4 +2824,63 @@
 
 .add-voice-btn:hover {
   background-color: #388e3c;
+}
+
+.mobile-tabs {
+  display: flex;
+  margin: 10px 0;
+  width: 100%;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 5px;
+  background: #f0f0f0;
+  border: none;
+  border-bottom: 2px solid #ddd;
+  font-weight: bold;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.tab-btn.active {
+  background: #e0e0e0;
+  border-bottom-color: #2196F3; /* Highlight active tab */
+}
+.tab-btn:hover:not(.active) {
+  background: #e9e9e9;
+}
+
+/* For quarter, eighth, and sixteenth notes that have filled noteheads */
+.note .notehead.quarter,
+.note .notehead.eighth,
+.note .notehead.sixteenth {
+  background-color: currentColor; /* Use the note's color property from parent .note */
+  border-color: currentColor;
+}
+
+/* For stems and flags */
+.note .stem,
+.note .flag {
+  background-color: currentColor; /* Use the note's color property */
+}
+
+/* For whole notes that have hollow noteheads */
+.note .notehead.whole {
+  background-color: white; /* Keep the inside white */
+  border: 1px solid currentColor; /* Use the note's color for the border */
+  /* position: relative; top: 1px; */ /* Nudge can be adjusted if needed */
+}
+
+/* For half notes that have hollow noteheads */
+.note .notehead.half {
+  background-color: white; /* Keep the inside white */
+  border: 1px solid currentColor; /* Use the note's color for the border */
+}
+
+/* For accidentals and other text elements within the note */
+.note .accidental-display, /* Ensure this class matches your accidental span */
+.note .dot {
+  color: currentColor; /* Use the note's color property */
 }

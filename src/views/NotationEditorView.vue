@@ -256,7 +256,7 @@
     <!-- Mobile-optimized note controls with tabs -->
     <div class="mobile-tabs">
       <button @click="activeTab = 'notes'" :class="['tab-btn', { active: activeTab === 'notes' }]">Notes</button>
-      <button @click="activeTab = 'settings'" :class="['tab-btn', { active: activeTab === 'settings' }]">Settings</button>
+      <!-- <button @click="activeTab = 'settings'" :class="['tab-btn', { active: activeTab === 'settings' }]">Settings</button> -->
       <button @click="activeTab = 'saved'" :class="['tab-btn', { active: activeTab === 'saved' }]">Saved</button>
     </div>
 
@@ -279,14 +279,14 @@
       />
     </div>
 
-    <div v-if="activeTab === 'settings'">
+    <!-- <div v-if="activeTab === 'settings'">
       <SettingsPanel
         :debugMode="debugMode"
         @showChordInput="showChordInput = true"
         @addExampleChords="addExampleChords"
         @toggleDebugMode="toggleDebugMode"
       />
-      </div>
+      </div> -->
       
     <DebugPanel
       :debugMode="debugMode"
@@ -347,69 +347,23 @@ import LyricsControls from '@/components/LyricsControls.vue'; // Import new
 import VoiceLayersPanel from '@/components/VoiceLayersPanel.vue'; // Import new
 import SettingsPanel from '@/components/SettingsPanel.vue'; // Import new
 import DebugPanel from '@/components/DebugPanel.vue'; // Import new
+import { useDebug } from '@/composables/useDebug'; // Import the new composable
+
+// Import types
+import {
+  Note,
+  ChordSymbol,
+  VoiceLayer,
+  CompositionData,
+  NoteWithVoiceInfo
+} from '@/types/notation'; // Adjust path if necessary
 
 // Store
 const notationStore = useNotationStore();
 
 // --- CONSOLIDATED INTERFACE DEFINITIONS ---
-interface Note {
-  id: string;
-  type: "note" | "rest";
-  pitch?: string;
-  duration: string;
-  position: number;
-  verticalPosition: number;
-  dotted?: boolean;
-  lyric?: string;
-  voiceId?: string; // Added: To link note to a voice
-  voiceColor?: string; // Added: To store color from voice
-}
-
-interface ChordSymbol {
-  id: string;
-  position: number;
-  chordName: string;
-  top: number;
-}
-
-interface VoiceLayer {
-  id: string;
-  name: string;
-  color: string;
-  visible: boolean;
-  active: boolean;
-  selected: boolean;
-  volume: number;
-  notes: Note[]; // Use the consolidated Note interface
-}
-
-// This will be the primary interface for saved compositions
-interface CompositionData {
-  id: string;
-  name: string;
-  dateCreated: number;
-  notes: Note[]; // For a flattened list of all notes from all voices
-  voiceLayers?: VoiceLayer[];
-  tempo: number;
-  clef: string;
-  keySignature: string;
-  timeSignature?: string;
-  chordSymbols?: ChordSymbol[];
-  activeVoiceId?: string;
-  staffWidth?: number;
-  // UI state saved with the composition
-  selectedDuration: string;
-  selectedNoteType: string;
-  selectedAccidental?: string;
-  selectedOctave: number;
-  isDottedNote: boolean;
-}
-
-// Type for notes that appear in allVisibleNotes (dynamically has voiceId and voiceColor)
-interface NoteWithVoiceInfo extends Note {
-  voiceId: string; // Non-optional here
-  voiceColor: string; // Non-optional here
-}
+// All interface definitions (Note, ChordSymbol, VoiceLayer, CompositionData, NoteWithVoiceInfo)
+// can now be removed from here as they are imported.
 
 // State variables
 // const selectedHeight = ref('middle');
@@ -419,8 +373,8 @@ const selectedAccidental = ref('natural');
 const selectedDuration = ref('quarter');
 const lastClickY = ref(0);
 const tempo = ref(120);
-const debugMode = ref(false);
-const showNotePositions = ref(false);
+// const debugMode = ref(false); // Moved to composable
+// const showNotePositions = ref(false); // Moved to composable
 const currentPlayingNoteId = ref<string | null>(null);
 const selectedClef = ref('treble');
 
@@ -1089,53 +1043,13 @@ const handleStaffClick = (event) => {
   }
 };
 
-const toggleDebugMode = () => {
-  debugMode.value = !debugMode.value;
-};
+// const toggleDebugMode = () => { // This function is now in useDebug.ts
+//   debugMode.value = !debugMode.value;
+// };
 
-// Update the testAllNotes function to use the correct pitches
-const testAllNotes = () => {
-  // Clear existing notes
-  notationStore.clearNotes();
-  
-  // Define the balanced range of notes based on selected clef
-  let testNotes;
-  
-  if (selectedClef.value === 'treble') {
-    testNotes = [
-    // Higher notes (with ledger lines)
-      'A5', 'G5',
-    
-    // Staff notes
-      'F5', 'E5', 'D5', 'C5', 'B4', 'A4', 'G4', 'F4', 'E4',
-    
-    // Lower notes (with ledger lines)
-      'D4', 'C4', 'B3', 'A3', 'G3', 'F3', 'E3', 'D3', 'C3'
-    ];
-  } else {
-    testNotes = [
-      // Higher notes (with ledger lines)
-      'C4', 'B3',
-      
-      // Staff notes
-      'A3', 'G3', 'F3', 'E3', 'D3', 'C3', 'B2', 'A2', 'G2',
-      
-      // Lower notes (with ledger lines)
-      'F2', 'E2', 'D2', 'C2', 'B1', 'A1', 'G1', 'F1', 'E1'
-    ];
-  }
-  
-  // Place each note on the staff
-  testNotes.forEach((pitch, index) => {
-    notationStore.addNote({
-      id: `test-${index}`,
-      type: 'note',
-      pitch,
-      duration: 'quarter',
-      position: index + 1 // Space them out horizontally
-    });
-  });
-};
+// const testAllNotes = () => { // This function is now in useDebug.ts
+//   // ...
+// };
 
 // Add a function to determine stem direction based on note position
 const getStemDirection = (pitch: string) => {
@@ -1837,10 +1751,23 @@ const saveComposition = () => {
     return;
   }
   
-  const newComposition: Composition = {
+  const newComposition: CompositionData = { // Use CompositionData here
     id: generateId(),
     name: compositionName.value.trim(),
     dateCreated: Date.now(),
+    // Flatten all notes from all voices for the 'notes' property
+    notes: allVisibleNotes.value.map(note => ({
+      id: note.id,
+      type: note.type,
+      pitch: note.pitch,
+      duration: note.duration,
+      position: note.position,
+      verticalPosition: note.verticalPosition,
+      dotted: note.dotted,
+      lyric: note.lyric,
+      // voiceId and voiceColor are part of NoteWithVoiceInfo, ensure Note type matches
+      // For the base 'notes' array, we might not need voiceId/voiceColor if voiceLayers store them
+    })),
     voiceLayers: voiceLayers.value.map(voice => ({
       id: voice.id,
       name: voice.name,
@@ -1857,11 +1784,14 @@ const saveComposition = () => {
     timeSignature: timeSignature.value,
     chordSymbols: [...chordSymbols.value],
     activeVoiceId: activeVoiceId.value,
-    staffWidth: staffWidth.value
+    staffWidth: staffWidth.value,
+    // Add UI state properties
+    selectedDuration: selectedDuration.value,
+    selectedNoteType: selectedNoteType.value,
+    selectedAccidental: selectedAccidental.value,
+    selectedOctave: selectedOctave.value,
+    isDottedNote: isDottedNote.value,
   };
-
-  // Also add notes property for backward compatibility
-  newComposition.notes = allVisibleNotes.value.map(note => ({...note}));
 
   // Save the composition
   savedCompositions.value.push(newComposition);
@@ -1874,11 +1804,11 @@ const saveComposition = () => {
 }
 
 // Update the loadComposition function to use the resetAudioSystem
-const loadComposition = (compositionId) => {
+const loadComposition = (compositionId: string) => { // Add type for compositionId
   // Find the composition by ID
     const composition = savedCompositions.value.find(comp => comp.id === compositionId);
     
-  if (composition) {
+  if (composition) { // TypeScript now knows composition is CompositionData | undefined
     // Set the current composition ID
     currentCompositionId.value = composition.id;
     
@@ -2111,26 +2041,46 @@ const updateComposition = (id: string) => {
     return;
   }
 
-  // Create the updated composition object matching SavedComposition interface
-  const updatedData: SavedComposition = {
+  // Create the updated composition object matching CompositionData interface
+  const updatedData: CompositionData = { // Use CompositionData here
     // Keep existing id and dateCreated
     id: savedCompositions.value[compositionIndex].id,
     dateCreated: savedCompositions.value[compositionIndex].dateCreated,
     // Update name if changed
     name: compositionName.value.trim() || savedCompositions.value[compositionIndex].name,
     // Update with current state
-    notes: notes.value.map(note => ({...note})), // Deep copy
+    notes: allVisibleNotes.value.map(note => ({ // Flatten notes
+      id: note.id,
+      type: note.type,
+      pitch: note.pitch,
+      duration: note.duration,
+      position: note.position,
+      verticalPosition: note.verticalPosition,
+      dotted: note.dotted,
+      lyric: note.lyric,
+    })),
+    voiceLayers: voiceLayers.value.map(voice => ({ // Save full voice layers
+      id: voice.id,
+      name: voice.name,
+      color: voice.color,
+      visible: voice.visible,
+      active: voice.active,
+      selected: voice.selected,
+      volume: voice.volume,
+      notes: [...voice.notes]
+    })),
     tempo: tempo.value,
     clef: selectedClef.value,
     keySignature: keySignature.value,
-    timeSignature: timeSignature.value, // Include time signature
+    timeSignature: timeSignature.value,
     selectedNoteType: selectedNoteType.value,
     selectedDuration: selectedDuration.value,
     selectedOctave: selectedOctave.value,
     isDottedNote: isDottedNote.value,
-    chordSymbols: chordSymbols.value.map(chord => ({...chord})), // Deep copy
-    staffWidth: staffWidth.value, // Include staffWidth
-    selectedAccidental: selectedAccidental.value // Include selectedAccidental
+    chordSymbols: chordSymbols.value.map(chord => ({...chord})),
+    staffWidth: staffWidth.value,
+    selectedAccidental: selectedAccidental.value,
+    activeVoiceId: activeVoiceId.value, // Save active voice ID
   };
 
   // Replace the old composition data with the new data
@@ -3500,71 +3450,18 @@ const updateVoiceLayerSelection = (voiceId: string, selected: boolean) => {
   }
 };
 
+// Initialize Debug Composable
+// Pass the 'notes' computed property (or the ref it depends on)
+// For notesForDebug, DebugPanel expects 'notes' which is activeVoice.value.notes
+const {
+  debugMode, // Get the reactive ref from the composable
+  showNotePositions, // Get the reactive ref from the composable
+  toggleDebugMode, // Get the method from the composable
+  testAllNotes, // Get the method from the composable
+  // notesForDebug will be the 'notes' computed property from NotationEditorView
+  // lastClickY and selectedOctave are passed through for DebugPanel
+} = useDebug(notes, selectedClef, lastClickY, selectedOctave);
+
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
-<style scoped>
-/* Minimal styles should remain here, mostly layout for the main .notation-editor
-   and styles for elements not yet componentized (like the staff itself) */
-
-/* Example: Mobile tab styles if not moved to a specific layout component */
-.mobile-tabs {
-  display: flex;
-  margin: 10px 0;
-  width: 100%;
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 10px 5px;
-  background: #f0f0f0;
-  border: none;
-  border-bottom: 2px solid #ddd;
-  font-weight: bold;
-  font-size: 14px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color 0.2s, border-color 0.2s;
-}
-.tab-btn.active {
-  background: #e0e0e0;
-  border-bottom-color: #2196F3; /* Highlight active tab */
-}
-.tab-btn:hover:not(.active) {
-  background: #e9e9e9;
-}
-
-/* For quarter, eighth, and sixteenth notes that have filled noteheads */
-.note .notehead.quarter,
-.note .notehead.eighth,
-.note .notehead.sixteenth {
-  background-color: currentColor; /* Use the note's color property from parent .note */
-  border-color: currentColor;
-}
-
-/* For stems and flags */
-.note .stem,
-.note .flag {
-  background-color: currentColor; /* Use the note's color property */
-}
-
-/* For whole notes that have hollow noteheads */
-.note .notehead.whole {
-  background-color: white; /* Keep the inside white */
-  border: 1px solid currentColor; /* Use the note's color for the border */
-  /* position: relative; top: 1px; */ /* Nudge can be adjusted if needed */
-}
-
-/* For half notes that have hollow noteheads */
-.note .notehead.half {
-  background-color: white; /* Keep the inside white */
-  border: 1px solid currentColor; /* Use the note's color for the border */
-}
-
-/* For accidentals and other text elements within the note */
-.note .accidental-display, /* Ensure this class matches your accidental span */
-.note .dot {
-  color: currentColor; /* Use the note's color property */
-}
-
-</style>
