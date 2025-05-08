@@ -10,6 +10,11 @@
       @timeSignatureChange="updateTimeSignature"
     />
 
+    <!-- Floating Help Button -->
+    <div @click="showHelp = true" class="floating-help-btn">
+      ?
+    </div>
+
     <TempoControl v-model="tempo" />
 
     <!-- Staff container with improved mobile layout -->
@@ -353,8 +358,8 @@ import { useDebug } from '@/composables/useDebug'; // Import the new composable
 
 // Import types
 import type {
-  Note,
-  ChordSymbol,
+  Note as ImportedNote, // Alias the import
+  ChordSymbol as ImportedChordSymbol, // Alias the import
   VoiceLayer,
   CompositionData,
   NoteWithVoiceInfo
@@ -464,7 +469,7 @@ const allVisibleNotes = computed((): NoteWithVoiceInfo[] => { // Specify return 
 });
 
 // Update the existing notes ref to use the active voice's notes
-const notes = computed<Note[]>({ // Explicitly type notes
+const notes = computed<ImportedNote[]>({ // Explicitly type notes using aliased import
   get: () => {
     // Ensure activeVoice is never undefined and always has a notes array
     if (activeVoice.value && Array.isArray(activeVoice.value.notes)) {
@@ -532,29 +537,29 @@ const availableAccidentals = [
 ];
 
 // Add these type definitions at the top of your script section
-interface Note {
-  id: string;
-  type: "note" | "rest";  // Restrict to these literal types
-  pitch?: string;
-  duration: string;
-  position: number;
-  verticalPosition: number;
-  dotted?: boolean;
-  lyric?: string;
-}
+// interface Note { // REMOVE THIS LOCAL DEFINITION
+//   id: string;
+//   type: "note" | "rest";
+//   pitch?: string;
+//   duration: string;
+//   position: number;
+//   verticalPosition: number;
+//   dotted?: boolean;
+//   lyric?: string;
+// }
 
 // Update the Composition interface to use the imported types
 interface Composition {
   id: string;
   name: string;
   dateCreated: number;
-  notes?: Note[];
+  notes?: ImportedNote[]; // Use aliased import
   voiceLayers?: VoiceLayer[];
   tempo: number;
   clef: string;
   keySignature: string;
   timeSignature?: string;
-  chordSymbols?: ChordSymbol[];
+  chordSymbols?: ImportedChordSymbol[]; // Use aliased import
   activeVoiceId?: string;
   staffWidth?: number;
 }
@@ -692,27 +697,27 @@ onMounted(async () => {
 });
 
 // Types
-interface Note {
-  id: string;
-  type: 'note' | 'rest';
-  pitch?: string;
-  duration: string;
-  position: number;
-  verticalPosition: number;
-  dotted?: boolean;
-  lyric?: string; // Add this line for lyrics
-}
+// interface Note { // REMOVE THIS LOCAL DEFINITION
+//   id: string;
+//   type: 'note' | 'rest';
+//   pitch?: string;
+//   duration: string;
+//   position: number;
+//   verticalPosition: number;
+//   dotted?: boolean;
+//   lyric?: string; // Add this line for lyrics
+// }
 
 // Add new interface for chord symbols
-interface ChordSymbol {
-  id: string;
-  position: number;
-  chordName: string;
-  top: number; // Position above staff
-}
+// interface ChordSymbol { // REMOVE THIS LOCAL DEFINITION
+//   id: string;
+//   position: number;
+//   chordName: string;
+//   top: number; // Position above staff
+// }
 
 // Add chord symbols to the store
-const chordSymbols = ref<ChordSymbol[]>([]);
+const chordSymbols = ref<ImportedChordSymbol[]>([]); // Use aliased import
 
 // Chord input state
 const showChordInput = ref(false);
@@ -1129,7 +1134,7 @@ const getStemDirection = (pitch: string) => {
 };
 
 // Update the getNoteSymbol function to only handle rests
-const getNoteSymbol = (note: Note) => {
+const getNoteSymbol = (note: ImportedNote) => {
   if (note.type === 'rest') {
     // Return rest symbols based on duration
     switch (note.duration) {
@@ -1432,7 +1437,7 @@ const handleResize = () => {
 // };
 
 // Add back the getAccidentalSymbol function
-const getAccidentalSymbol = (note: Note) => {
+const getAccidentalSymbol = (note: ImportedNote) => {
   if (note.type !== 'note' || !note.pitch) return '';
   
   if (note.pitch.includes('#')) {
@@ -1707,8 +1712,8 @@ const toggleDottedNote = () => {
 // Add a function to remove a note
 const removeNote = (note) => {
   // If the note has a voiceId property, it's from allVisibleNotes
-  if (note.voiceId) {
-    const voiceIndex = voiceLayers.value.findIndex(v => v.id === note.voiceId);
+  if ((note as NoteWithVoiceInfo).voiceId) { // Cast to NoteWithVoiceInfo to access voiceId
+    const voiceIndex = voiceLayers.value.findIndex(v => v.id === (note as NoteWithVoiceInfo).voiceId);
     if (voiceIndex !== -1) {
       const noteIndex = voiceLayers.value[voiceIndex].notes.findIndex(n => n.id === note.id);
       if (noteIndex !== -1) {
@@ -1735,7 +1740,7 @@ const touchStartPos = ref({ x: 0, y: 0 });
 const isTouching = ref(false);
 
 // Add these functions to handle touch events
-const handleTouchStart = (note: Note, event: TouchEvent) => {
+const handleTouchStart = (note: ImportedNote, event: TouchEvent) => {
   // Store initial touch position
   touchStartPos.value = {
     x: event.touches[0].clientX,
@@ -1790,7 +1795,7 @@ interface SavedComposition {
   id: string;
   name: string;
   dateCreated: number;
-  notes: Note[];
+  notes: ImportedNote[]; // Use aliased import
   tempo: number;
   clef: string;
   keySignature: string;
@@ -1800,7 +1805,7 @@ interface SavedComposition {
   selectedAccidental?: string; // Add missing property (make optional if needed)
   selectedOctave: number;
   isDottedNote: boolean;
-  chordSymbols: ChordSymbol[]; // Add missing property
+  chordSymbols: ImportedChordSymbol[]; // Use aliased import
   timeSignature?: string; // Add missing property (make optional)
 }
 
@@ -2832,8 +2837,8 @@ const selectNote = (note) => {
   selectedNoteId.value = note.id;
   
   // If the note has a voiceId and it's not the active voice, switch to that voice
-  if (note.voiceId && note.voiceId !== activeVoiceId.value) {
-    switchActiveVoice(note.voiceId);
+  if ((note as NoteWithVoiceInfo).voiceId && (note as NoteWithVoiceInfo).voiceId !== activeVoiceId.value) {
+    switchActiveVoice((note as NoteWithVoiceInfo).voiceId);
   }
   
   // If there's a lyric, populate the lyric input
@@ -2843,7 +2848,7 @@ const selectNote = (note) => {
 };
 
 // Add a function to get the lyric style
-const getLyricStyle = (note: Note) => {
+const getLyricStyle = (note: ImportedNote) => {
   return {
     color: note.id === currentPlayingNoteId.value ? 'red' : 'black',
     fontWeight: note.id === currentPlayingNoteId.value ? 'bold' : 'normal'
@@ -2856,7 +2861,7 @@ const playbackEndMeasure = ref(0); // 0 means play to the end
 const autoScrollToPlayingNote = ref(true);
 
 // Add this helper function to calculate which measure a note is in
-const getNotesMeasure = (note: Note) => {
+const getNotesMeasure = (note: ImportedNote) => { // Update to use aliased import
   // Calculate the horizontal position in pixels
   const notePosition = note.position * 50;
   
@@ -3090,7 +3095,7 @@ const playScore = () => {
 };
 
 // Add the autoScrollToNote function
-const autoScrollToNote = (note: Note) => {
+const autoScrollToNote = (note: ImportedNote) => {
   // Calculate the horizontal position of the note
   const noteXPosition = note.position * 50;
   
@@ -3707,7 +3712,7 @@ const {
   testAllNotes, // Get the method from the composable
   // notesForDebug will be the 'notes' computed property from NotationEditorView
   // lastClickY and selectedOctave are passed through for DebugPanel
-} = useDebug(notes, selectedClef, lastClickY, selectedOctave);
+} = useDebug(notes as ComputedRef<ImportedNote[]>, selectedClef, lastClickY, selectedOctave); // Pass aliased type
 
 // Add this import at the top of your script section
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -3999,3 +4004,71 @@ const combineCompositions = (compositionIds: string[], newName: string) => {
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
+
+<style scoped>
+/* Remove or comment out the previous .show-help-btn styles if they were added here */
+/*
+.show-help-btn {
+  display: block;
+  margin: 10px auto;
+  padding: 10px 15px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  text-align: center;
+}
+
+.show-help-btn:hover {
+  background-color: #0056b3;
+}
+*/
+
+.floating-help-btn {
+  position: fixed; /* Or absolute if .notation-editor is the main scroll container and has position: relative */
+  top: 20px;
+  right: 20px;
+  width: 50px;
+  height: 50px;
+  background-color: #2196F3; /* Material Blue or your theme color */
+  color: white;
+  border-radius: 50%; /* Makes it circular */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 24px; /* Adjust for question mark size */
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  z-index: 999; /* Ensure it's above other content */
+  transition: background-color 0.3s ease, transform 0.2s ease-out;
+}
+
+.floating-help-btn:hover {
+  background-color: #1976D2; /* Darker shade on hover */
+  transform: scale(1.05); /* Slight scale effect on hover */
+}
+
+/* Adjustments for smaller screens if needed */
+@media (max-width: 768px) {
+  .floating-help-btn {
+    top: 15px;
+    right: 15px;
+    width: 45px;
+    height: 45px;
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .floating-help-btn {
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+}
+</style>

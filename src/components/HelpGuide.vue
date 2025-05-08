@@ -41,18 +41,18 @@
             <div class="help-section">
               <h3>Desktop Interface</h3>
               <ul>
-                <li><strong>Staff Area:</strong> The central area with five lines where you place notes</li>
-                <li><strong>Control Panels:</strong> Located above and below the staff for adjusting musical elements</li>
-                <li><strong>Tab Sections:</strong> Notes, Settings, and Saved tabs contain different controls</li>
+                <li><strong>Staff Area:</strong> The central area with five lines where you place notes.</li>
+                <li><strong>Control Panels:</strong> Located around the staff for adjusting musical elements (note input, playback, tempo, etc.).</li>
+                <li><strong>Main Controls:</strong> Typically found in sections for Note Input, Playback, Lyrics, Voices, and Saved Compositions.</li>
               </ul>
             </div>
             
             <div class="help-section">
               <h3>Mobile Interface</h3>
               <ul>
-                <li><strong>Tab Navigation:</strong> Switch between Notes, Settings, and Saved compositions using the tabs at the bottom</li>
-                <li><strong>Scrollable Staff:</strong> Use swipe gestures or arrow buttons to navigate horizontally</li>
-                <li><strong>Touch Controls:</strong> Tap to add notes, long-press to remove notes</li>
+                <li><strong>Tab Navigation:</strong> Switch between "Notes" (for input controls) and "Saved" (for managing compositions) using the tabs at the bottom.</li>
+                <li><strong>Scrollable Staff:</strong> Use swipe gestures or arrow buttons (if available) to navigate horizontally.</li>
+                <li><strong>Touch Controls:</strong> Tap to add notes, long-press on a note to remove it.</li>
               </ul>
             </div>
             
@@ -78,39 +78,77 @@
             <div class="help-section">
               <h3>Adding Notes and Rests</h3>
               <ol>
-                <li><strong>Select Note Type:</strong> Choose between "Note" or "Rest" in the Type section</li>
-                <li><strong>Select Duration:</strong> Choose whole, half, quarter, eighth, or sixteenth notes</li>
-                <li><strong>Select Accidental</strong> (for notes): Choose natural, sharp or flat</li>
-                <li><strong>Select Octave</strong> (for notes): Choose which octave to place your note in</li>
-                <li><strong>Add to Staff:</strong> Click on the staff at the desired vertical position</li>
-                <li><strong>Dotted Notes:</strong> Toggle "Dotted" to add a dot (extends duration by half)</li>
+                <li><strong>Select Note Type:</strong> Choose between "Note" or "Rest" from the input controls.</li>
+                <li><strong>Select Duration:</strong> Choose whole, half, quarter, eighth, or sixteenth.</li>
+                <li><strong>Select Accidental (for notes):</strong> Choose natural, sharp, or flat.</li>
+                <li><strong>Select Octave (for notes):</strong> Choose the desired octave.</li>
+                <li><strong>Dotted Notes:</strong> Toggle the "Dotted" option to make the selected duration dotted (extends duration by half).</li>
+                <li><strong>Add to Staff:</strong> Click/tap on the staff at the desired vertical position within the currently active voice layer.</li>
               </ol>
             </div>
             
             <div class="help-section">
               <h3>Editing Notes</h3>
               <ul>
-                <li><strong>Change a Note:</strong> Click on an existing note position to replace it</li>
+                <li><strong>Select a Note:</strong> Click/tap once on a note to select it. This is necessary for actions like adding lyrics or if other selection-based operations are implemented. The selected note is often highlighted.</li>
+                <li><strong>Change a Note:</strong> With desired input controls (duration, pitch, etc.) selected, click/tap on an existing note's position to replace it.</li>
                 <li><strong>Delete a Note:</strong>
                   <ul>
-                    <li>Desktop: Right-click on a note</li>
-                    <li>Mobile: Long-press on a note</li>
+                    <li>Desktop: Right-click on a note.</li>
+                    <li>Mobile: Long-press on a note.</li>
                   </ul>
                 </li>
-                <li><strong>Select a Note:</strong> Click once to select for adding lyrics or other operations</li>
               </ul>
             </div>
             
             <div class="help-section">
               <h3>Adding Lyrics</h3>
               <ol>
-                <li>Select a note on the staff</li>
-                <li>Enter lyrics text in the input field at the bottom</li>
-                <li>Press Enter or click "Add Lyric"</li>
-                <li>Lyrics will appear beneath the note</li>
+                <li>Select a note on the staff by clicking/tapping it.</li>
+                <li>Enter the lyric text in the "Lyrics" input field.</li>
+                <li>Press Enter or click the "Set Lyric" (or similar) button.</li>
+                <li>Lyrics will appear beneath the selected note, associated with its voice layer.</li>
               </ol>
               <div class="help-tip">
-                <strong>Tip:</strong> You can add lyrics to multiple notes in sequence to create a complete vocal line.
+                <strong>Tip:</strong> Lyrics are tied to specific notes within voice layers and will share the voice's color.
+              </div>
+            </div>
+          </div>
+          
+          <!-- Voice Layers Tab -->
+          <div v-if="activeTab === 'voices'" class="tab-pane">
+            <h2>Voice Layers</h2>
+            <p>Voice layers allow you to write multiple independent musical lines (e.g., for different instruments or vocal parts) within the same composition.</p>
+
+            <div class="help-section">
+              <h3>Managing Voices</h3>
+              <ul>
+                <li><strong>Active Voice:</strong> Only one voice can be active for note input at a time. Notes you add will be placed in the currently active voice. The active voice is usually indicated in the Voice Layers panel.</li>
+                <li><strong>Switch Active Voice:</strong> Click the "Switch" or "Activate" button next to a voice in the Voice Layers panel.</li>
+                <li><strong>Add New Voice:</strong> Click the "Add Voice Layer" button. New voices get a default name and a unique color.</li>
+                <li><strong>Rename Voice:</strong> Click the "Rename" button for a voice, enter the new name, and confirm.</li>
+                <li><strong>Change Voice Color:</strong> Click the color swatch next to a voice to open a color picker or cycle through predefined colors.</li>
+                <li><strong>Toggle Visibility:</strong> Use the eye icon or checkbox to show/hide a voice layer on the staff. Hidden voices are not included in playback unless specified.</li>
+                <li><strong>Delete Voice:</strong> Click the "Delete" button for a voice. You'll be asked for confirmation as this action also deletes all notes in that voice. You typically cannot delete the last remaining voice.</li>
+              </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>Voices and Playback</h3>
+              <ul>
+                <li><strong>Playback All Visible:</strong> By default, all visible voices might play.</li>
+                <li><strong>Play Selected Voices Only:</strong> Some playback settings might allow you to choose to play only the voices that are marked as "selected" in the Voice Layers panel.</li>
+                <li><strong>Volume:</strong> Each voice layer might have its own volume control.</li>
+              </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>Voices and Export</h3>
+              <ul>
+                <li>When exporting a composition, you may have an option to "Export selected voices only." If checked, only the voices marked as "selected" in the Voice Layers panel will be included in the exported file. Otherwise, all voices are typically included.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> Use different colors for voices to easily distinguish them on the staff, especially when multiple lines are complex.
               </div>
             </div>
           </div>
@@ -149,9 +187,21 @@
             <div class="help-section">
               <h3>Tempo Control</h3>
               <ul>
-                <li>Adjust the slider to set the tempo (40-240 BPM)</li>
-                <li>Affects playback speed of your composition</li>
+                <li>Adjust the slider or input field to set the tempo in Beats Per Minute (BPM).</li>
+                <li>Affects playback speed of your composition.</li>
               </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>Chord Symbols</h3>
+              <ul>
+                <li>Chord symbols can be displayed above the staff.</li>
+                <li><strong>Adding Chords:</strong> If a chord input mode is active (e.g., via a button in a settings or debug panel), clicking on the staff might prompt you to enter a chord name. Chords are typically added at a specific horizontal position.</li>
+                <li>Example chords might also be available to add for demonstration.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> Chord symbols are useful for lead sheets or indicating harmonic structure.
+              </div>
             </div>
           </div>
           
@@ -182,8 +232,15 @@
             <div class="help-section">
               <h3>Auto-Scroll</h3>
               <ul>
-                <li>Toggle "Auto-scroll to playing notes" to follow along during playback</li>
-                <li>Helpful for longer compositions that extend beyond the visible area</li>
+                <li>Toggle "Auto-scroll to playing notes" (if available) to have the staff view automatically follow the currently playing notes.</li>
+                <li>Helpful for longer compositions that extend beyond the visible screen area.</li>
+              </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>Voice Playback</h3>
+              <ul>
+                <li>You may have options to play all visible voices or only specifically "selected" voices from the Voice Layers panel. Check your Playback Settings or Voice Layers panel for these controls.</li>
               </ul>
             </div>
           </div>
@@ -213,18 +270,33 @@
             <div class="help-section">
               <h3>Managing Compositions</h3>
               <ul>
-                <li><strong>Update:</strong> Update a previously saved composition with current changes</li>
-                <li><strong>Rename:</strong> Change the name of a saved composition</li>
-                <li><strong>Delete:</strong> Remove a saved composition</li>
+                <li><strong>Update:</strong> If you've loaded a composition and made changes, an "Update" button (often appearing next to the loaded composition in the list) allows you to save these changes back to the original saved item.</li>
+                <li><strong>Rename:</strong> Change the name of a saved composition using the "Rename" button.</li>
+                <li><strong>Delete:</strong> Remove a saved composition permanently using the "Delete" button.</li>
               </ul>
+            </div>
+            
+            <div class="help-section">
+              <h3>Combining Compositions</h3>
+              <ol>
+                <li>In the "Saved Compositions" panel, activate "Combine Mode" (or similar).</li>
+                <li>Select two or more compositions from your saved list by checking their checkboxes.</li>
+                <li>Click the "Combine Selected Compositions" button.</li>
+                <li>You'll be prompted to enter a name for the new, combined composition.</li>
+                <li>A new composition will be created, containing all voice layers from the selected compositions. Voice names might be adjusted to indicate their original composition.</li>
+              </ol>
+              <div class="help-tip">
+                <strong>Tip:</strong> Combining compositions is useful for merging different musical ideas or sections into a larger piece.
+              </div>
             </div>
             
             <div class="help-section">
               <h3>Import/Export</h3>
               <ul>
-                <li><strong>Export All:</strong> Save all compositions to a file</li>
-                <li><strong>Export Current:</strong> Save only the current composition</li>
-                <li><strong>Import:</strong> Load compositions from a previously exported file</li>
+                <li><strong>Export All:</strong> Save all your saved compositions to a single JSON file.</li>
+                <li><strong>Export Current:</strong> Save only the currently loaded composition to a JSON file.</li>
+                <li><strong>Export Selected Voices Only:</strong> When exporting the current composition, you may have a checkbox option to include only the voice layers that are currently marked as "selected" in the Voice Layers panel.</li>
+                <li><strong>Import:</strong> Load compositions from a previously exported JSON file. This will add the compositions from the file to your list of saved compositions.</li>
               </ul>
               <div class="help-tip">
                 <strong>Tip:</strong> Regularly export your compositions as a backup or to transfer between devices.
@@ -248,8 +320,8 @@
             <div class="help-section">
               <h3>Tab Navigation</h3>
               <ul>
-                <li>Use the bottom tabs to switch between Notes, Settings, and Saved views</li>
-                <li>All essential functions are organized within these tabs</li>
+                <li>Use the bottom tabs (e.g., "Notes", "Saved") to switch between different control panels and views.</li>
+                <li>All essential functions are organized within these tabs for easy access on smaller screens.</li>
               </ul>
             </div>
             
@@ -281,9 +353,9 @@
             <div class="help-section">
               <h3>Display Issues</h3>
               <ul>
-                <li>Use "Clear" to reset if notes appear incorrectly</li>
-                <li>Extend the staff if you need more space</li>
-                <li>Try refreshing the page if elements don't display properly</li>
+                <li>Use "Clear Score" (if available) to reset if notes appear incorrectly, but be cautious as this erases your work.</li>
+                <li>Extend the staff if you need more horizontal space for your music.</li>
+                <li>Try refreshing the page if elements don't display properly or the application seems unresponsive.</li>
               </ul>
             </div>
             
@@ -297,6 +369,49 @@
               <div class="help-tip">
                 <strong>Tip:</strong> For the best experience on mobile, use the latest version of Chrome or Safari.
               </div>
+            </div>
+          </div>
+
+          <!-- Advanced Features Tab -->
+          <div v-if="activeTab === 'advanced'" class="tab-pane">
+            <h2>Advanced Features & Debugging</h2>
+
+            <div class="help-section">
+              <h3>Debug Panel</h3>
+              <ul>
+                <li>A Debug Panel might be available (often toggled via a "Debug Mode" switch).</li>
+                <li>This panel can display internal information like:
+                  <ul>
+                    <li>Coordinates of the last staff click (<code>lastClickY</code>).</li>
+                    <li>Currently selected octave for input.</li>
+                    <li>A list of notes in the active voice (<code>notesForDebug</code>) with their properties.</li>
+                    <li>Information about ledger lines.</li>
+                  </ul>
+                </li>
+                <li>It may also offer functions like "Test All Notes" to help developers diagnose issues.</li>
+                <li>This panel is primarily intended for development and troubleshooting.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> If you encounter unexpected behavior, information from the Debug Panel might be helpful if you need to report an issue.
+              </div>
+            </div>
+          </div>
+
+          <!-- Legal Information Tab -->
+          <div v-if="activeTab === 'legal'" class="tab-pane">
+            <h2>Legal Information</h2>
+            <div class="help-section">
+              <ul>
+                <li>
+                  <router-link :to="{ name: 'TermsAndConditions' }" @click="close">Terms and Conditions</router-link>
+                </li>
+                <li>
+                  <router-link :to="{ name: 'PrivacyPolicy' }" @click="close">Privacy Policy</router-link>
+                </li>
+              </ul>
+            </div>
+            <div class="help-tip">
+              Please review our terms and policies to understand your rights and responsibilities when using this application.
             </div>
           </div>
         </div>
@@ -326,11 +441,14 @@ const activeTab = ref('basics');
 const tabs = [
   { id: 'basics', label: 'Basic Usage' },
   { id: 'notes', label: 'Notes & Editing' },
+  { id: 'voices', label: 'Voice Layers' },
   { id: 'elements', label: 'Musical Elements' },
   { id: 'playback', label: 'Playback' },
   { id: 'saving', label: 'Saving & Loading' },
   { id: 'mobile', label: 'Mobile Tips' },
-  { id: 'troubleshooting', label: 'Troubleshooting' }
+  { id: 'troubleshooting', label: 'Troubleshooting' },
+  { id: 'advanced', label: 'Advanced Features' },
+  { id: 'legal', label: 'Legal' }
 ];
 
 const close = () => {
