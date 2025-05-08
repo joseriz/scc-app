@@ -21,6 +21,14 @@
       </div>
       <div v-else class="saved-composition-list">
         <div v-for="comp in savedCompositions" :key="comp.id" class="saved-composition-item">
+          <div class="composition-selection">
+            <input 
+              type="checkbox" 
+              :value="comp.id" 
+              v-model="selectedCompositions"
+              :disabled="combineMode && selectedCompositions.length >= 1 && !selectedCompositions.includes(comp.id)"
+            />
+          </div>
           <div class="composition-info">
             <template v-if="editingCompId === comp.id">
               <div class="edit-name-form">
@@ -54,36 +62,64 @@
           </div>
         </div>
       </div>
+      
+      <div class="combine-controls">
+        <button 
+          @click="toggleCombineMode" 
+          class="combine-btn"
+          :class="{ active: combineMode }"
+        >
+          {{ combineMode ? 'Cancel Combine' : 'Combine Compositions' }}
+        </button>
+        
+        <button 
+          v-if="combineMode && selectedCompositions.length >= 2" 
+          @click="combineSelectedCompositions" 
+          class="confirm-combine-btn"
+        >
+          Combine {{ selectedCompositions.length }} Compositions
+        </button>
+        
+        <p v-if="combineMode" class="combine-instructions">
+          Select 2 or more compositions to combine their voice layers into a new composition.
+        </p>
+      </div>
     </div>
 
     <div class="import-export-controls">
-      <button @click="$emit('exportAllCompositions')" class="export-btn">Export All</button>
       <button @click="$emit('exportCurrentComposition')" class="export-btn" :disabled="!currentCompositionId">Export Current</button>
-      <label for="import-file-input" class="import-btn">Import</label>
-      <input
-        type="file"
-        id="import-file-input"
-        accept=".txt,.json"
-        @change="$emit('importCompositions', $event)"
-        style="display: none;"
-      />
+      <button @click="$emit('exportAllCompositions')" class="export-btn">Export All</button>
+      <label class="import-btn">
+        Import
+        <input type="file" @change="handleFileImport" accept=".json,.txt" style="display: none;" multiple />
+      </label>
+    </div>
+    <div class="export-options" v-if="currentCompositionId">
+      <label>
+        <input 
+          type="checkbox" 
+          :checked="exportOnlySelectedVoices" 
+          @change="$emit('update:exportOnlySelectedVoices', ($event.target as HTMLInputElement).checked)" 
+        />
+        Export selected voices only
+      </label>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { defineProps, defineEmits, ref, watch } from 'vue';
-import type { CompositionData, Note } from '@/views/NotationEditorView.vue'; // Adjust path if needed
+import type { CompositionData, Note } from '@/types/types'; // Import from types file instead of vue component
+import type { CompositionData as CompositionDataTypes } from '@/types/types';
 
 // It's better if CompositionData is defined in a shared types file
 // For now, assuming it's exported from NotationEditorView or a types.ts file
 
 const props = defineProps<{
-  savedCompositions: CompositionData[];
+  savedCompositions: CompositionDataTypes[];
   compositionName: string;
   currentCompositionId: string | null;
-  // editingComposition: string | null; // Handled internally now
-  // editCompositionName: string; // Handled internally now
+  exportOnlySelectedVoices: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -95,11 +131,18 @@ const emit = defineEmits<{
   (e: 'deleteComposition', id: string): void;
   (e: 'exportAllCompositions'): void;
   (e: 'exportCurrentComposition'): void;
-  (e: 'importCompositions', event: Event): void;
+  (e: 'importCompositions', event: { target: { files: File[] }, dataTransfer: null | unknown }): void;
+  (e: 'update:exportOnlySelectedVoices', value: boolean): void;
+  (e: 'combineCompositions', compositionIds: string[], newName: string): void;
 }>();
 
 const editingCompId = ref<string | null>(null);
 const internalEditName = ref('');
+
+// Add new refs for combining functionality
+const selectedCompositions = ref<string[]>([]);
+const combineMode = ref(false);
+const combinedName = ref('');
 
 const formatDate = (timestamp: number) => {
   return new Date(timestamp).toLocaleDateString();
@@ -120,6 +163,70 @@ const cancelRenameLocal = () => {
 // For now, this component manages its own rename UI state.
 // If parent needs to cancel rename, it would typically re-render this component
 // with props that lead to editingCompId being null.
+
+const handleFileImport = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (target && target.files) {
+    const fileArray = Array.from(target.files);
+    emit('importCompositions', { 
+      target: { 
+        files: fileArray 
+      }, 
+      dataTransfer: null 
+    });
+  }
+};
+
+// Add functions for combining compositions
+const toggleCombineMode = () => {
+  combineMode.value = !combineMode.value;
+  if (!combineMode.value) {
+    // Clear selections when exiting combine mode
+    selectedCompositions.value = [];
+  }
+};
+
+const combineSelectedCompositions = () => {
+  if (selectedCompositions.value.length < 2) {
+    alert("Please select at least 2 compositions to combine.");
+    return;
+  }
+  
+  // Generate a default name based on the first two compositions
+  const comp1 = props.savedCompositions.find(c => c.id === selectedCompositions.value[0]);
+  const comp2 = props.savedCompositions.find(c => c.id === selectedCompositions.value[1]);
+  
+  let suggestedName = "Combined Composition";
+  if (comp1 && comp2) {
+    suggestedName = `${comp1.name} + ${comp2.name}`;
+    if (selectedCompositions.value.length > 2) {
+      suggestedName += ` + ${selectedCompositions.value.length - 2} more`;
+    }
+  }
+  
+  // Ask for a name for the combined composition
+  const newName = prompt("Enter a name for the combined composition:", suggestedName);
+  
+  if (!newName || !newName.trim()) {
+    alert("Please enter a valid name for the combined composition.");
+    return;
+  }
+  
+  // Emit event to parent component to handle the actual combination
+  emit('combineCompositions', selectedCompositions.value, newName.trim());
+  
+  // Reset selection and mode
+  selectedCompositions.value = [];
+  combineMode.value = false;
+};
+
+// Clean up selections if a composition is deleted
+watch(() => props.savedCompositions, () => {
+  // Remove any deleted compositions from the selection
+  selectedCompositions.value = selectedCompositions.value.filter(
+    id => props.savedCompositions.some(comp => comp.id === id)
+  );
+}, { deep: true });
 
 </script>
 
@@ -290,5 +397,72 @@ const cancelRenameLocal = () => {
 .export-btn:disabled {
   background-color: #9E9E9E;
   cursor: not-allowed;
+}
+
+.export-options {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+/* Add styles for combine functionality */
+.composition-selection {
+  margin-right: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.composition-selection input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.combine-controls {
+  margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-top: 1px dashed #ccc;
+}
+
+.combine-btn {
+  background-color: #673AB7;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 15px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.combine-btn:hover {
+  background-color: #5E35B1;
+}
+.combine-btn.active {
+  background-color: #F44336;
+}
+
+.confirm-combine-btn {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 15px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.confirm-combine-btn:hover {
+  background-color: #43A047;
+}
+
+.combine-instructions {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  margin: 5px 0;
 }
 </style> 

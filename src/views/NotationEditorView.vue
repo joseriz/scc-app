@@ -305,6 +305,7 @@
         :savedCompositions="savedCompositions"
         v-model:compositionName="compositionName"
         :currentCompositionId="currentCompositionId"
+        v-model:exportOnlySelectedVoices="exportOnlySelectedVoices"
         @saveComposition="saveComposition"
         @loadComposition="loadComposition"
         @updateComposition="updateComposition"
@@ -313,10 +314,11 @@
         @exportAllCompositions="exportAllCompositions"
         @exportCurrentComposition="exportCurrentComposition"
         @importCompositions="importCompositions"
-      />
-  </div>
+        @combineCompositions="combineCompositions"
+      ></SavedCompositionsPanel>
+    </div>
 
-  <HelpGuide :is-visible="showHelp" @close="showHelp = false" />
+    <HelpGuide :is-visible="showHelp" @close="showHelp = false" />
 
     <VoiceLayersPanel
       :voiceLayers="voiceLayers"
@@ -350,7 +352,7 @@ import DebugPanel from '@/components/DebugPanel.vue'; // Import new
 import { useDebug } from '@/composables/useDebug'; // Import the new composable
 
 // Import types
-import {
+import type {
   Note,
   ChordSymbol,
   VoiceLayer,
@@ -377,6 +379,7 @@ const tempo = ref(120);
 // const showNotePositions = ref(false); // Moved to composable
 const currentPlayingNoteId = ref<string | null>(null);
 const selectedClef = ref('treble');
+const exportOnlySelectedVoices = ref(false); // New ref for export option
 
 // Helper function to generate a random hex color
 const getRandomColor = (): string => {
@@ -408,7 +411,34 @@ const activeVoiceId = ref('voice1'); // Still defaults to the first voice
 
 // Get the active voice layer
 const activeVoice = computed<VoiceLayer>(() => { // Explicitly type activeVoice
-  return voiceLayers.value.find(layer => layer.id === activeVoiceId.value) || voiceLayers.value[0];
+  const foundVoice = voiceLayers.value.find(layer => layer.id === activeVoiceId.value);
+  
+  // If the active voice ID doesn't exist in the voices, return the first voice
+  // If there are no voices at all, create a default voice to prevent errors
+  if (foundVoice) {
+    return foundVoice;
+  } else if (voiceLayers.value.length > 0) {
+    // Set activeVoiceId to the first available voice
+    activeVoiceId.value = voiceLayers.value[0].id;
+    return voiceLayers.value[0];
+  } else {
+    // Create a default voice if no voices exist
+    const defaultVoice: VoiceLayer = {
+      id: 'voice1',
+      name: 'Voice 1',
+      color: getRandomColor(),
+      visible: true,
+      active: true,
+      selected: true,
+      volume: 0,
+      notes: []
+    };
+    
+    // Add the default voice to the voice layers
+    voiceLayers.value.push(defaultVoice);
+    activeVoiceId.value = 'voice1';
+    return defaultVoice;
+  }
 });
 
 // Update computed property to correctly set voice colors
@@ -436,14 +466,23 @@ const allVisibleNotes = computed((): NoteWithVoiceInfo[] => { // Specify return 
 // Update the existing notes ref to use the active voice's notes
 const notes = computed<Note[]>({ // Explicitly type notes
   get: () => {
-    return activeVoice.value.notes;
+    // Ensure activeVoice is never undefined and always has a notes array
+    if (activeVoice.value && Array.isArray(activeVoice.value.notes)) {
+      return activeVoice.value.notes;
+    }
+    return []; // Return empty array as fallback
   },
   set: (newNotes) => {
     // Find the active voice and update its notes
     const voiceIndex = voiceLayers.value.findIndex(v => v.id === activeVoiceId.value);
     if (voiceIndex !== -1) {
       voiceLayers.value[voiceIndex].notes = newNotes;
+    } else if (voiceLayers.value.length > 0) {
+      // If active voice not found but voices exist, use the first one
+      voiceLayers.value[0].notes = newNotes;
+      activeVoiceId.value = voiceLayers.value[0].id;
     }
+    // If no voices at all, the activeVoice computed will create one
   }
 });
 
@@ -504,13 +543,13 @@ interface Note {
   lyric?: string;
 }
 
-// Update the Composition interface to include all required properties
+// Update the Composition interface to use the imported types
 interface Composition {
   id: string;
   name: string;
   dateCreated: number;
-  notes?: { id: string; type: "note" | "rest"; pitch?: string; duration: string; position: number; verticalPosition: number; dotted?: boolean; lyric?: string; }[];
-  voiceLayers?: { id: string; name: string; color: string; visible: boolean; active: boolean; selected: boolean; volume: number; notes: any[]; }[];
+  notes?: Note[];
+  voiceLayers?: VoiceLayer[];
   tempo: number;
   clef: string;
   keySignature: string;
@@ -533,6 +572,9 @@ declare global {
       startTime: number;
       duration: number;
       callback: Function;
+    };
+    Capacitor?: {
+      isNativePlatform: () => boolean;
     };
   }
 }
@@ -1160,10 +1202,31 @@ const clearScore = () => {
   // First stop any playback
   stopPlayback();
   
-  // Clear all notes from all voices
+  // Clear all notes from all voices, but maintain the voice structure
   voiceLayers.value.forEach(voice => {
     voice.notes = [];
   });
+  
+  // Ensure that at least one voice exists and is active
+  if (voiceLayers.value.length === 0) {
+    // Re-create the default voice
+    voiceLayers.value.push({
+      id: 'voice1',
+      name: 'Voice 1',
+      color: getRandomColor(),
+      visible: true,
+      active: true,
+      selected: true,
+      volume: 0,
+      notes: []
+    });
+    activeVoiceId.value = 'voice1';
+  } else {
+    // Make sure activeVoiceId points to an existing voice
+    if (!voiceLayers.value.some(v => v.id === activeVoiceId.value)) {
+      activeVoiceId.value = voiceLayers.value[0].id;
+    }
+  }
   
   // Reset scroll position
   scrollPosition.value = 0;
@@ -1803,19 +1866,25 @@ const saveComposition = () => {
   alert(`Composition "${compositionName.value}" saved successfully!`);
 }
 
-// Update the loadComposition function to use the resetAudioSystem
-const loadComposition = (compositionId: string) => { // Add type for compositionId
-  // Find the composition by ID
+// Update the loadComposition function to be more robust
+const loadComposition = (compositionId: string) => {
+  try {
+    // Find the composition by ID
     const composition = savedCompositions.value.find(comp => comp.id === compositionId);
     
-  if (composition) { // TypeScript now knows composition is CompositionData | undefined
+    if (!composition) {
+      throw new Error(`Composition with ID ${compositionId} not found`);
+    }
+
+    console.log('Loading composition:', composition.name);
+    
     // Set the current composition ID
     currentCompositionId.value = composition.id;
     
     // Clear existing data
     clearScore();
     
-    // Load basic properties
+    // Load basic properties with safe defaults
     selectedClef.value = composition.clef || 'treble';
     keySignature.value = composition.keySignature || 'C';
     timeSignature.value = composition.timeSignature || '4/4';
@@ -1824,30 +1893,78 @@ const loadComposition = (compositionId: string) => { // Add type for composition
     // Load chord symbols if they exist
     if (composition.chordSymbols && Array.isArray(composition.chordSymbols)) {
       chordSymbols.value = composition.chordSymbols.map(chord => ({...chord}));
+    } else {
+      chordSymbols.value = [];
     }
     
     // Load voice layers if they exist
     if (composition.voiceLayers && Array.isArray(composition.voiceLayers)) {
-      // Replace the entire voiceLayers array with the saved one
-      voiceLayers.value = composition.voiceLayers.map(voice => ({
+      // First, ensure all voices are valid
+      const validVoices = composition.voiceLayers.filter(voice => 
+        voice && typeof voice === 'object' && voice.id
+      ).map(voice => ({
         id: voice.id,
-        name: voice.name,
-        color: voice.color || getDefaultVoiceColor(voice.id),
-        visible: voice.visible,
-        active: voice.active,
-        selected: voice.selected || true, // Default to selected if not specified
-        volume: voice.volume || 0, // Default to 0 if not specified
-        notes: voice.notes.map(note => ({...note}))
+        name: voice.name || 'Unnamed Voice',
+        color: voice.color || getRandomColor(),
+        visible: voice.visible !== undefined ? voice.visible : true,
+        active: voice.active !== undefined ? voice.active : false,
+        selected: voice.selected !== undefined ? voice.selected : true,
+        volume: voice.volume !== undefined ? voice.volume : 0,
+        notes: Array.isArray(voice.notes) ? voice.notes.map(note => {
+          // Ensure each note is valid
+          if (!note || typeof note !== 'object') return null;
+          
+          return {
+            id: note.id || generateId(),
+            type: note.type || 'note',
+            pitch: note.pitch,
+            duration: note.duration || 'quarter',
+            position: typeof note.position === 'number' ? note.position : 0,
+            verticalPosition: typeof note.verticalPosition === 'number' ? note.verticalPosition : 145,
+            dotted: note.dotted || false,
+            lyric: note.lyric || ''
+          };
+        }).filter(Boolean) : [] // Remove any null notes
       }));
       
-      // Set the active voice ID
-      activeVoiceId.value = composition.activeVoiceId || 'voice1';
+      // Replace the entire voiceLayers array with the validated one
+      voiceLayers.value = validVoices;
       
-      // Make sure at least one voice is active
-      const hasActiveVoice = voiceLayers.value.some(voice => voice.active);
-      if (!hasActiveVoice && voiceLayers.value.length > 0) {
-        voiceLayers.value[0].active = true;
+      // Set the active voice ID, making sure it exists
+      const requestedActiveVoiceId = composition.activeVoiceId;
+      const activeVoiceExists = voiceLayers.value.some(v => v.id === requestedActiveVoiceId);
+      
+      if (requestedActiveVoiceId && activeVoiceExists) {
+        activeVoiceId.value = requestedActiveVoiceId;
+      } else if (voiceLayers.value.length > 0) {
+        // Set the first voice as active if the requested one doesn't exist
         activeVoiceId.value = voiceLayers.value[0].id;
+        voiceLayers.value[0].active = true;
+      } else {
+        // Create a default voice if no valid voices were found
+        const defaultVoice = {
+          id: 'voice1',
+          name: 'Voice 1',
+          color: getRandomColor(),
+          visible: true,
+          active: true,
+          selected: true,
+          volume: 0,
+          notes: []
+        };
+        voiceLayers.value = [defaultVoice];
+        activeVoiceId.value = 'voice1';
+      }
+      
+      // Ensure exactly one voice is active
+      let activeFound = false;
+      for (const voice of voiceLayers.value) {
+        if (!activeFound && voice.id === activeVoiceId.value) {
+          voice.active = true;
+          activeFound = true;
+        } else {
+          voice.active = false;
+        }
       }
     } else if (composition.notes && Array.isArray(composition.notes)) {
       // Legacy support for compositions without voice layers
@@ -1865,6 +1982,21 @@ const loadComposition = (compositionId: string) => { // Add type for composition
         }
       ];
       
+      activeVoiceId.value = 'voice1';
+    } else {
+      // No voices and no notes - create a default empty voice
+      voiceLayers.value = [
+        {
+          id: 'voice1',
+          name: 'Voice 1',
+          color: getRandomColor(),
+          visible: true,
+          active: true,
+          selected: true,
+          volume: 0,
+          notes: []
+        }
+      ];
       activeVoiceId.value = 'voice1';
     }
     
@@ -1886,6 +2018,12 @@ const loadComposition = (compositionId: string) => { // Add type for composition
       // Provide user feedback
       console.log(`Loaded composition: ${composition.name}`);
     });
+  } catch (error) {
+    console.error('Error loading composition:', error);
+    alert(`Error loading composition: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    
+    // Reset to a safe state
+    clearScore();
   }
 };
 
@@ -2093,170 +2231,309 @@ const cancelRename = () => {
 };
 
 // Add functions for importing and exporting compositions
-const exportAllCompositions = () => {
+const exportAllCompositions = async () => {
   try {
     // Create a JSON string of all compositions
     const dataToExport = JSON.stringify(savedCompositions.value, null, 2);
-    
-    // Create a Blob with the data
-    const blob = new Blob([dataToExport], { type: 'text/plain' });
-    
-    // Create a download link
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `music-notation-all-compositions-${new Date().toISOString().slice(0, 10)}.txt`;
-    
-    // Trigger the download
-    document.body.appendChild(a);
-    a.click();
-    
-    // Clean up
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-    
-    console.log('All compositions exported successfully');
+    const fileName = `music-notation-all-compositions-${new Date().toISOString().slice(0, 10)}.txt`;
+
+    // Check if running in a capacitor environment (mobile app)
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      try {
+        // Use Capacitor Filesystem API for native platforms
+        await Filesystem.writeFile({
+          path: fileName,
+          data: dataToExport,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8  // Use the Encoding enum from Capacitor
+        });
+        
+        alert(`All compositions saved to Documents/${fileName}`);
+      } catch (error) {
+        console.error('Error writing file with Capacitor:', error);
+        alert(`Error saving file: ${error.message}`);
+      }
+    } else {
+      // Use web approach for browsers
+      const blob = new Blob([dataToExport], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      
+      console.log('All compositions exported successfully via browser download');
+    }
   } catch (error) {
     console.error('Error exporting compositions:', error);
     alert('Error exporting compositions: ' + error.message);
   }
 };
 
-const exportCurrentComposition = () => {
+const exportCurrentComposition = async () => {
   if (!currentCompositionId.value) {
     alert('No composition is currently loaded');
     return;
   }
-  
+
   try {
-    // Find the current composition
-    const composition = savedCompositions.value.find(comp => comp.id === currentCompositionId.value);
-    if (!composition) {
-      throw new Error('Current composition not found');
+    const baseLoadedComposition = savedCompositions.value.find(comp => comp.id === currentCompositionId.value);
+    if (!baseLoadedComposition) {
+      alert('Error: Could not find the base information for the current composition.');
+      return;
     }
-    
-    // Create a JSON string of the composition
-    const dataToExport = JSON.stringify(composition, null, 2);
-    
-    // Create a Blob with the data
-    const blob = new Blob([dataToExport], { type: 'text/plain' });
-    
-    // Create a download link
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `music-notation-${composition.name.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.txt`;
-    
-    // Trigger the download
-    document.body.appendChild(a);
-    a.click();
-    
-    // Clean up
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-    
-    console.log('Composition exported successfully');
+
+    // Construct the composition data from the current live editor state
+    let compositionToExport: CompositionData = {
+      id: baseLoadedComposition.id,
+      name: compositionName.value || baseLoadedComposition.name, // Use current name from input, fallback to saved name
+      dateCreated: baseLoadedComposition.dateCreated,
+      // CRITICAL: Use a deep clone of the current, live voiceLayers.value
+      // This ensures we have the latest 'selected' states.
+      voiceLayers: JSON.parse(JSON.stringify(voiceLayers.value)),
+      // Flatten notes from these live voice layers
+      notes: voiceLayers.value.flatMap(voice =>
+        voice.notes.map(note => ({
+          ...note,
+          voiceId: voice.id,
+          voiceColor: voice.color
+        }))
+      ),
+      tempo: tempo.value,
+      clef: selectedClef.value,
+      keySignature: keySignature.value,
+      timeSignature: timeSignature.value,
+      chordSymbols: JSON.parse(JSON.stringify(chordSymbols.value)),
+      activeVoiceId: activeVoiceId.value,
+      staffWidth: staffWidth.value,
+      selectedDuration: selectedDuration.value,
+      selectedNoteType: selectedNoteType.value,
+      selectedAccidental: selectedAccidental.value,
+      selectedOctave: selectedOctave.value,
+      isDottedNote: isDottedNote.value,
+    };
+
+    console.log('[Export] Initial compositionToExport from live state:', JSON.parse(JSON.stringify(compositionToExport)));
+    console.log('[Export] exportOnlySelectedVoices flag:', exportOnlySelectedVoices.value);
+
+    if (exportOnlySelectedVoices.value) {
+      console.log('[Export] Filtering for selected voices. Initial voiceLayers from live state:', JSON.parse(JSON.stringify(compositionToExport.voiceLayers)));
+      
+      if (compositionToExport.voiceLayers && Array.isArray(compositionToExport.voiceLayers)) {
+        const allVoiceStates = compositionToExport.voiceLayers.map(v => ({ id: v.id, name: v.name, selected: v.selected }));
+        console.log('[Export] All voice selected states from live data:', allVoiceStates);
+
+        const selectedVoiceLayers = compositionToExport.voiceLayers.filter(v => v.selected === true);
+        console.log('[Export] Filtered selectedVoiceLayers:', JSON.parse(JSON.stringify(selectedVoiceLayers)));
+
+        if (selectedVoiceLayers.length === 0 && compositionToExport.voiceLayers.length > 0) {
+          alert("No voices are selected for export. Please select at least one voice or uncheck 'Export selected voices only'.");
+          return;
+        }
+        
+        compositionToExport.voiceLayers = selectedVoiceLayers; // Update the voiceLayers on the object to be exported
+        
+        // Re-flatten notes from the NOW-FILTERED selectedVoiceLayers for the 'notes' property
+        compositionToExport.notes = selectedVoiceLayers.flatMap(voice =>
+          voice.notes.map(note => ({ 
+            ...note,
+            // Ensure voiceId and voiceColor are consistent if they are part of the Note type
+            // and if the original flat notes array might not have them or have outdated ones.
+            voiceId: voice.id, 
+            voiceColor: voice.color
+          }))
+        );
+        console.log('[Export] Updated compositionToExport.voiceLayers after filtering:', JSON.parse(JSON.stringify(compositionToExport.voiceLayers)));
+        console.log('[Export] Updated compositionToExport.notes count after filtering:', compositionToExport.notes.length);
+      }
+    } else {
+      console.log('[Export] Not filtering by selected voices. Exporting all from live state.');
+    }
+
+    console.log('[Export] Final compositionToExport for stringify:', JSON.parse(JSON.stringify(compositionToExport)));
+    const dataToExport = JSON.stringify(compositionToExport, null, 2);
+    const fileName = `music-notation-${compositionToExport.name.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.txt`;
+
+    // Check if running in a capacitor environment (mobile app)
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      try {
+        // Use Capacitor Filesystem API for native platforms
+        await Filesystem.writeFile({
+          path: fileName,
+          data: dataToExport,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8  // Use the Encoding enum from Capacitor
+        });
+        
+        alert(`Composition saved to Documents/${fileName}`);
+      } catch (error) {
+        console.error('Error writing file with Capacitor:', error);
+        alert(`Error saving file: ${error.message}`);
+      }
+    } else {
+      // Use web approach for browsers
+      const blob = new Blob([dataToExport], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      
+      console.log('Composition exported successfully via browser download');
+    }
   } catch (error) {
     console.error('Error exporting composition:', error);
     alert('Error exporting composition: ' + error.message);
   }
 };
 
-const importCompositions = (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  
-  const reader = new FileReader();
-  
-  reader.onload = (e) => {
-    try {
-      // Parse the JSON data - handle the string | ArrayBuffer type
-      const result = e.target?.result;
-      if (typeof result !== 'string') {
-        throw new Error('Expected string result from FileReader');
-      }
-      
-      const importedData = JSON.parse(result);
-      
-      // Check if it's an array (multiple compositions) or a single composition
-      if (Array.isArray(importedData)) {
-        // Ask for confirmation if there are existing compositions
-        if (savedCompositions.value.length > 0) {
-          if (!confirm(`Import ${importedData.length} compositions? This will merge with your existing compositions.`)) {
-            return;
-          }
-        }
-        
-        // Validate and add each composition
-        let importCount = 0;
-        for (const comp of importedData) {
-          if (validateComposition(comp)) {
-            // Generate a new ID to avoid conflicts
-            const newId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
-            savedCompositions.value.push({
-              ...comp,
-              id: newId,
-              dateCreated: comp.dateCreated || Date.now()
-            });
-            importCount++;
-          }
-        }
-        
-        if (importCount > 0) {
-          saveToLocalStorage();
-          alert(`Successfully imported ${importCount} compositions`);
-        } else {
-          alert('No valid compositions found in the import file');
-        }
-      } else if (validateComposition(importedData)) {
-        // It's a single composition - confirm import
-        if (!confirm(`Import composition "${importedData.name || 'Unnamed'}"?`)) {
-          return;
-        }
-        
-        // Generate a new ID to avoid conflicts
-        const newId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
-        savedCompositions.value.push({
-          ...importedData,
-          id: newId,
-          dateCreated: importedData.dateCreated || Date.now()
-        });
-        
-        saveToLocalStorage();
-        alert('Composition imported successfully');
-      } else {
-        alert('Invalid composition format');
-      }
-    } catch (error) {
-      console.error('Error importing compositions:', error);
-      alert('Error importing file: ' + (error as Error).message);
-    }
-    
-    // Reset the file input
-    event.target.value = '';
-  };
-  
-  reader.onerror = () => {
-    alert('Error reading file');
-    event.target.value = '';
-  };
-  
-  reader.readAsText(file);
+// Add this validation function before processWebFiles
+// (around line 2322)
+const validateComposition = (comp: any): boolean => {
+  // Basic validation - check if the composition has required properties
+  return (
+    comp &&
+    typeof comp === 'object' &&
+    (Array.isArray(comp.voiceLayers) || Array.isArray(comp.notes)) &&
+    typeof comp.name === 'string'
+  );
 };
 
-// Helper function to validate a composition object
-const validateComposition = (comp) => {
-  // Check required fields
-  if (!comp || typeof comp !== 'object') return false;
-  if (!comp.name || typeof comp.name !== 'string') return false;
-  if (!Array.isArray(comp.notes)) return false;
+// Fix the readFileAsText function to handle types properly
+// (around line 2318)
+const readFileAsText = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target && typeof e.target.result === 'string') {
+        resolve(e.target.result);
+      } else {
+        reject(new Error(`Error reading file ${file.name}: Invalid result`));
+      }
+    };
+    reader.onerror = () => {
+      reject(new Error(`Error reading file ${file.name}`));
+    };
+    reader.readAsText(file);
+  });
+};
+
+// Update the processWebFiles function to handle type safety
+// (around line 2316)
+const processWebFiles = async (files: File[]) => {
+  const allFileResults = [];
   
-  // Basic check for notes format
-  for (const note of comp.notes) {
-    if (!note.id || !note.type || !note.position) {
-      return false;
+  for (const file of Array.from(files)) {
+    try {
+      const result = await readFileAsText(file);
+      const parsedJson = JSON.parse(result) as unknown;
+      const compositionsFromFile = Array.isArray(parsedJson) ? parsedJson : [parsedJson];
+      
+      // Basic validation for each composition structure
+      const validCompositions = compositionsFromFile.filter(comp => validateComposition(comp));
+      allFileResults.push({ 
+        fileName: file.name, 
+        parsedCompositions: validCompositions 
+      });
+    } catch (error) {
+      console.error(`Error parsing file ${file.name}:`, error);
+      alert(`Error parsing file ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      allFileResults.push({ fileName: file.name, parsedCompositions: [] });
     }
   }
   
-  return true;
+  return allFileResults;
+};
+
+// Update the importCompositions function to process the files and add them to savedCompositions
+const importCompositions = async (event) => {
+  // For web browser file input
+  if (event && event.target && event.target.files) {
+    const inputElement = event.target as HTMLInputElement;
+    const files = inputElement.files;
+
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    try {
+      const allFileResults = await processWebFiles(Array.from(files));
+      
+      // Process the imported compositions
+      let importCount = 0;
+      
+      allFileResults.forEach(fileResult => {
+        if (fileResult.parsedCompositions && fileResult.parsedCompositions.length > 0) {
+          fileResult.parsedCompositions.forEach(comp => {
+            // Generate a new ID for the imported composition
+            const newId = generateId();
+            
+            // Create a new composition object with the imported data
+            const importedComposition: CompositionData = {
+              ...comp,
+              id: newId,
+              dateCreated: comp.dateCreated || Date.now()
+            };
+            
+            // Add to savedCompositions
+            savedCompositions.value.push(importedComposition);
+            importCount++;
+          });
+        }
+      });
+      
+      // Save to localStorage
+      saveToLocalStorage();
+      
+      // Provide feedback
+      if (importCount > 0) {
+        alert(`Successfully imported ${importCount} composition${importCount !== 1 ? 's' : ''}.`);
+      } else {
+        alert('No valid compositions found in the imported files.');
+      }
+    } catch (error) {
+      console.error('Error importing compositions:', error);
+      alert(`Error importing compositions: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  } 
+  // Optional: Add a way to trigger native file picking for Android
+  else if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+    try {
+      // You'll need a file picker plugin for this, like @capacitor/filesystem
+      // This is a placeholder for the implementation
+      alert("Mobile file import is still being implemented. Please use the web version for now.");
+      
+      // Example implementation with proper plugin:
+      /*
+      const result = await FilePicker.pickFiles({
+        types: ['text/plain'],
+        multiple: false
+      });
+      
+      if (result.files.length > 0) {
+        const file = result.files[0];
+        const contents = await Filesystem.readFile({
+          path: file.path,
+          encoding: 'utf8'
+        });
+        
+        try {
+          const parsedJson = JSON.parse(contents.data);
+          // Process the imported file...
+        } catch (error) {
+          alert(`Error parsing file: ${error.message}`);
+        }
+      }
+      */
+    } catch (error) {
+      console.error('Error picking file:', error);
+      alert(`Error selecting file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
 };
 
 // Create a completely new function to force-reset the notes array
@@ -3416,7 +3693,7 @@ const setLyricForNoteHandler = (noteId: string, lyric: string) => {
 const updateVoiceLayerSelection = (voiceId: string, selected: boolean) => {
   const voice = voiceLayers.value.find(v => v.id === voiceId);
   if (voice) {
-    voice.selected = selected;
+    voice.selected = selected; // This is where the magic happens!
   }
 };
 
@@ -3431,6 +3708,293 @@ const {
   // notesForDebug will be the 'notes' computed property from NotationEditorView
   // lastClickY and selectedOctave are passed through for DebugPanel
 } = useDebug(notes, selectedClef, lastClickY, selectedOctave);
+
+// Add this import at the top of your script section
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+
+// Add this function near other composition-related functions (around line 2060)
+const combineCompositions = (compositionIds: string[], newName: string) => {
+  if (compositionIds.length < 2) {
+    alert('Please select at least two compositions to combine.');
+    return;
+  }
+
+  // Find the compositions to combine
+  const compositionsToMerge = savedCompositions.value.filter(comp => 
+    compositionIds.includes(comp.id)
+  );
+
+  if (compositionsToMerge.length < 2) {
+    alert('Some selected compositions could not be found.');
+    return;
+  }
+
+  try {
+    console.log('Starting composition merge with:', compositionsToMerge.map(c => c.name));
+    
+    // Start with the first composition as the base
+    const baseComposition = compositionsToMerge[0];
+    
+    // Create a new composition with a unique ID
+    const newComposition: CompositionData = {
+      id: generateId(),
+      name: newName,
+      dateCreated: Date.now(),
+      notes: [],  // Will rebuild this later
+      voiceLayers: [], // Will populate this based on merged compositions
+      tempo: baseComposition.tempo || 120,
+      clef: baseComposition.clef || 'treble',
+      keySignature: baseComposition.keySignature || 'C',
+      timeSignature: baseComposition.timeSignature || '4/4',
+      chordSymbols: baseComposition.chordSymbols ? [...baseComposition.chordSymbols] : [],
+      activeVoiceId: '',  // Will set this after creating voice layers
+      staffWidth: baseComposition.staffWidth || 2000,
+      selectedDuration: baseComposition.selectedDuration || 'quarter',
+      selectedNoteType: baseComposition.selectedNoteType || 'note',
+      selectedAccidental: baseComposition.selectedAccidental || 'natural',
+      selectedOctave: baseComposition.selectedOctave || 4,
+      isDottedNote: baseComposition.isDottedNote || false,
+    };
+
+    // Keep track of voice IDs already used
+    const usedVoiceIds = new Set<string>();
+    // Keep track of how many compositions were actually added
+    let addedCompositionCount = 0;
+
+    // Process each composition (including the first one)
+    for (let i = 0; i < compositionsToMerge.length; i++) {
+      const comp = compositionsToMerge[i];
+      console.log(`Processing composition ${i + 1}: ${comp.name}`);
+      
+      let voicesAddedForThisComposition = 0;
+      
+      // If the composition has voice layers, add each one
+      if (comp.voiceLayers && Array.isArray(comp.voiceLayers) && comp.voiceLayers.length > 0) {
+        console.log(`Composition ${comp.name} has ${comp.voiceLayers.length} voice layers`);
+        
+        // Add each voice layer from this composition
+        for (let v = 0; v < comp.voiceLayers.length; v++) {
+          const originalVoiceLayer = comp.voiceLayers[v];
+          
+          // Skip if the voice layer has no notes
+          if (!originalVoiceLayer.notes || originalVoiceLayer.notes.length === 0) {
+            console.log(`Skipping empty voice layer: ${originalVoiceLayer.name}`);
+            continue;
+          }
+          
+          // Make a clean clone of the voice layer to avoid reference issues
+          const voiceLayer = JSON.parse(JSON.stringify(originalVoiceLayer));
+          
+          // Ensure the voice layer has all required properties
+          if (!voiceLayer.id) voiceLayer.id = `voice${Date.now()}${Math.random().toString(36).substr(2, 9)}`;
+          // Always include the composition name for clarity
+          voiceLayer.name = voiceLayer.name ? `${voiceLayer.name} (${comp.name})` : `Voice from ${comp.name}`;
+          
+          if (!voiceLayer.color) voiceLayer.color = getRandomColor();
+          if (!Array.isArray(voiceLayer.notes)) voiceLayer.notes = [];
+          
+          // Generate a new unique ID if this voice ID already exists
+          let newVoiceId = voiceLayer.id;
+          let newVoiceName = voiceLayer.name;
+          
+          if (usedVoiceIds.has(newVoiceId)) {
+            // Create a unique voice ID
+            let counter = 1;
+            while (usedVoiceIds.has(`${voiceLayer.id}_${counter}`)) {
+              counter++;
+            }
+            newVoiceId = `${voiceLayer.id}_${counter}`;
+            // No need to change the name, we already added the composition name
+          }
+          
+          // Add this voice ID to the used set
+          usedVoiceIds.add(newVoiceId);
+          
+          console.log(`Adding voice layer ${v+1}/${comp.voiceLayers.length}: "${newVoiceName}" with ID ${newVoiceId}`);
+          
+          // Create a new voice layer with the appropriate ID
+          const newVoiceLayer: VoiceLayer = {
+            ...voiceLayer,
+            id: newVoiceId,
+            name: newVoiceName,
+            notes: voiceLayer.notes.map(note => {
+              // Ensure each note has all required properties
+              const safeNote = {
+                ...note,
+                id: `${note.id || Date.now().toString()}_${newVoiceId}`, // Ensure note IDs are unique
+                type: note.type || 'note',
+                duration: note.duration || 'quarter',
+                position: typeof note.position === 'number' ? note.position : 0,
+                verticalPosition: typeof note.verticalPosition === 'number' ? note.verticalPosition : 145,
+              };
+              return safeNote;
+            }),
+            visible: voiceLayer.visible !== undefined ? voiceLayer.visible : true,
+            active: i === 0 && newComposition.voiceLayers.length === 0, // First voice of first composition is active
+            selected: voiceLayer.selected !== undefined ? voiceLayer.selected : true,
+            volume: voiceLayer.volume !== undefined ? voiceLayer.volume : 0,
+          };
+          
+          // Add the voice layer to the new composition
+          newComposition.voiceLayers.push(newVoiceLayer);
+          voicesAddedForThisComposition++;
+          
+          // Set the active voice ID if this is the first voice
+          if (newComposition.voiceLayers.length === 1) {
+            newComposition.activeVoiceId = newVoiceId;
+          }
+        }
+      } 
+      // If the composition has notes but no voice layers, create a single voice layer for it
+      else if (comp.notes && Array.isArray(comp.notes) && comp.notes.length > 0) {
+        console.log(`Composition ${comp.name} has notes but no voice layers. Converting to a voice layer.`);
+        
+        // Create a new unique voice ID based on the composition name
+        const baseVoiceId = `${comp.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}_voice`;
+        let newVoiceId = baseVoiceId;
+        let counter = 1;
+        
+        // Ensure the voice ID is unique
+        while (usedVoiceIds.has(newVoiceId)) {
+          newVoiceId = `${baseVoiceId}_${counter}`;
+          counter++;
+        }
+        
+        usedVoiceIds.add(newVoiceId);
+        
+        // Create a new voice layer using the composition's notes
+        const newVoiceLayer: VoiceLayer = {
+          id: newVoiceId,
+          name: comp.name, // Use the composition name as the voice name
+          color: getRandomColor(),
+          visible: true,
+          active: i === 0 && newComposition.voiceLayers.length === 0, // First voice of first composition is active
+          selected: true,
+          volume: 0,
+          notes: comp.notes.map(note => {
+            // Ensure each note has all required properties
+            const safeNote = {
+              ...note,
+              id: `${note.id || Date.now().toString()}_${newVoiceId}`, // Ensure note IDs are unique
+              type: note.type || 'note',
+              duration: note.duration || 'quarter',
+              position: typeof note.position === 'number' ? note.position : 0,
+              verticalPosition: typeof note.verticalPosition === 'number' ? note.verticalPosition : 145,
+            };
+            return safeNote;
+          }),
+        };
+        
+        // Add the voice layer to the new composition
+        newComposition.voiceLayers.push(newVoiceLayer);
+        voicesAddedForThisComposition++;
+        
+        // Set the active voice ID if this is the first voice
+        if (newComposition.voiceLayers.length === 1) {
+          newComposition.activeVoiceId = newVoiceId;
+        }
+        
+        console.log(`Added voice layer "${comp.name}" with ID ${newVoiceId}`);
+      } else {
+        console.log(`Composition ${comp.name} has no notes or voice layers, skipping`);
+      }
+      
+      // Only count compositions that contributed voices
+      if (voicesAddedForThisComposition > 0) {
+        addedCompositionCount++;
+      }
+      
+      // Merge chord symbols if present and not already in the composition
+      if (comp.chordSymbols && comp.chordSymbols.length > 0) {
+        if (!newComposition.chordSymbols) {
+          newComposition.chordSymbols = [];
+        }
+        
+        const existingPositions = new Set(newComposition.chordSymbols.map(c => c.position));
+        
+        comp.chordSymbols.forEach(chord => {
+          if (!existingPositions.has(chord.position)) {
+            newComposition.chordSymbols!.push({
+              ...chord,
+              id: generateId(), // Create a new ID for the chord symbol
+            });
+            existingPositions.add(chord.position);
+          }
+        });
+      }
+      
+      console.log(`Added ${voicesAddedForThisComposition} voices from composition "${comp.name}"`);
+    }
+    
+    // Make sure there's at least one voice layer
+    if (newComposition.voiceLayers.length === 0) {
+      const defaultVoice: VoiceLayer = {
+        id: 'voice1',
+        name: 'Voice 1',
+        color: getRandomColor(),
+        visible: true,
+        active: true,
+        selected: true,
+        volume: 0,
+        notes: []
+      };
+      
+      newComposition.voiceLayers.push(defaultVoice);
+      newComposition.activeVoiceId = 'voice1';
+      console.log('Added default voice layer because no voices were created');
+    }
+    
+    // Ensure exactly one voice is active
+    let activeFound = false;
+    for (const voice of newComposition.voiceLayers) {
+      if (!activeFound && (voice.active || voice.id === newComposition.activeVoiceId)) {
+        voice.active = true;
+        activeFound = true;
+        newComposition.activeVoiceId = voice.id;
+      } else {
+        voice.active = false;
+      }
+    }
+    
+    // If no voice was marked as active, make the first one active
+    if (!activeFound && newComposition.voiceLayers.length > 0) {
+      newComposition.voiceLayers[0].active = true;
+      newComposition.activeVoiceId = newComposition.voiceLayers[0].id;
+    }
+    
+    // Rebuild the flattened notes array from all voice layers
+    newComposition.notes = newComposition.voiceLayers.flatMap(voice => 
+      voice.notes.map(note => ({
+        ...note,
+        voiceId: voice.id,
+        voiceColor: voice.color
+      }))
+    );
+    
+    console.log('Final merged composition:', 
+      `Name: ${newComposition.name}`,
+      `Voice layers: ${newComposition.voiceLayers.length}`,
+      `Total notes: ${newComposition.notes.length}`,
+      `Active voice: ${newComposition.activeVoiceId}`,
+      `Compositions used: ${addedCompositionCount}/${compositionsToMerge.length}`
+    );
+    
+    // Save the new combined composition
+    savedCompositions.value.push(newComposition);
+    saveToLocalStorage();
+    
+    // Let the user know it was successful
+    alert(`Successfully combined ${addedCompositionCount} compositions into "${newName}" with ${newComposition.voiceLayers.length} voice layers.`);
+    
+    // Optionally, load the new composition
+    if (confirm('Would you like to load the combined composition now?')) {
+      loadComposition(newComposition.id);
+    }
+  } catch (error) {
+    console.error('Error combining compositions:', error);
+    alert(`Error combining compositions: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
 
 </script>
 
