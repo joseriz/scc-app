@@ -687,7 +687,7 @@
       </div>
 
       <div class="voice-actions">
-        <button @click="switchActiveVoice(voice.id)"
+            <button @click="switchActiveVoice(voice.id)"
                 :class="{ 'active-voice-btn': voice.active, 'inactive-voice-btn': !voice.active }"
                 class="voice-action-btn">
           {{ voice.active ? 'Active' : 'Set Active' }}
@@ -705,20 +705,20 @@
                 class="voice-action-btn delete-voice-btn"
                 title="Delete voice">
           🗑️ Delete
-        </button>
-      </div>
-    </div>
+            </button>
+          </div>
+          </div>
     <div class="add-voice-container">
       <button @click="addVoiceLayer" class="add-voice-btn">Add Voice</button>
-    </div>
-
+        </div>
+        
     <!-- Option to play only selected voices -->
     <div class="voice-playback-options">
       <label class="playback-option">
         <input type="checkbox" v-model="playSelectedVoicesOnly" />
         Play only selected voices
       </label>
-    </div>
+      </div>
   </div>
 </template>
 
@@ -1671,7 +1671,7 @@ const getNoteSymbol = (note: Note) => {
 const getNoteStyle = (note) => {
   // Base position calculations
   const style = {
-    left: `${note.position * 50}px`,
+      left: `${note.position * 50}px`,
     top: `${note.verticalPosition}px`,
     color: note.voiceColor || 'black', // This sets the text/SVG color
   };
@@ -2366,7 +2366,7 @@ const saveComposition = () => {
     alert('Please enter a name for your composition');
     return;
   }
-
+  
   const newComposition: Composition = {
     id: generateId(),
     name: compositionName.value.trim(),
@@ -2398,7 +2398,7 @@ const saveComposition = () => {
 
   // Update currentCompositionId to the newly saved composition
   currentCompositionId.value = newComposition.id;
-  
+
   // Provide user feedback
   alert(`Composition "${compositionName.value}" saved successfully!`);
 }
@@ -2406,8 +2406,8 @@ const saveComposition = () => {
 // Update the loadComposition function to use the resetAudioSystem
 const loadComposition = (compositionId) => {
   // Find the composition by ID
-  const composition = savedCompositions.value.find(comp => comp.id === compositionId);
-  
+    const composition = savedCompositions.value.find(comp => comp.id === compositionId);
+    
   if (composition) {
     // Set the current composition ID
     currentCompositionId.value = composition.id;
