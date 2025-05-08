@@ -4409,4 +4409,164 @@ watch(savedCompositions, () => {
   cursor: not-allowed;
   border-color: #ced4da;
 }
+
+/* Voice layer styles with mobile responsiveness */
+.voice-layers-container {
+  margin: 20px auto;
+  padding: 15px;
+  background-color: #f7f9fc;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  max-width: 700px;
+}
+
+.voice-layers-container h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: #333;
+  text-align: center;
+  font-size: 1.3em;
+}
+
+.voice-layer-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 15px;
+  margin-bottom: 15px;
+  background-color: #fff;
+  border-left: 6px solid;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  transition: box-shadow 0.2s ease-in-out;
+}
+
+.voice-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap; /* Allow wrapping on very small screens */
+  gap: 10px;
+}
+
+.voice-name-input {
+  flex-grow: 1;
+  min-width: 120px; /* Ensure minimum width */
+  padding: 10px 12px;
+  border: 1px solid #dde1e6;
+  border-radius: 6px;
+  font-size: 1em;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.voice-color-picker {
+  width: 36px;
+  height: 36px;
+  border: 2px solid #fff;
+  outline: 1px solid #dde1e6;
+  padding: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  background-color: transparent;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  transition: transform 0.1s ease;
+}
+
+.voice-note-count {
+  font-size: 0.85em;
+  color: #555;
+  white-space: nowrap;
+  background-color: #f0f0f0;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.voice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 480px) {
+  .voice-layers-container {
+    padding: 12px;
+    margin: 15px auto;
+  }
+  
+  .voice-layer-item {
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .voice-info {
+    gap: 8px;
+  }
+  
+  .voice-name-input {
+    width: 100%; /* Full width on mobile */
+    margin-bottom: 8px;
+  }
+  
+  .voice-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .voice-action-btn {
+    flex: 1; /* Make buttons expand to fill space */
+    min-width: 70px; /* Minimum width for buttons */
+    padding: 10px 8px; /* Taller for better touch targets */
+    font-size: 0.85em; /* Slightly smaller font */
+    justify-content: center; /* Center text */
+  }
+  
+  /* Make delete button full width on mobile */
+  .delete-voice-btn {
+    width: 100%;
+    margin-top: 8px;
+    justify-content: center;
+  }
+  
+  .voice-playback-selection {
+    margin-right: auto; /* Push to left */
+  }
+  
+  .add-voice-btn {
+    width: 100%; /* Full width button on mobile */
+    max-width: 250px; /* But not too wide */
+    margin: 0 auto;
+  }
+}
+
+/* Larger mobile and small tablets */
+@media (min-width: 481px) and (max-width: 768px) {
+  .voice-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  
+  .voice-action-btn {
+    flex: 0 0 auto; /* Don't expand */
+  }
+  
+  .delete-voice-btn {
+    margin-left: auto; /* Push to right */
+  }
+}
+
+.voice-action-btn {
+  padding: 8px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  background-color: #f8f9fa;
+  color: #343a40;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap; /* Prevent text wrapping inside buttons */
+}
 </style>
