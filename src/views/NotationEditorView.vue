@@ -4355,11 +4355,19 @@ watch(savedCompositions, () => {
   background-color: currentColor; /* Use the note's color property */
 }
 
-/* For whole and half notes that have hollow noteheads */
-.note .notehead.whole,
+/* For whole notes that have hollow noteheads - apply visual nudge */
+.note .notehead.whole {
+  background-color: white; /* Keep the inside white */
+  border: 1px solid currentColor; /* Use the note's color for the border */
+  position: relative; /* Allow for fine-tuned positioning */
+  top: 1px;           /* Nudge down by 1 pixel to improve visual alignment */
+}
+
+/* For half notes that have hollow noteheads - no nudge to keep stem attached */
 .note .notehead.half {
   background-color: white; /* Keep the inside white */
   border: 1px solid currentColor; /* Use the note's color for the border */
+  /* position: relative; top: 1px; -- REMOVED to prevent stem detachment */
 }
 
 /* For accidentals and other text elements */
