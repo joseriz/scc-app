@@ -7,14 +7,14 @@
 
       <section>
         <h2>1. Introduction</h2>
-        <p>Your privacy is important to us. It is Rizzz's policy to respect your privacy regarding any information we may collect from you across our application, Music Notation Editor.</p>
-        <p>This Privacy Policy applies to the Music Notation Editor application (hereinafter, "us", "we", or "Music Notation Editor").</p>
+        <p>Your privacy is important to us. It is Rizzz's policy to respect your privacy regarding any information we may collect from you across our application, St Cecilia's Songbook.</p>
+        <p>This Privacy Policy applies to the St Cecilia's Songbook application (hereinafter, "us", "we", or "St Cecilia's Songbook").</p>
       </section>
 
       <section>
         <h2>2. Information We Collect</h2>
         <p><strong>Locally Stored Data:</strong> The primary function of this application is to allow you to create and edit musical notations. All compositions, notes, settings, and related data you create are stored locally on your device using your browser's local storage capabilities or, if using features like "Export", directly to your filesystem. We do not transmit this personal musical data to our servers or any third-party servers unless you explicitly use a feature designed for sharing or cloud backup (which would be clearly indicated).</p>
-        <p><strong>Usage Data (Optional/If Implemented):</strong> We may collect information that your browser sends whenever you visit our Service or when you access the Service by or through a mobile device ("Usage Data"). This Usage Data may include information such as your computer's Internet Protocol address (e.g. IP address), browser type, browser version, the pages of our Service that you visit, the time and date of your visit, the time spent on those pages, unique device identifiers and other diagnostic data. (<em>Note: Specify if you actually collect this. If not, remove or state you don't.</em>)</p>
+        <!-- <p><strong>Usage Data (Optional/If Implemented):</strong> We may collect information that your browser sends whenever you visit our Service or when you access the Service by or through a mobile device ("Usage Data"). This Usage Data may include information such as your computer's Internet Protocol address (e.g. IP address), browser type, browser version, the pages of our Service that you visit, the time and date of your visit, the time spent on those pages, unique device identifiers and other diagnostic data. (<em>Note: Specify if you actually collect this. If not, remove or state you don't.</em>)</p> -->
         <p><strong>Capacitor Filesystem:</strong> If you use features that interact with the device filesystem (e.g., import/export compositions via Capacitor's Filesystem API on native platforms), the application will request necessary permissions to read from or write to specific directories you choose. This data remains on your device unless you choose to move or share it.</p>
       </section>
       
@@ -24,7 +24,7 @@
         <ul>
           <li>Provide, operate, and maintain our Application (primarily using locally stored data).</li>
           <li>Improve, personalize, and expand our Application.</li>
-          <li>Understand and analyze how you use our Application (if usage data is collected).</li>
+          <!-- <li>Understand and analyze how you use our Application (if usage data is collected).</li> -->
           <li>Develop new products, services, features, and functionality.</li>
           <li>Comply with legal obligations.</li>
         </ul>
@@ -39,7 +39,7 @@
 
       <section>
         <h2>5. Third-Party Services</h2>
-        <p>This application does not integrate with third-party services that would collect your personal musical data by default. (<em>Note: If you use any third-party analytics, error reporting, etc., list them here and what data they collect.</em>)</p>
+        <p>This application does not integrate with third-party services that would collect your personal musical data by default.</p>
         <p>If using audio playback features (e.g., Tone.js with sample files), these audio files might be fetched from our servers or a CDN, but this does not involve collecting personal data from you beyond standard web server logs (like IP address for the request).</p>
       </section>
       

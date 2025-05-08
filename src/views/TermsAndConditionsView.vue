@@ -7,8 +7,8 @@
 
       <section>
         <h2>1. Introduction</h2>
-        <p>Welcome to Music Notation Editor! These terms and conditions outline the rules and regulations for the use of Our Application.</p>
-        <p>By accessing this application we assume you accept these terms and conditions. Do not continue to use Music Notation Editor if you do not agree to take all of the terms and conditions stated on this page.</p>
+        <p>Welcome to St Cecilia's Songbook! These terms and conditions outline the rules and regulations for the use of Our Application.</p>
+        <p>By accessing this application we assume you accept these terms and conditions. Do not continue to use St Cecilia's Songbook if you do not agree to take all of the terms and conditions stated on this page.</p>
       </section>
 
       <section>

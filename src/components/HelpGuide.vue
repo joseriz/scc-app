@@ -2,7 +2,7 @@
   <div class="help-overlay" v-if="isVisible">
     <div class="help-container">
       <div class="help-header">
-        <h1>Music Notation Editor Help</h1>
+        <h1>St Cecilia's Songbook Help</h1>
         <button class="close-button" @click="close">×</button>
       </div>
       
