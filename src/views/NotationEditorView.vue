@@ -1,69 +1,16 @@
 <template>
   <!-- Add responsive meta tag -->
   <div class="notation-editor">
-    <!-- Header with logo and essential musical settings -->
-    <div class="app-header">
-      <img src="@/assets/st-cecilia-logo.png" alt="St Cecilia's Songbook" class="app-logo">
-      
-      <!-- Musical settings in a compact row -->
-      <div class="musical-settings">
-        <div class="setting-item">
-          <label for="clef-select">Clef:</label>
-          <div class="custom-select compact">
-            <select id="clef-select" v-model="selectedClef" @change="handleClefChange">
-              <option value="treble">𝄞 Treble</option>
-              <option value="bass">𝄢 Bass</option>
-            </select>
-            <div class="select-icon">▼</div>
-          </div>
-        </div>
-        
-        <div class="setting-item">
-          <label for="key-signature">Key:</label>
-          <div class="custom-select compact">
-            <select id="key-signature" v-model="keySignature" @change="changeKeySignature(keySignature)">
-              <option value="C">C Maj (0)</option>
-              <option value="G">G Maj (1♯)</option>
-              <option value="D">D Maj (2♯)</option>
-              <option value="A">A Maj (3♯)</option>
-              <option value="E">E Maj (4♯)</option>
-              <option value="B">B Maj (5♯)</option>
-              <option value="F#">F♯ Maj (6♯)</option>
-              <option value="C#">C♯ Maj (7♯)</option>
-              <option value="F">F Maj (1♭)</option>
-              <option value="Bb">B♭ Maj (2♭)</option>
-              <option value="Eb">E♭ Maj (3♭)</option>
-              <option value="Ab">A♭ Maj (4♭)</option>
-              <option value="Db">D♭ Maj (5♭)</option>
-              <option value="Gb">G♭ Maj (6♭)</option>
-              <option value="Cb">C♭ Maj (7♭)</option>
-            </select>
-            <div class="select-icon">▼</div>
-          </div>
-        </div>
-        
-        <div class="setting-item">
-          <label for="time-signature">Time:</label>
-          <div class="custom-select compact">
-            <select id="time-signature" v-model="timeSignature" @change="updateTimeSignature">
-              <option value="4/4">4/4</option>
-              <option value="3/4">3/4</option>
-              <option value="2/4">2/4</option>
-              <option value="6/8">6/8</option>
-              <option value="9/8">9/8</option>
-              <option value="12/8">12/8</option>
-            </select>
-            <div class="select-icon">▼</div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AppHeader
+      v-model:selectedClef="selectedClef"
+      v-model:keySignature="keySignature"
+      v-model:timeSignature="timeSignature"
+      @clefChange="handleClefChange"
+      @keySignatureChange="changeKeySignatureDirectly"
+      @timeSignatureChange="updateTimeSignature"
+    />
 
-    <!-- Tempo control in its own row -->
-    <div class="tempo-container">
-      <label>Tempo: {{ tempo }}</label>
-      <input type="range" v-model="tempo" min="40" max="240" class="tempo-slider" />
-    </div>
+    <TempoControl v-model="tempo" />
 
     <!-- Staff container with improved mobile layout -->
     <div class="staff-container" :style="{ minHeight: staffContainerMinHeight }">
@@ -247,15 +194,6 @@
                      getAccidentalSymbol(note) : 
                      getAccidentalSymbolForKeySignature(getKeySignatureAccidentalForNote(note.pitch.charAt(0))) }}
               </span>
-
-              <!-- REMOVE Lyric Display from inside the note div -->
-              <!--
-              <span v-if="note.lyric"
-                    class="lyric"
-                    :class="{ 'playing': note.id === currentPlayingNoteId }">
-                {{ note.lyric }}
-              </span>
-              -->
             </div>
 
             <!-- Chord symbols -->
@@ -299,426 +237,98 @@
       </div>
     </div>
     
-    <!-- Playback controls positioned right above the staff -->
-    <div class="playback-controls-container">
-      <div class="playback-controls">
-        <button @click="togglePlayback" class="action-button play-button" :class="{
-          'play-button': !isPlaying && !isPaused,
-          'pause-button': isPlaying && !isPaused,
-          'resume-button': isPaused
-        }">
-          <span class="button-icon">
-            <span v-if="!isPlaying && !isPaused">▶</span>
-            <span v-else-if="isPlaying && !isPaused">⏸</span>
-            <span v-else-if="isPaused">⏯</span>
-          </span>
-          <span class="button-label">{{ !isPlaying && !isPaused ? 'Play' : (isPlaying && !isPaused ? 'Pause' : 'Resume') }}</span>
-        </button>
-        
-        <button @click="stopPlayback" class="action-button stop-button" :disabled="!isPlaying && !isPaused">
-          <span class="button-icon">■</span>
-          <span class="button-label">Stop</span>
-        </button>
-        
-        <button @click="isPlaying || isPaused ? restartPlayback() : confirmClearScore()" 
-          class="action-button" :class="{
-            'clear-button': !isPlaying && !isPaused,
-            'restart-button': isPlaying || isPaused
-          }">
-          <span class="button-icon">
-            <span v-if="!isPlaying && !isPaused">✕</span>
-            <span v-else>⟲</span>
-          </span>
-          <span class="button-label">{{ !isPlaying && !isPaused ? 'Clear' : 'Restart' }}</span>
-        </button>
-      </div>
-    </div>
+    <PlaybackControls
+      :is-playing="isPlaying"
+      :is-paused="isPaused"
+      @toggle-playback="togglePlayback"
+      @stop-playback="stopPlayback"
+      @clear-or-restart="handleClearOrRestart"
+    />
 
-    <!-- Add this right after the playback controls container -->
-    <div class="playback-settings">
-      <div class="playback-range">
-        <div class="control-label">Playback Range:</div>
-        <div class="measure-range-inputs">
-          <div class="measure-input">
-            <label for="start-measure">From:</label>
-            <input 
-              type="number" 
-              id="start-measure" 
-              v-model.number="playbackStartMeasure" 
-              min="1" 
-              :max="barlines.length"
-              class="measure-number-input"
-            />
-          </div>
-          <div class="measure-input">
-            <label for="end-measure">To:</label>
-            <input 
-              type="number" 
-              id="end-measure" 
-              v-model.number="playbackEndMeasure" 
-              min="0" 
-              :max="barlines.length"
-              class="measure-number-input"
-            />
-            <span class="measure-hint">(0 = end)</span>
-          </div>
-        </div>
-      </div>
-      
-      <div class="playback-options">
-        <div class="auto-scroll-toggle">
-          <input 
-            type="checkbox" 
-            id="auto-scroll" 
-            v-model="autoScrollToPlayingNote"
-          />
-          <label for="auto-scroll">Auto-scroll to playing notes</label>
-        </div>
-        
-        <div class="measure-visibility-toggle">
-          <input 
-            type="checkbox" 
-            id="show-measures" 
-            v-model="showMeasureNumbers"
-          />
-          <label for="show-measures">Show measure numbers</label>
-        </div>
-      </div>
-    </div>
+    <PlaybackSettings
+      v-model:playbackStartMeasure="playbackStartMeasure"
+      v-model:playbackEndMeasure="playbackEndMeasure"
+      :maxMeasures="barlines.length"
+      v-model:autoScrollToPlayingNote="autoScrollToPlayingNote"
+      v-model:showMeasureNumbers="showMeasureNumbers"
+    />
 
     <!-- Mobile-optimized note controls with tabs -->
     <div class="mobile-tabs">
       <button @click="activeTab = 'notes'" :class="['tab-btn', { active: activeTab === 'notes' }]">Notes</button>
-      <!-- Hiding Settings tab for now -->
-      <!-- <button @click="activeTab = 'settings'" :class="['tab-btn', { active: activeTab === 'settings' }]">Settings</button> -->
+      <button @click="activeTab = 'settings'" :class="['tab-btn', { active: activeTab === 'settings' }]">Settings</button>
       <button @click="activeTab = 'saved'" :class="['tab-btn', { active: activeTab === 'saved' }]">Saved</button>
     </div>
 
-    <div v-if="activeTab === 'notes'" class="note-controls-container">
-    <div class="note-controls">
-        <!-- Use a grid layout for better organization on mobile -->
-        <div class="note-controls-grid">
-          <!-- First Row: Duration and Type -->
-          <div class="control-section duration-section">
-            <h4>Duration</h4>
-            <div class="scrollable-buttons">
-              <!-- Update this loop -->
-              <button v-for="duration in availableDurations"
-                      :key="duration.value"
-                      @click="selectedDuration = duration.value"
-                      :class="['note-btn', { active: selectedDuration === duration.value }]">
-                {{ selectedNoteType === 'note' 
-                  ? (usesFallbackSymbols ? duration.fallbackNoteLabel : duration.noteLabel) 
-                  : (usesFallbackSymbols ? duration.fallbackRestLabel : duration.restLabel) }}
-              </button>
-            </div>
-            <div class="dotted-note-toggle">
-              <button @click="toggleDottedNote" 
-                      :class="['note-btn', { active: isDottedNote }]">
-                Dotted
-      </button>
-            </div>
-          </div>
-
-          <div class="control-section type-section">
-            <h4>Type</h4>
-            <div class="button-group">
-      <button @click="selectedNoteType = 'note'"
-              :class="['note-btn', { active: selectedNoteType === 'note' }]">
-        Note
-      </button>
-      <button @click="selectedNoteType = 'rest'"
-              :class="['note-btn', { active: selectedNoteType === 'rest' }]">
-        Rest
-      </button>
-            </div>
-          </div>
-          
-          <!-- Second Row: Accidental and Octave -->
-          <div class="control-section accidental-section">
-            <h4>Accidental</h4>
-            <div class="scrollable-buttons">
-              <button v-for="accidental in availableAccidentals"
-                      :key="accidental.value"
-                      @click="selectedAccidental = accidental.value"
-                      :class="['note-btn', { active: selectedAccidental === accidental.value }]">
-                {{ accidental.label }}
-      </button>
-            </div>
-    </div>
-
-          <div class="control-section octave-section">
-            <h4>Octave</h4>
-            <div class="scrollable-buttons">
-        <button v-for="octave in [2,3,4,5,6]"
-                :key="octave"
-                @click="selectedOctave = octave"
-                :class="['octave-btn', { active: selectedOctave === octave }]">
-          {{ octave }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="activeTab === 'settings'" class="settings-container">
-      <!-- Key signature selector -->
-      <!-- REMOVE THIS ENTIRE DIV BLOCK -->
-      <!--
-      <div class="control-section">
-        <h4>Key Signature</h4>
-        <div class="custom-select">
-          <select id="key-signature" v-model="keySignature" @change="changeKeySignature(keySignature)">
-            <option value="C">C Major (No sharps/flats)</option>
-            <option value="G">G Major (1 sharp)</option>
-            <option value="D">D Major (2 sharps)</option>
-            <option value="A">A Major (3 sharps)</option>
-            <option value="E">E Major (4 sharps)</option>
-            <option value="B">B Major (5 sharps)</option>
-            <option value="F#">F# Major (6 sharps)</option>
-            <option value="C#">C# Major (7 sharps)</option>
-            <option value="F">F Major (1 flat)</option>
-            <option value="Bb">Bb Major (2 flats)</option>
-            <option value="Eb">Eb Major (3 flats)</option>
-            <option value="Ab">Ab Major (4 flats)</option>
-            <option value="Db">Db Major (5 flats)</option>
-            <option value="Gb">Gb Major (6 flats)</option>
-            <option value="Cb">Cb Major (7 flats)</option>
-          </select>
-          <div class="select-icon">▼</div>
-        </div>
-      </div>
-      -->
-
-      <!-- Chord controls -->
-      <div class="control-section">
-        <h4>Chords</h4>
-        <div class="button-group">
-          <button @click="showChordInput = true" class="chord-btn">Add Chord</button>
-          <button @click="addExampleChords" class="chord-btn">Example Chords</button>
-        </div>
-      </div>
-
-      <!-- Debug toggle -->
-      <div class="control-section">
-        <h4>Debug</h4>
-        <button @click="toggleDebugMode" 
-                :class="['note-btn', { active: debugMode }]">
-          Debug Mode
-        </button>
-      </div>
-    </div>
-
-    <!-- Debug Panel -->
-    <div v-if="debugMode" class="debug-panel">
-      <h3>Debug Panel</h3>
-      <div class="debug-controls">
-        <div>
-          <p>Show Note Positions:</p>
-          <button @click="showNotePositions = !showNotePositions"
-                  :class="['debug-btn', { active: showNotePositions }]">
-            {{ showNotePositions ? 'Hide Pitches' : 'Show Pitches' }}
-          </button>
-        </div>
-        <div>
-          <p>Test All Notes:</p>
-          <button @click="testAllNotes" class="debug-btn">
-            Place All Notes on Staff
-          </button>
-        </div>
-      </div>
-      <p>Last Click Position: {{ lastClickY }}px</p>
-      <p>Selected Octave: {{ selectedOctave }}</p>
-      <p class="debug-hint">Use "Show Pitches" to see note names on the staff. Use "Test All Notes" to place all available notes on the staff.</p>
-      
-      <div>
-        <h4>Ledger Lines Debug:</h4>
-        <div v-for="note in notes" :key="`debug-${note.id}`">
-          <template v-if="note.type === 'note' && note.pitch">
-            <p>Note: {{ note.pitch }} - 
-               Above: {{ needsLedgerLines(note, 'above') ? 'Yes' : 'No' }} - 
-               Below: {{ needsLedgerLines(note, 'below') ? 'Yes' : 'No' }}</p>
-            <p v-if="needsLedgerLines(note, 'above')">
-              Above lines: {{ getLedgerLines(note, 'above').join(', ') }}
-            </p>
-            <p v-if="needsLedgerLines(note, 'below')">
-              Below lines: {{ getLedgerLines(note, 'below').join(', ') }}
-            </p>
-          </template>
-    </div>
-      </div>
-    </div>
-
-    <!-- Add a panel for saved compositions -->
-    <div v-if="activeTab === 'saved'" class="saved-compositions-container">
-      <div class="control-section">
-        <h4>Save Current Composition</h4>
-        <div class="save-composition-form">
-          <input 
-            type="text" 
-            v-model="compositionName" 
-            placeholder="Enter a name for your composition" 
-            class="composition-name-input"
-          />
-          <button @click="saveComposition" class="save-btn">Save</button>
-        </div>
-    </div>
-
-      <div class="control-section">
-        <h4>Your Saved Compositions</h4>
-        <div v-if="savedCompositions.length === 0" class="no-saved-compositions">
-          No saved compositions yet.
-        </div>
-        <div v-else class="saved-composition-list">
-          <div v-for="comp in savedCompositions" :key="comp.id" class="saved-composition-item">
-            <div class="composition-info">
-              <!-- Show name or edit form based on edit state -->
-              <template v-if="editingComposition === comp.id">
-                <div class="edit-name-form">
-                  <input 
-                    type="text" 
-                    v-model="editCompositionName" 
-                    class="rename-input" 
-                    @keyup.enter="saveRename(comp.id)"
-                  />
-                  <button @click="saveRename(comp.id)" class="save-rename-btn">Save</button>
-                  <button @click="cancelRename" class="cancel-rename-btn">Cancel</button>
-                </div>
-              </template>
-              <template v-else>
-                <span class="composition-name">{{ comp.name }}</span>
-                <span class="composition-date">{{ formatDate(comp.dateCreated) }}</span>
-              </template>
-            </div>
-            <div class="composition-actions">
-              <button @click="loadComposition(comp.id)" class="load-btn">Load</button>
-              <!-- Show update button if the current composition matches -->
-              <button 
-                v-if="currentCompositionId === comp.id" 
-                @click="updateComposition(comp.id)" 
-                class="update-btn"
-                title="Update this composition with current changes"
-              >
-                Update
-      </button>
-              <button @click="startRename(comp.id, comp.name)" class="load-btn" style="background-color: #9C27B0;">Rename</button>
-              <button @click="deleteComposition(comp.id)" class="delete-btn">Delete</button>
-    </div>
-  </div>
-        </div>
-      </div>
-      
-      <!-- Add import/export buttons to the Saved tab -->
-      <div class="import-export-controls">
-        <button @click="exportAllCompositions" class="export-btn">Export All</button>
-        <button @click="exportCurrentComposition" class="export-btn" :disabled="!currentCompositionId">Export Current</button>
-        <label for="import-file" class="import-btn">Import</label>
-        <input 
-          type="file" 
-          id="import-file" 
-          accept=".txt,.json" 
-          @change="importCompositions" 
-          style="display: none;"
-        />
-      </div>
-    </div>
-  </div>
-  <!-- <button @click="toggleDebugMonitor" style="position: fixed; bottom: 10px; left: 10px; z-index: 9999; background: #ff5722; color: white; border: none; padding: 5px 10px; border-radius: 4px;">
-    Toggle Debug
-  </button> -->
-
-  <!-- Add this after the note controls section, inside the Notes tab -->
-  <div v-if="activeTab === 'notes'" class="lyrics-control-section">
-    <h4>Lyrics</h4>
-    <div class="lyrics-input-container">
-      <input 
-        type="text" 
-        v-model="currentLyric" 
-        placeholder="Enter lyric for selected note" 
-        :disabled="!selectedNoteId"
-        @keypress="handleLyricInputKeypress"
-        class="lyric-input"
+    <div v-if="activeTab === 'notes'">
+      <NoteInputControls
+        v-model:selectedDuration="selectedDuration"
+        v-model:selectedNoteType="selectedNoteType"
+        v-model:isDottedNote="isDottedNote"
+        :availableDurations="availableDurations"
+        :usesFallbackSymbols="usesFallbackSymbols"
+        v-model:selectedAccidental="selectedAccidental"
+        :availableAccidentals="availableAccidentals"
+        v-model:selectedOctave="selectedOctave"
+        @toggleDottedNote="toggleDottedNote"
       />
-      <button 
-        @click="selectedNoteId ? setLyricForNote(selectedNoteId, currentLyric) : null" 
-        :disabled="!selectedNoteId"
-        class="add-lyric-btn"
-      >
-        Add Lyric
-      </button>
+      <LyricsControls
+        v-model="currentLyric"
+        :selectedNoteId="selectedNoteId"
+        @setLyric="setLyricForNoteHandler"
+      />
     </div>
-    <p class="lyrics-help-text">
-      Select a note first, then enter a lyric and press Enter or click "Add Lyric"
-    </p>
+
+    <div v-if="activeTab === 'settings'">
+      <SettingsPanel
+        :debugMode="debugMode"
+        @showChordInput="showChordInput = true"
+        @addExampleChords="addExampleChords"
+        @toggleDebugMode="toggleDebugMode"
+      />
+      </div>
+      
+    <DebugPanel
+      :debugMode="debugMode"
+      :showNotePositions="showNotePositions"
+      :lastClickY="lastClickY"
+      :selectedOctave="selectedOctave"
+      :notesForDebug="notes"
+      :needsLedgerLines="needsLedgerLines"
+      :getLedgerLines="getLedgerLines"
+      @toggleShowNotePositions="showNotePositions = !showNotePositions"
+      @testAllNotes="testAllNotes"
+    />
+
+    <div v-if="activeTab === 'saved'">
+      <SavedCompositionsPanel
+        :savedCompositions="savedCompositions"
+        v-model:compositionName="compositionName"
+        :currentCompositionId="currentCompositionId"
+        @saveComposition="saveComposition"
+        @loadComposition="loadComposition"
+        @updateComposition="updateComposition"
+        @saveRename="handleSaveRename"
+        @deleteComposition="deleteComposition"
+        @exportAllCompositions="exportAllCompositions"
+        @exportCurrentComposition="exportCurrentComposition"
+        @importCompositions="importCompositions"
+      />
   </div>
 
-  <!-- Add this near the top of your template, after the opening <div class="notation-editor"> -->
-  <div class="help-button-container">
-    <button class="help-button" @click="showHelp = true">
-      <span class="help-icon">?</span>
-      <span class="help-text">Help</span>
-    </button>
-  </div>
-
-  <!-- Add this at the end of your template, just before the closing </div> -->
   <HelpGuide :is-visible="showHelp" @close="showHelp = false" />
 
-  <!-- Add this after the playback controls container -->
-  <div class="voice-layers-container">
-    <h3>Voice Layers</h3>
-    <div v-for="voice in voiceLayers" :key="voice.id" class="voice-layer-item" :style="{ borderColor: voice.color }">
-      <div class="voice-info">
-        <!-- Voice Name Input -->
-        <input type="text"
-               :value="voice.name"
-               @change="renameVoice(voice.id, ($event.target as HTMLInputElement).value)"
-               class="voice-name-input"
-               :style="{ color: voice.color }" />
-
-        <!-- Voice Color Picker -->
-        <input type="color"
-               :value="voice.color"
-               @input="changeVoiceColor(voice.id, ($event.target as HTMLInputElement).value)"
-               class="voice-color-picker"
-               title="Change voice color" />
-
-        <span class="voice-note-count">({{ voice.notes.length }} notes)</span>
-      </div>
-
-      <div class="voice-actions">
-            <button @click="switchActiveVoice(voice.id)"
-                :class="{ 'active-voice-btn': voice.active, 'inactive-voice-btn': !voice.active }"
-                class="voice-action-btn">
-          {{ voice.active ? 'Active' : 'Set Active' }}
-        </button>
-        <button @click="toggleVoiceVisibility(voice.id)" class="voice-action-btn visibility-btn">
-          {{ voice.visible ? 'Hide' : 'Show' }}
-        </button>
-        <!-- Add a button to select/deselect voice for playback, if needed -->
-        <label class="voice-playback-selection">
-          <input type="checkbox" v-model="voice.selected" /> Play
-        </label>
-        <!-- Add Delete Voice Button -->
-        <button @click="confirmDeleteVoice(voice.id)"
-                v-if="voiceLayers.length > 1"
-                class="voice-action-btn delete-voice-btn"
-                title="Delete voice">
-          🗑️ Delete
-            </button>
-          </div>
-          </div>
-    <div class="add-voice-container">
-      <button @click="addVoiceLayer" class="add-voice-btn">Add Voice</button>
-        </div>
-        
-    <!-- Option to play only selected voices -->
-    <div class="voice-playback-options">
-      <label class="playback-option">
-        <input type="checkbox" v-model="playSelectedVoicesOnly" />
-        Play only selected voices
-      </label>
-      </div>
+    <VoiceLayersPanel
+      :voiceLayers="voiceLayers"
+      v-model:playSelectedVoicesOnly="playSelectedVoicesOnly"
+      @renameVoice="renameVoice"
+      @changeVoiceColor="changeVoiceColor"
+      @switchActiveVoice="switchActiveVoice"
+      @toggleVoiceVisibility="toggleVoiceVisibility"
+      @updateVoiceSelection="updateVoiceLayerSelection"
+      @confirmDeleteVoice="confirmDeleteVoice"
+      @addVoiceLayer="addVoiceLayer"
+    />
   </div>
 </template>
 
@@ -727,9 +337,79 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, reactive, watch } 
 import * as Tone from 'tone';
 import { useNotationStore } from '@/stores/notation';
 import HelpGuide from '@/components/HelpGuide.vue';
+import AppHeader from '@/components/AppHeader.vue';
+import TempoControl from '@/components/TempoControl.vue';
+import PlaybackControls from '@/components/PlaybackControls.vue';
+import NoteInputControls from '@/components/NoteInputControls.vue';
+import SavedCompositionsPanel from '@/components/SavedCompositionsPanel.vue';
+import PlaybackSettings from '@/components/PlaybackSettings.vue'; // Import new
+import LyricsControls from '@/components/LyricsControls.vue'; // Import new
+import VoiceLayersPanel from '@/components/VoiceLayersPanel.vue'; // Import new
+import SettingsPanel from '@/components/SettingsPanel.vue'; // Import new
+import DebugPanel from '@/components/DebugPanel.vue'; // Import new
 
 // Store
 const notationStore = useNotationStore();
+
+// --- CONSOLIDATED INTERFACE DEFINITIONS ---
+interface Note {
+  id: string;
+  type: "note" | "rest";
+  pitch?: string;
+  duration: string;
+  position: number;
+  verticalPosition: number;
+  dotted?: boolean;
+  lyric?: string;
+  voiceId?: string; // Added: To link note to a voice
+  voiceColor?: string; // Added: To store color from voice
+}
+
+interface ChordSymbol {
+  id: string;
+  position: number;
+  chordName: string;
+  top: number;
+}
+
+interface VoiceLayer {
+  id: string;
+  name: string;
+  color: string;
+  visible: boolean;
+  active: boolean;
+  selected: boolean;
+  volume: number;
+  notes: Note[]; // Use the consolidated Note interface
+}
+
+// This will be the primary interface for saved compositions
+interface CompositionData {
+  id: string;
+  name: string;
+  dateCreated: number;
+  notes: Note[]; // For a flattened list of all notes from all voices
+  voiceLayers?: VoiceLayer[];
+  tempo: number;
+  clef: string;
+  keySignature: string;
+  timeSignature?: string;
+  chordSymbols?: ChordSymbol[];
+  activeVoiceId?: string;
+  staffWidth?: number;
+  // UI state saved with the composition
+  selectedDuration: string;
+  selectedNoteType: string;
+  selectedAccidental?: string;
+  selectedOctave: number;
+  isDottedNote: boolean;
+}
+
+// Type for notes that appear in allVisibleNotes (dynamically has voiceId and voiceColor)
+interface NoteWithVoiceInfo extends Note {
+  voiceId: string; // Non-optional here
+  voiceColor: string; // Non-optional here
+}
 
 // State variables
 // const selectedHeight = ref('middle');
@@ -756,7 +436,7 @@ const getRandomColor = (): string => {
 
 // Add voice layers and related refs near the top
 // Default to one voice with a random color
-const voiceLayers = ref([
+const voiceLayers = ref<VoiceLayer[]>([ // Explicitly type voiceLayers
   {
     id: 'voice1',
     name: 'Voice 1',
@@ -773,14 +453,14 @@ const voiceLayers = ref([
 const activeVoiceId = ref('voice1'); // Still defaults to the first voice
 
 // Get the active voice layer
-const activeVoice = computed(() => {
+const activeVoice = computed<VoiceLayer>(() => { // Explicitly type activeVoice
   return voiceLayers.value.find(layer => layer.id === activeVoiceId.value) || voiceLayers.value[0];
 });
 
 // Update computed property to correctly set voice colors
-const allVisibleNotes = computed(() => {
+const allVisibleNotes = computed((): NoteWithVoiceInfo[] => { // Specify return type
   // Get all notes from visible voices
-  let allNotes = [] as Note[];
+  let allNotes: NoteWithVoiceInfo[] = [];
   
   voiceLayers.value.forEach(voice => {
     if (voice.visible) {
@@ -789,7 +469,7 @@ const allVisibleNotes = computed(() => {
         ...note,
         voiceId: voice.id,
         voiceColor: voice.color
-      }));
+      })) as NoteWithVoiceInfo[]; // Ensure this maps to NoteWithVoiceInfo
       
       allNotes = [...allNotes, ...notesWithVoiceInfo];
     }
@@ -800,7 +480,7 @@ const allVisibleNotes = computed(() => {
 });
 
 // Update the existing notes ref to use the active voice's notes
-const notes = computed({
+const notes = computed<Note[]>({ // Explicitly type notes
   get: () => {
     return activeVoice.value.notes;
   },
@@ -908,65 +588,6 @@ declare global {
 
 // Add a new ref for the show help state
 const showHelp = ref(false);
-
-// // Add these refs after the other state variables
-// const voiceLayers = ref([
-//   { id: 'voice1', name: 'Voice 1', color: '#1976D2', visible: true, active: true, selected: true, volume: 0, notes: [] },
-//   { id: 'voice2', name: 'Voice 2', color: '#E91E63', visible: true, active: false, selected: true, volume: 0, notes: [] },
-//   { id: 'voice3', name: 'Voice 3', color: '#4CAF50', visible: true, active: false, selected: true, volume: 0, notes: [] },
-//   { id: 'voice4', name: 'Voice 4', color: '#FF9800', visible: true, active: false, selected: true, volume: 0, notes: [] }
-// ]);
-
-// Add this computed property to get all visible notes across all visible layers
-// const allVisibleNotes = computed(() => {
-//   let visibleNotes = [];
-//   voiceLayers.value.forEach(layer => {
-//     if (layer.visible && layer.notes.length > 0) {
-//       // Add layer ID to each note for identification
-//       visibleNotes = visibleNotes.concat(layer.notes.map(note => ({
-//         ...note,
-//         voiceId: layer.id,
-//         voiceColor: layer.color
-//       })));
-//     }
-//   });
-//   return visibleNotes;
-// });
-
-// Then update your notes ref to use this type
-// const notes = ref<Note[]>([]);
-
-// Create a piano-like synth for playback
-// const createPianoSynth = () => {
-//   return new Tone.Sampler({
-//     urls: {
-//       A1: "A1.mp3",
-//       A2: "A2.mp3",
-//       A3: "A3.mp3",
-//       A4: "A4.mp3",
-//       A5: "A5.mp3",
-//       A6: "A6.mp3",
-//       C1: "C1.mp3",
-//       C2: "C2.mp3",
-//       C3: "C3.mp3",
-//       C4: "C4.mp3",
-//       C5: "C5.mp3",
-//       C6: "C6.mp3",
-//       'D#1': "Ds1.mp3",
-//       'D#2': "Ds2.mp3",
-//       'D#3': "Ds3.mp3",
-//       'D#4': "Ds4.mp3",
-//       'D#5': "Ds5.mp3",
-//       'F#1': "Fs1.mp3",
-//       'F#2': "Fs2.mp3",
-//       'F#3': "Fs3.mp3",
-//       'F#4': "Fs4.mp3",
-//       'F#5': "Fs5.mp3"
-//     },
-//     release: 1,
-//     baseUrl: "https://tonejs.github.io/audio/salamander/",
-//   }).toDestination();
-// };
 
 // Create a fallback synth with piano-like settings
 const createFallbackPianoSynth = () => {
@@ -1242,64 +863,6 @@ const getPitchPosition = (pitch: string) => {
   }
 };
 
-// const showLedgerLinesForNote = (pitch: string, position: number) => {
-//   // Get the base note without accidentals
-//   const octave = parseInt(pitch.slice(-1));
-//   const note = pitch.slice(0, -1).replace(/[#b]/, '');
-//   const baseNote = `${note}${octave}`;
-  
-//   // Define the staff range
-//   const aboveStaff = ['F5', 'G5', 'A5', 'B5', 'C6', 'D6', 'E6', 'F6', 'G6', 'A6', 'B6'];
-//   const belowStaff = ['D3', 'C3', 'B2', 'A2', 'G2', 'F2', 'E2', 'D2', 'C2'];
-  
-//   // Find all ledger line elements
-//   const ledgerLinesAbove = document.querySelectorAll('.ledger-line.above');
-//   const ledgerLinesBelow = document.querySelectorAll('.ledger-line.below');
-  
-//   // Reset all ledger lines
-//   ledgerLinesAbove.forEach(line => (line as HTMLElement).style.display = 'none');
-//   ledgerLinesBelow.forEach(line => (line as HTMLElement).style.display = 'none');
-  
-//   // Show appropriate ledger lines based on the note
-//   if (aboveStaff.includes(baseNote)) {
-//     const index = aboveStaff.indexOf(baseNote);
-//     const linesNeeded = Math.floor(index / 2) + 1;
-    
-//     for (let i = 0; i < linesNeeded && i < ledgerLinesAbove.length; i++) {
-//       const line = ledgerLinesAbove[i] as HTMLElement;
-//       line.style.display = 'block';
-//       line.style.left = `${position * 50}px`;
-//       line.style.width = '20px';
-//     }
-//   } else if (belowStaff.includes(baseNote)) {
-//     const index = belowStaff.indexOf(baseNote);
-//     const linesNeeded = Math.floor(index / 2) + 1;
-    
-//     for (let i = 0; i < linesNeeded && i < ledgerLinesBelow.length; i++) {
-//       const line = ledgerLinesBelow[i] as HTMLElement;
-//       line.style.display = 'block';
-//       line.style.left = `${position * 50}px`;
-//       line.style.width = '20px';
-//     }
-//   }
-// };
-
-// Add this new function
-// const selectNoteHeight = (height: 'high' | 'middle' | 'low') => {
-//   selectedHeight.value = height;
-//   switch (height) {
-//     case 'high':
-//       selectedOctave.value = 5;
-//       break;
-//     case 'middle':
-//       selectedOctave.value = 4;
-//       break;
-//     case 'low':
-//       selectedOctave.value = 3;
-//       break;
-//   }
-// };
-
 // Add this function to check if a note is affected by the key signature
 const isNoteAffectedByKeySignature = (noteName: string) => {
   const accidentals = currentKeySignatureAccidentals.value;
@@ -1422,48 +985,6 @@ const playComposition = () => {
   // Call the playScore function which respects measure boundaries
   playScore();
 };
-
-// Add this new function to adjust the pitch for playback
-// const adjustPitchForPlayback = (pitch: string) => {
-//   // Extract the note name and octave
-//   const noteName = pitch.replace(/[0-9]/g, '');
-//   const octave = parseInt(pitch.match(/[0-9]/)?.[0] || '4');
-  
-//   // Define the note sequence
-//   const noteSequence = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  
-//   // Find the current note index
-//   let noteIndex = noteSequence.indexOf(noteName);
-//   if (noteIndex === -1) {
-//     // Handle flats by converting to equivalent sharps
-//     const flatToSharp: Record<string, string> = {
-//       'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#',
-//       'Cb': 'B', 'Fb': 'E'
-//     };
-    
-//     // Check if we have a flat note and convert it
-//     for (const [flat, sharp] of Object.entries(flatToSharp)) {
-//       if (noteName === flat) {
-//         noteIndex = noteSequence.indexOf(sharp);
-//         break;
-//       }
-//     }
-    
-//     // If still not found, return the original pitch
-//     if (noteIndex === -1) return pitch;
-//   }
-  
-//   // Adjust down by a half step (semitone)
-//   noteIndex = (noteIndex - 1 + 12) % 12;
-//   let newOctave = octave;
-  
-//   // Handle octave change if needed - only for B going to C
-//   if (noteName === 'C') {
-//     newOctave = octave - 1;
-//   }
-  
-//   return noteSequence[noteIndex] + newOctave;
-// };
 
 // Update the existing handleStaffClick function to include the dotted property
 const handleStaffClick = (event) => {
@@ -1668,9 +1189,14 @@ const getNoteSymbol = (note: Note) => {
 };
 
 // Find the getNoteStyle function and update it to use voice colors
-const getNoteStyle = (note) => {
+const getNoteStyle = (note: NoteWithVoiceInfo) => { // Use NoteWithVoiceInfo and define return type
   // Base position calculations
-  const style = {
+  const style: {
+      left: string;
+      top: string;
+      color: string;
+      borderColor?: string; // Ensure borderColor is allowed and is a string
+  } = {
       left: `${note.position * 50}px`,
     top: `${note.verticalPosition}px`,
     color: note.voiceColor || 'black', // This sets the text/SVG color
@@ -1689,32 +1215,6 @@ const getNoteStyle = (note) => {
 
 // Add the isPlaying ref
 const isPlaying = ref(false);
-
-// Add a function to auto-scroll to the currently playing note
-// const autoScrollToNote = (note) => {
-//   // Calculate the horizontal position of the note
-//   const noteXPosition = note.position * 50;
-  
-//   // Calculate the visible area boundaries
-//   const leftBoundary = scrollPosition.value;
-//   const rightBoundary = scrollPosition.value + visibleStaffWidth.value;
-  
-//   // Check if the note is outside the visible area
-//   if (noteXPosition < leftBoundary + 100) {
-//     // Note is to the left of the visible area or too close to the left edge
-//     // Scroll left to show the note with some margin
-//     scrollPosition.value = Math.max(0, noteXPosition - 100);
-//     updateStaffScroll();
-//   } else if (noteXPosition > rightBoundary - 100) {
-//     // Note is to the right of the visible area or too close to the right edge
-//     // Scroll right to show the note with some margin
-//     scrollPosition.value = Math.min(
-//       maxScrollPosition.value,
-//       noteXPosition - visibleStaffWidth.value + 200
-//     );
-//     updateStaffScroll();
-//   }
-// };
 
 // Fix the updateStaffScroll function
 const updateStaffScroll = () => {
@@ -1829,20 +1329,6 @@ const getLedgerLines = (note, position) => {
   return lines;
 };
 
-// Add a chord to the score
-// const addChordToScore = () => {
-//   if (chordName.value.trim()) {
-//     chordSymbols.value.push({
-//       id: Date.now().toString(),
-//       position: chordInputPosition.value,
-//       chordName: chordName.value,
-//       top: 70 // Position above the staff
-//     });
-//     chordName.value = '';
-//     showChordInput.value = false;
-//   }
-// };
-
 // Format chord names with proper musical symbols
 const formatChordName = (name: string) => {
   return name
@@ -1858,22 +1344,6 @@ const formatChordName = (name: string) => {
     .replace(/sus2/g, 'sus²')
     .replace(/add9/g, 'add⁹');
 };
-
-// Handle staff click for chord placement
-// const handleChordPlacement = (event: MouseEvent) => {
-//   if (!showChordInput.value) return;
-  
-//   const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-//   const x = event.clientX - staffRect.left;
-//   chordInputPosition.value = Math.floor(x / 50);
-  
-//   // Position the chord input modal near the click
-//   const chordModal = document.querySelector('.chord-input-modal') as HTMLElement;
-//   if (chordModal) {
-//     chordModal.style.left = `${x}px`;
-//     chordModal.style.top = '40px';
-//   }
-// };
 
 // Add example chords for demo
 const addExampleChords = () => {
@@ -3152,123 +2622,10 @@ const exportComposition = () => {
   }, 100);
 };
 
-// Update importComposition to support time signature
-// const handleImportFile = (e) => {
-//   const file = e.target.files[0];
-//   if (!file) return;
-  
-//   const reader = new FileReader();
-//   reader.onload = (e) => {
-//     try {
-//       // Parse the JSON data
-//       const importedData = JSON.parse(e.target.result);
-      
-//       // Check if it's an array (multiple compositions) or a single composition
-//       if (Array.isArray(importedData)) {
-//         // Multiple compositions
-//         importedCompositions.value = importedData;
-//         showImportModal.value = true;
-//       } else {
-//         // Single composition
-//         importComposition(importedData);
-//       }
-//     } catch (error) {
-//       console.error('Error importing file:', error);
-//       alert('Error importing file. Please check the file format.');
-//     }
-//   };
-//   reader.readAsText(file);
-// };
-
-// Function to import a single composition
-// const importComposition = (composition) => {
-//   try {
-//     // Clear existing score
-//     clearScore();
-    
-//     // Load notes
-//     notes.value = composition.notes.map(note => ({
-//       ...note,
-//       id: note.id || generateId(),
-//       type: note.type || 'note',
-//       position: note.position || 0,
-//       verticalPosition: note.verticalPosition || 0,
-//       duration: note.duration || 'quarter',
-//       dotted: note.dotted || false,
-//       pitch: note.pitch || 'C4'
-//     }));
-    
-//     // Set time signature, defaulting to 4/4 if not provided
-//     timeSignature.value = composition.timeSignature || '4/4';
-    
-//     // Set other musical parameters
-//     selectedClef.value = composition.clef || 'treble';
-//     keySignature.value = composition.keySignature || 'C'; // FIX: Use keySignature instead of selectedKeySignature
-//     tempo.value = composition.tempo || 120;
-    
-//     // Load chord symbols if present
-//     if (composition.chordSymbols) {
-//       chordSymbols.value = composition.chordSymbols;
-//     }
-    
-//     // Set composition name
-//     compositionName.value = composition.name || 'Imported Composition';
-    
-//     // Update UI based on loaded data
-//     updateTimeSignature();
-//     handleClefChange();
-//     updateKeySignature();
-    
-//     console.log(`Imported composition: ${composition.name}`);
-//     alert(`Successfully imported: ${composition.name}`);
-//   } catch (error) {
-//     console.error('Error during import:', error);
-//     alert('Error importing composition. Please check the file format.');
-//   }
-// };
-
-// Add timeSignature to exportComposition if it exists
-// const exportToFile = () => {
-//   // Create a JSON string with the current composition
-//   const compositionData = {
-//     name: compositionName.value || 'Untitled Composition',
-//     notes: notes.value,
-//     tempo: tempo.value,
-//     clef: selectedClef.value,
-//     keySignature: keySignature.value,
-//     timeSignature: timeSignature.value, // Add time signature
-//     // Add any other properties you want to save
-//   };
-  
-//   const dataStr = JSON.stringify(compositionData);
-//   const dataBlob = new Blob([dataStr], { type: 'application/json' });
-//   const url = URL.createObjectURL(dataBlob);
-  
-//   // Create a link and trigger download
-//   const a = document.createElement('a');
-//   a.href = url;
-//   a.download = `${compositionData.name.replace(/\s+/g, '_')}.json`;
-//   document.body.appendChild(a);
-//   a.click();
-//   document.body.removeChild(a);
-//   URL.revokeObjectURL(url);
-// };
-
 // Add the missing generateId function
 const generateId = () => {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
 };
-
-// // Add the missing updateKeySignature function
-// const updateKeySignature = () => {
-//   console.log(`Key signature changed to ${keySignature.value}`);
-//   // Update the display based on the key signature
-//   // This would update the accidentals displayed on the staff
-// };
-
-// // Add missing importedCompositions ref and showImportModal
-// const importedCompositions = ref([]);
-// const showImportModal = ref(false);
 
 // Add a new ref for the selected note
 const selectedNoteId = ref<string | null>(null);
@@ -3989,17 +3346,6 @@ watch(voiceLayers, () => {
 const debugMonitorInterval = ref<number | null>(null); // Added type annotation
 const showStaffLines = ref(true); // Added this line
 
-// Helper function to get default voice color (ensure this is defined once correctly)
-// const getDefaultVoiceColor = (voiceId: string): string => {
-//   const colorMap: { [key: string]: string } = {
-//     'voice1': '#1976D2', // Blue
-//     'voice2': '#E91E63', // Pink
-//     'voice3': '#4CAF50', // Green
-//     'voice4': '#FF9800'  // Orange
-//   };
-//   return colorMap[voiceId] || '#000000';
-// };
-
 const LYRIC_BASE_OFFSET = 230; // Base Y position for the first line of lyrics
 const LYRIC_LINE_HEIGHT = 20;  // Estimated height per lyric line (adjust as needed)
 
@@ -4104,248 +3450,95 @@ watch(savedCompositions, () => {
   saveCompositionsToStorage();
 }, { deep: true });
 
-// Add a function to confirm voice deletion
-// const confirmDeleteVoice = (voiceId) => {
-//   if (confirm('Are you sure you want to delete this voice?')) {
-//     // Find the voice to delete
-//     const voiceIndex = voiceLayers.value.findIndex(v => v.id === voiceId);
-//     if (voiceIndex !== -1) {
-//       // Remove the voice from the array
-//       voiceLayers.value.splice(voiceIndex, 1);
-//       // Update the saved compositions to reflect the change
-//       savedCompositions.value = savedCompositions.value.filter(comp => {
-//         // Remove any notes associated with the deleted voice
-//         comp.notes = comp.notes.filter(note => note.voiceId !== voiceId);
-//         return comp.notes.length > 0;
-//       });
-//       // Save the updated compositions to localStorage
-//       saveCompositionsToStorage();
-//       // Update the active voice ID if the deleted voice was active
-//       if (activeVoiceId.value === voiceId) {
-//         activeVoiceId.value = voiceLayers.value[0].id;
-//       }
-//     }
-//   }
-// };
+// Function to change the key signature (this is the handler for the event)
+const changeKeySignatureDirectly = (key: string) => {
+  keySignature.value = key;
+  // Potentially other logic that was in the original changeKeySignature if it did more than set the ref
+};
+
+// Add a function to handle the clearOrRestart emit from PlaybackControls
+const handleClearOrRestart = () => {
+  if (isPlaying.value || isPaused.value) {
+    restartPlayback();
+  } else {
+    confirmClearScore();
+  }
+};
+
+// Add a handler for saveRename from SavedCompositionsPanel
+const handleSaveRename = (id: string, newName: string) => {
+  // The actual logic for renaming is in NotationEditorView
+  if (!newName.trim()) {
+    alert('Please enter a valid name');
+    return;
+  }
+  const composition = savedCompositions.value.find(comp => comp.id === id);
+  if (!composition) {
+    console.error('Composition not found for rename:', id);
+    return;
+  }
+  composition.name = newName.trim();
+  saveCompositionsToStorage(); // Corrected function call
+  // The SavedCompositionsPanel will handle its internal UI state for editing
+  alert('Composition renamed successfully!');
+};
+
+// The toggleDottedNote function is simple enough to be emitted directly
+// or handled by v-model:isDottedNote if NoteInputControls uses it.
+// For now, if NoteInputControls emits 'toggleDottedNote', this existing function will handle it.
+
+const setLyricForNoteHandler = (noteId: string, lyric: string) => {
+  setLyricForNote(noteId, lyric); // Call the existing function
+  // currentLyric.value = ''; // LyricsControls now uses v-model, so parent doesn't need to clear it.
+                           // The setLyricForNote function itself should clear currentLyric if that's the desired UX.
+};
+
+const updateVoiceLayerSelection = (voiceId: string, selected: boolean) => {
+  const voice = voiceLayers.value.find(v => v.id === voiceId);
+  if (voice) {
+    voice.selected = selected;
+  }
+};
+
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
 <style scoped>
-/* Voice layer styles */
-.voice-layers-container {
-  margin: 20px auto; /* Centering and adding more vertical margin */
-  padding: 20px;    /* Increased padding */
-  background-color: #f7f9fc; /* Lighter, cleaner background */
-  border-radius: 12px; /* Softer radius */
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* Softer shadow */
-  max-width: 700px; /* Constrain width for better readability on wider screens */
-}
+/* Minimal styles should remain here, mostly layout for the main .notation-editor
+   and styles for elements not yet componentized (like the staff itself) */
 
-.voice-layers-container h3 {
-  margin-top: 0;
-  margin-bottom: 20px; /* More space below title */
-  color: #333;
-  text-align: center;
-  font-size: 1.5em; /* Larger title */
-}
-
-.voice-layer-item {
+/* Example: Mobile tab styles if not moved to a specific layout component */
+.mobile-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 12px; /* Increased gap */
-  padding: 15px; /* Increased padding */
-  margin-bottom: 15px; /* Increased margin */
-  background-color: #fff;
-  border-left: 6px solid; /* Slightly thicker colored border */
-  border-radius: 8px;   /* Softer radius */
-  box-shadow: 0 2px 6px rgba(0,0,0,0.07); /* Subtle shadow for each item */
-  transition: box-shadow 0.2s ease-in-out;
+  margin: 10px 0;
+  width: 100%;
 }
 
-.voice-layer-item:hover {
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1); /* Enhance shadow on hover */
-}
-
-.voice-info {
-  display: flex;
-  align-items: center;
-  gap: 12px; /* Increased gap */
-}
-
-.voice-name-input {
-  flex-grow: 1;
-  padding: 10px 12px; /* Increased padding for better touch/click target */
-  border: 1px solid #dde1e6; /* Softer border color */
-  border-radius: 6px;
-  font-size: 1em; /* Slightly larger font */
-  /* color is set dynamically via :style */
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.voice-name-input:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0,123,255,.15); /* Softer focus ring */
-}
-
-.voice-color-picker {
-  width: 36px; /* Slightly larger */
-  height: 36px;
-  border: 2px solid #fff; /* White border to make it pop a bit */
-  outline: 1px solid #dde1e6; /* Outer border */
-  padding: 0;
-  border-radius: 6px;
-  cursor: pointer;
-  background-color: transparent;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-  transition: transform 0.1s ease;
-}
-.voice-color-picker:hover {
-  transform: scale(1.1);
-}
-
-.voice-color-picker::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-.voice-color-picker::-webkit-color-swatch {
-  border: none; /* Remove default border if any, rely on input's border */
-  border-radius: 4px; /* Inner radius for the swatch */
-}
-
-.voice-note-count {
-  font-size: 0.85em; /* Slightly smaller relative to name */
-  color: #555;     /* Darker gray for better contrast */
-  white-space: nowrap;
-  background-color: #f0f0f0; /* Subtle background for note count */
-  padding: 4px 8px;
-  border-radius: 4px;
-}
-
-.voice-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px; /* Increased gap */
-  align-items: center;
-  padding-top: 8px; /* Add some space above actions if name input is long */
-}
-
-.voice-action-btn {
-  padding: 8px 12px; /* Consistent padding */
-  border: 1px solid #ced4da; /* Standard border */
-  border-radius: 6px;
-  background-color: #f8f9fa; /* Light background */
-  color: #343a40; /* Darker text for better contrast */
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
-  display: inline-flex; /* For aligning icon and text if any */
-  align-items: center;
-  gap: 5px; /* Space between icon and text */
-}
-
-.voice-action-btn:hover {
-  background-color: #e9ecef;
-  border-color: #adb5bd;
-  transform: translateY(-1px); /* Subtle lift effect */
-}
-
-.active-voice-btn {
-  background-color: #007bff;
-  color: white;
-  border-color: #007bff;
-}
-
-.active-voice-btn:hover {
-  background-color: #0056b3;
-}
-
-/* Keep delete button styling distinct */
-.delete-voice-btn {
-  background-color: #dc3545;
-  color: white;
-  border-color: #dc3545;
-}
-
-.delete-voice-btn:hover {
-  background-color: #c82333;
-  border-color: #bd2130;
-}
-
-.voice-action-btn:disabled {
-  background-color: #e9ecef;
-  color: #6c757d;
-  cursor: not-allowed;
-  border-color: #ced4da;
-  transform: none; /* No hover effect for disabled */
-}
-
-.voice-playback-selection {
-  display: flex;
-  align-items: center;
-  gap: 6px; /* Slightly more gap */
-  font-size: 0.9em;
-  color: #333;
-  padding: 8px 0; /* Add some padding to make it a better click target */
-}
-
-.voice-playback-selection input[type="checkbox"] {
-  margin-right: 4px;
-  width: 16px; /* Larger checkbox */
-  height: 16px;
-  accent-color: #007bff; /* Color the checkbox when checked */
-}
-
-.add-voice-container {
-  margin-top: 25px; /* More space above */
-  text-align: center;
-}
-
-.add-voice-btn {
-  background-color: #28a745;
-  color: white;
+.tab-btn {
+  flex: 1;
+  padding: 10px 5px;
+  background: #f0f0f0;
   border: none;
-  border-radius: 6px;
-  padding: 12px 24px; /* Larger button */
+  border-bottom: 2px solid #ddd;
+  font-weight: bold;
+  font-size: 14px;
+  white-space: nowrap;
   cursor: pointer;
-  font-size: 1em; /* Consistent font size */
-  transition: background-color 0.2s, transform 0.1s;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: background-color 0.2s, border-color 0.2s;
 }
-
-.add-voice-btn:hover {
-  background-color: #218838;
-  transform: translateY(-1px);
+.tab-btn.active {
+  background: #e0e0e0;
+  border-bottom-color: #2196F3; /* Highlight active tab */
 }
-
-.voice-playback-options {
-  margin-top: 20px;
-  padding-top: 15px;
-  border-top: 1px solid #e0e0e0;
-  font-size: 0.95em; /* Consistent font size */
-}
-
-.playback-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.playback-option input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #007bff;
-}
-
-/* Add these back - Note coloring styles */
-/* Update these styles to properly color notes while maintaining their appearance */
-.note {
-  color: inherit; /* Inherit the color from the parent */
+.tab-btn:hover:not(.active) {
+  background: #e9e9e9;
 }
 
 /* For quarter, eighth, and sixteenth notes that have filled noteheads */
 .note .notehead.quarter,
 .note .notehead.eighth,
 .note .notehead.sixteenth {
-  background-color: currentColor; /* Use the note's color property */
+  background-color: currentColor; /* Use the note's color property from parent .note */
   border-color: currentColor;
 }
 
@@ -4355,218 +3548,23 @@ watch(savedCompositions, () => {
   background-color: currentColor; /* Use the note's color property */
 }
 
-/* For whole notes that have hollow noteheads - apply visual nudge */
+/* For whole notes that have hollow noteheads */
 .note .notehead.whole {
   background-color: white; /* Keep the inside white */
   border: 1px solid currentColor; /* Use the note's color for the border */
-  position: relative; /* Allow for fine-tuned positioning */
-  top: 1px;           /* Nudge down by 1 pixel to improve visual alignment */
+  /* position: relative; top: 1px; */ /* Nudge can be adjusted if needed */
 }
 
-/* For half notes that have hollow noteheads - no nudge to keep stem attached */
+/* For half notes that have hollow noteheads */
 .note .notehead.half {
   background-color: white; /* Keep the inside white */
   border: 1px solid currentColor; /* Use the note's color for the border */
-  /* position: relative; top: 1px; -- REMOVED to prevent stem detachment */
 }
 
-/* For accidentals and other text elements */
-.note .accidental,
+/* For accidentals and other text elements within the note */
+.note .accidental-display, /* Ensure this class matches your accidental span */
 .note .dot {
   color: currentColor; /* Use the note's color property */
 }
 
-/* Add styles for lyrics */
-.lyric {
-  position: absolute;
-  font-size: 14px;
-  text-align: center;
-  min-width: 40px; /* Give enough width for short lyrics */
-  transform: translateX(-50%); /* Center the lyric below the note */
-  white-space: nowrap;
-  z-index: 2; /* Ensure lyrics appear above staff lines */
-}
-
-.lyric.playing {
-  font-weight: bold;
-  text-decoration: underline;
-}
-
-.delete-voice-btn {
-  background-color: #dc3545; /* Red */
-  color: white;
-  border-color: #dc3545;
-}
-
-.delete-voice-btn:hover {
-  background-color: #c82333;
-  border-color: #bd2130;
-}
-
-.voice-action-btn:disabled {
-  background-color: #e9ecef;
-  color: #6c757d;
-  cursor: not-allowed;
-  border-color: #ced4da;
-}
-
-/* Voice layer styles with mobile responsiveness */
-.voice-layers-container {
-  margin: 20px auto;
-  padding: 15px;
-  background-color: #f7f9fc;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  max-width: 700px;
-}
-
-.voice-layers-container h3 {
-  margin-top: 0;
-  margin-bottom: 20px;
-  color: #333;
-  text-align: center;
-  font-size: 1.3em;
-}
-
-.voice-layer-item {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 15px;
-  margin-bottom: 15px;
-  background-color: #fff;
-  border-left: 6px solid;
-  border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
-  transition: box-shadow 0.2s ease-in-out;
-}
-
-.voice-info {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap; /* Allow wrapping on very small screens */
-  gap: 10px;
-}
-
-.voice-name-input {
-  flex-grow: 1;
-  min-width: 120px; /* Ensure minimum width */
-  padding: 10px 12px;
-  border: 1px solid #dde1e6;
-  border-radius: 6px;
-  font-size: 1em;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.voice-color-picker {
-  width: 36px;
-  height: 36px;
-  border: 2px solid #fff;
-  outline: 1px solid #dde1e6;
-  padding: 0;
-  border-radius: 6px;
-  cursor: pointer;
-  background-color: transparent;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-  transition: transform 0.1s ease;
-}
-
-.voice-note-count {
-  font-size: 0.85em;
-  color: #555;
-  white-space: nowrap;
-  background-color: #f0f0f0;
-  padding: 4px 8px;
-  border-radius: 4px;
-}
-
-.voice-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-/* Mobile-specific adjustments */
-@media (max-width: 480px) {
-  .voice-layers-container {
-    padding: 12px;
-    margin: 15px auto;
-  }
-  
-  .voice-layer-item {
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-  
-  .voice-info {
-    gap: 8px;
-  }
-  
-  .voice-name-input {
-    width: 100%; /* Full width on mobile */
-    margin-bottom: 8px;
-  }
-  
-  .voice-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-  
-  .voice-action-btn {
-    flex: 1; /* Make buttons expand to fill space */
-    min-width: 70px; /* Minimum width for buttons */
-    padding: 10px 8px; /* Taller for better touch targets */
-    font-size: 0.85em; /* Slightly smaller font */
-    justify-content: center; /* Center text */
-  }
-  
-  /* Make delete button full width on mobile */
-  .delete-voice-btn {
-    width: 100%;
-    margin-top: 8px;
-    justify-content: center;
-  }
-  
-  .voice-playback-selection {
-    margin-right: auto; /* Push to left */
-  }
-  
-  .add-voice-btn {
-    width: 100%; /* Full width button on mobile */
-    max-width: 250px; /* But not too wide */
-    margin: 0 auto;
-  }
-}
-
-/* Larger mobile and small tablets */
-@media (min-width: 481px) and (max-width: 768px) {
-  .voice-actions {
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
-  
-  .voice-action-btn {
-    flex: 0 0 auto; /* Don't expand */
-  }
-  
-  .delete-voice-btn {
-    margin-left: auto; /* Push to right */
-  }
-}
-
-.voice-action-btn {
-  padding: 8px 12px;
-  border: 1px solid #ced4da;
-  border-radius: 6px;
-  background-color: #f8f9fa;
-  color: #343a40;
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap; /* Prevent text wrapping inside buttons */
-}
 </style>
