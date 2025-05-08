@@ -356,14 +356,14 @@ import {
   VoiceLayer,
   CompositionData,
   NoteWithVoiceInfo
-} from '@/types/notation'; // Adjust path if necessary
+} from '@/types/types'; // Updated path
 
 // Store
 const notationStore = useNotationStore();
 
 // --- CONSOLIDATED INTERFACE DEFINITIONS ---
 // All interface definitions (Note, ChordSymbol, VoiceLayer, CompositionData, NoteWithVoiceInfo)
-// can now be removed from here as they are imported.
+// are now imported. The local definitions below should be removed.
 
 // State variables
 // const selectedHeight = ref('middle');
@@ -1741,8 +1741,8 @@ interface SavedComposition {
   timeSignature?: string; // Add missing property (make optional)
 }
 
-// Update the savedCompositions ref to use this type
-const savedCompositions = ref<SavedComposition[]>([]);
+// Update the savedCompositions ref to use CompositionData type
+const savedCompositions = ref<CompositionData[]>([]);
 
 // Then update the saveComposition function
 const saveComposition = () => {
@@ -1862,36 +1862,6 @@ const loadComposition = (compositionId: string) => { // Add type for composition
           selected: true,
           volume: 0,
           notes: composition.notes ? composition.notes.map(note => ({...note})) : []
-        },
-        {
-          id: 'voice2',
-          name: 'Voice 2',
-          color: '#E91E63',
-          visible: true,
-          active: false,
-          selected: true,
-          volume: 0,
-          notes: []
-        },
-        {
-          id: 'voice3',
-          name: 'Voice 3',
-          color: '#4CAF50',
-          visible: true,
-          active: false,
-          selected: true,
-          volume: 0,
-          notes: []
-        },
-        {
-          id: 'voice4',
-          name: 'Voice 4',
-          color: '#FF9800',
-          visible: true,
-          active: false,
-          selected: true,
-          volume: 0,
-          notes: []
         }
       ];
       
