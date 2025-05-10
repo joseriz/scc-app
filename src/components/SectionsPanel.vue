@@ -103,12 +103,12 @@ export interface SequenceItem {
 const props = defineProps<{
   sections: Section[];
   maxMeasures: number;
-  sequenceItems?: SequenceItem[];
+  sequenceItems: SequenceItem[];
 }>();
 
 const emit = defineEmits<{
   (e: 'addSection', section: Omit<Section, 'id'>): void;
-  (e: 'deleteSection', id: string): void;
+  (e: 'deleteSection', sectionId: string): void;
   (e: 'playSection', section: Section): void;
   (e: 'jumpToSection', section: Section): void;
   (e: 'playSequence', sequence: SequenceItem[]): void;

@@ -1,3 +1,5 @@
+import type { ComputedRef } from 'vue';
+
 export interface Note {
   id: string;
   type: "note" | "rest";
@@ -29,6 +31,18 @@ export interface VoiceLayer {
   notes: Note[];
 }
 
+export interface Section {
+  id: string;
+  name: string;
+  startMeasure: number;
+  endMeasure: number;
+}
+
+export interface SequenceItem {
+  id: string;
+  sectionId: string;
+}
+
 export interface CompositionData {
   id: string;
   name: string;
@@ -48,6 +62,8 @@ export interface CompositionData {
   selectedAccidental?: string;
   selectedOctave: number;
   isDottedNote: boolean;
+  sections?: Section[];
+  sequenceItems?: SequenceItem[];
 }
 
 export interface NoteWithVoiceInfo extends Note {

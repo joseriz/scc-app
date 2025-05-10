@@ -309,7 +309,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, reactive, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, reactive, watch, type ComputedRef } from 'vue';
 import * as Tone from 'tone';
 import { useNotationStore } from '@/stores/notation';
 import HelpGuide from '@/components/HelpGuide.vue';
@@ -325,7 +325,7 @@ import SettingsPanel from '@/components/SettingsPanel.vue'; // Import new
 import DebugPanel from '@/components/DebugPanel.vue'; // Import new
 import { useDebug } from '@/composables/useDebug'; // Import the new composable
 import SectionsPanel from '@/components/SectionsPanel.vue';
-import type { Section } from '@/components/SectionsPanel.vue';
+// import type { Section } from '@/components/SectionsPanel.vue';
 
 // Import types
 import type {
@@ -333,7 +333,9 @@ import type {
   ChordSymbol as ImportedChordSymbol, // Alias the import
   VoiceLayer,
   CompositionData,
-  NoteWithVoiceInfo
+  NoteWithVoiceInfo,
+  Section,
+  SequenceItem
 } from '@/types/types'; // Updated path
 
 // Store
@@ -1785,15 +1787,10 @@ interface SavedComposition {
 // Update the savedCompositions ref to use CompositionData type
 const savedCompositions = ref<CompositionData[]>([]);
 
-// Then update the saveComposition function
-const saveComposition = () => {
-  if (!compositionName.value.trim()) {
-    alert('Please enter a name for your composition');
-    return;
-  }
-
-  const newComposition: CompositionData = { // Use CompositionData here
-    id: generateId(),
+// Function that prepares a composition object for saving
+const prepareCompositionData = (): CompositionData => {
+  return {
+    id: currentCompositionId.value || generateId(),
     name: compositionName.value.trim(),
     dateCreated: Date.now(),
     // Flatten all notes from all voices for the 'notes' property
@@ -1806,8 +1803,6 @@ const saveComposition = () => {
       verticalPosition: note.verticalPosition,
       dotted: note.dotted,
       lyric: note.lyric,
-      // voiceId and voiceColor are part of NoteWithVoiceInfo, ensure Note type matches
-      // For the base 'notes' array, we might not need voiceId/voiceColor if voiceLayers store them
     })),
     voiceLayers: voiceLayers.value.map(voice => ({
       id: voice.id,
@@ -1826,16 +1821,27 @@ const saveComposition = () => {
     chordSymbols: [...chordSymbols.value],
     activeVoiceId: activeVoiceId.value,
     staffWidth: staffWidth.value,
-    // Add UI state properties
+    // UI state properties
     selectedDuration: selectedDuration.value,
     selectedNoteType: selectedNoteType.value,
     selectedAccidental: selectedAccidental.value,
     selectedOctave: selectedOctave.value,
     isDottedNote: isDottedNote.value,
-    sections: JSON.parse(JSON.stringify(sections.value)), // Add this line to save sections
-    sequenceItems: JSON.parse(JSON.stringify(sequenceItems.value)), // Add this line
+    // Save sections and sequenceItems
+    sections: JSON.parse(JSON.stringify(sections.value)),
+    sequenceItems: JSON.parse(JSON.stringify(sequenceItems.value)),
   };
+};
 
+// Update existing saveComposition function
+const saveComposition = () => {
+  if (!compositionName.value.trim()) {
+    alert('Please enter a name for your composition');
+    return;
+  }
+
+  const newComposition = prepareCompositionData();
+  
   // Save the composition
   savedCompositions.value.push(newComposition);
 
@@ -2001,14 +2007,15 @@ const loadComposition = (compositionId: string) => {
 
     // Load sections if available
     if (composition.sections && Array.isArray(composition.sections)) {
-      sections.value = composition.sections;
+      sections.value = JSON.parse(JSON.stringify(composition.sections));
     } else {
       sections.value = []; // Reset if no sections
     }
     
     // Load sequence if available
     if (composition.sequenceItems && Array.isArray(composition.sequenceItems)) {
-      sequenceItems.value = composition.sequenceItems;
+      sequenceItems.value = JSON.parse(JSON.stringify(composition.sequenceItems));
+      console.log('Loaded sequence items:', sequenceItems.value);
     } else {
       sequenceItems.value = []; // Reset if no sequence
     }
@@ -2131,7 +2138,7 @@ const currentCompositionId = ref('');
 const editingComposition = ref('');
 const editCompositionName = ref('');
 
-// Add a function to update an existing composition
+// Update existing updateComposition function
 const updateComposition = (id: string) => {
   if (!confirm('Are you sure you want to update this saved composition with your current changes?')) {
     return;
@@ -2143,50 +2150,12 @@ const updateComposition = (id: string) => {
     return;
   }
 
-  // Create the updated composition object matching CompositionData interface
-  const updatedData: CompositionData = { // Use CompositionData here
-    // Keep existing id and dateCreated
-    id: savedCompositions.value[compositionIndex].id,
-    dateCreated: savedCompositions.value[compositionIndex].dateCreated,
-    // Update name if changed
-    name: compositionName.value.trim() || savedCompositions.value[compositionIndex].name,
-    // Update with current state
-    notes: allVisibleNotes.value.map(note => ({ // Flatten notes
-      id: note.id,
-      type: note.type,
-      pitch: note.pitch,
-      duration: note.duration,
-      position: note.position,
-      verticalPosition: note.verticalPosition,
-      dotted: note.dotted,
-      lyric: note.lyric,
-    })),
-    voiceLayers: voiceLayers.value.map(voice => ({ // Save full voice layers
-      id: voice.id,
-      name: voice.name,
-      color: voice.color,
-      visible: voice.visible,
-      active: voice.active,
-      selected: voice.selected,
-      volume: voice.volume,
-      notes: [...voice.notes]
-    })),
-    tempo: tempo.value,
-    clef: selectedClef.value,
-    keySignature: keySignature.value,
-    timeSignature: timeSignature.value,
-    selectedNoteType: selectedNoteType.value,
-    selectedDuration: selectedDuration.value,
-    selectedOctave: selectedOctave.value,
-    isDottedNote: isDottedNote.value,
-    chordSymbols: chordSymbols.value.map(chord => ({ ...chord })),
-    staffWidth: staffWidth.value,
-    selectedAccidental: selectedAccidental.value,
-    activeVoiceId: activeVoiceId.value, // Save active voice ID
-    sections: JSON.parse(JSON.stringify(sections.value)), // Add this line to save sections
-    sequenceItems: JSON.parse(JSON.stringify(sequenceItems.value)), // Add this line
-  };
-
+  // Create the updated composition object using the same helper function
+  const updatedData = prepareCompositionData();
+  // Preserve the original ID and creation date
+  updatedData.id = savedCompositions.value[compositionIndex].id;
+  updatedData.dateCreated = savedCompositions.value[compositionIndex].dateCreated;
+  
   // Replace the old composition data with the new data
   savedCompositions.value.splice(compositionIndex, 1, updatedData);
 
@@ -2284,10 +2253,9 @@ const exportCurrentComposition = async () => {
     // Construct the composition data from the current live editor state
     let compositionToExport: CompositionData = {
       id: baseLoadedComposition.id,
-      name: compositionName.value || baseLoadedComposition.name, // Use current name from input, fallback to saved name
+      name: compositionName.value || baseLoadedComposition.name,
       dateCreated: baseLoadedComposition.dateCreated,
       // CRITICAL: Use a deep clone of the current, live voiceLayers.value
-      // This ensures we have the latest 'selected' states.
       voiceLayers: JSON.parse(JSON.stringify(voiceLayers.value)),
       // Flatten notes from these live voice layers
       notes: voiceLayers.value.flatMap(voice =>
@@ -2309,9 +2277,13 @@ const exportCurrentComposition = async () => {
       selectedAccidental: selectedAccidental.value,
       selectedOctave: selectedOctave.value,
       isDottedNote: isDottedNote.value,
-      sections: JSON.parse(JSON.stringify(sections.value)), // Add this line to save sections
+      // Add these lines to ensure sections and sequenceItems are included in exports
+      sections: JSON.parse(JSON.stringify(sections.value)),
+      sequenceItems: JSON.parse(JSON.stringify(sequenceItems.value)),
     };
 
+    console.log('Exporting composition with sequence items:', compositionToExport.sequenceItems);
+    
     console.log('[Export] Initial compositionToExport from live state:', JSON.parse(JSON.stringify(compositionToExport)));
     console.log('[Export] exportOnlySelectedVoices flag:', exportOnlySelectedVoices.value);
 
@@ -4312,6 +4284,21 @@ const updateSequence = (newSequence: SequenceItem[]) => {
   console.log('Updating sequence:', newSequence);
   sequenceItems.value = [...newSequence];
 };
+
+// Add this watch to confirm when sequenceItems changes
+watch(sequenceItems, (newValue) => {
+  console.log('sequenceItems changed:', newValue);
+}, { deep: true });
+
+// Modify the exportCurrentComposition function to log more details
+// const exportCurrentComposition = async () => {
+//   // ... existing code
+  
+//   // Add this log right before exporting
+//   console.log('Exporting composition with sequence items:', compositionToExport.sequenceItems);
+  
+//   // ... rest of function
+// };
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
