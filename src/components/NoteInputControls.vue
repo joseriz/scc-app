@@ -50,7 +50,7 @@
             <button
               v-for="accidental in availableAccidentals"
               :key="accidental.value"
-              @click="$emit('update:selectedAccidental', accidental.value)"
+              @click="handleAccidentalClick(accidental.value)"
               :class="['note-btn', { active: selectedAccidental === accidental.value }]"
             >
               {{ accidental.label }}
@@ -93,24 +93,32 @@ interface AccidentalOption {
   label: string;
 }
 
-defineProps<{
+const props = defineProps<{
   selectedDuration: string;
   selectedNoteType: string;
   isDottedNote: boolean;
   availableDurations: DurationOption[];
   usesFallbackSymbols: boolean;
-  selectedAccidental: string;
+  selectedAccidental: string | null;
   availableAccidentals: AccidentalOption[];
   selectedOctave: number;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'update:selectedDuration', value: string): void;
   (e: 'update:selectedNoteType', value: string): void;
   (e: 'toggleDottedNote'): void;
-  (e: 'update:selectedAccidental', value: string): void;
+  (e: 'update:selectedAccidental', value: string | null): void;
   (e: 'update:selectedOctave', value: number): void;
 }>();
+
+const handleAccidentalClick = (value: string) => {
+  if (props.selectedAccidental === value) {
+    emit('update:selectedAccidental', null);
+  } else {
+    emit('update:selectedAccidental', value);
+  }
+};
 </script>
 
 <style scoped>

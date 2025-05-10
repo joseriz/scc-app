@@ -156,7 +156,8 @@
                 isNoteAffectedByKeySignature(note.pitch.charAt(0)),
               'dotted': note.dotted,
               'whole-note': note.duration === 'whole',
-              'has-lyric': note.lyric
+              'has-lyric': note.lyric,
+              'natural-accidental': note.explicitNatural
             }" :style="{
                   ...getNoteStyle(note),
                   borderColor: note.voiceColor || 'black'
@@ -193,13 +194,18 @@
               </template>
 
               <!-- Accidental -->
-              <span v-if="note.type === 'note' && note.pitch &&
-                ((note.pitch.includes('#') || note.pitch.includes('b')) ||
-                  isNoteAffectedByKeySignature(note.pitch.charAt(0)))" class="accidental">
-                {{ note.pitch.includes('#') || note.pitch.includes('b') ?
-                  getAccidentalSymbol(note) :
-                  getAccidentalSymbolForKeySignature(getKeySignatureAccidentalForNote(note.pitch.charAt(0))) }}
-              </span>
+              <span v-if="note.type === 'note' && note.pitch && (
+    (note.pitch.includes('#') || note.pitch.includes('b')) || 
+    isNoteAffectedByKeySignature(note.pitch.charAt(0)) ||
+    note.explicitNatural
+  )" class="accidental">
+  {{ 
+    note.explicitNatural ? '♮' : 
+    (note.pitch.includes('#') || note.pitch.includes('b')) ?
+      getAccidentalSymbol(note) :
+      getAccidentalSymbolForKeySignature(getKeySignatureAccidentalForNote(note.pitch.charAt(0)))
+  }}
+</span>
             </div>
 
             <!-- Chord symbols -->
@@ -349,7 +355,7 @@ const notationStore = useNotationStore();
 // const selectedHeight = ref('middle');
 const selectedOctave = ref(4);
 const selectedNoteType = ref('note'); // Default to 'note'
-const selectedAccidental = ref('natural');
+const selectedAccidental = ref<string | null>(null); // Initialize as null instead of 'natural'
 const selectedDuration = ref('quarter');
 const lastClickY = ref(0);
 const tempo = ref(120);
@@ -851,33 +857,37 @@ const isNoteAffectedByKeySignature = (noteName: string) => {
   return false;
 };
 
-// Add this function to get the modified pitch based on key signature
-const getModifiedPitchForKeySignature = (pitch: string) => {
-  // If the pitch already has an accidental, don't modify it
+// Update the getModifiedPitchForKeySignature function
+const getModifiedPitchForKeySignature = (pitch: string, isExplicitNatural = false) => {
+  // If this note has an explicit natural, its stored pitch is already the correct natural pitch.
+  if (isExplicitNatural) {
+    // console.log(`getModifiedPitchForKeySignature: Explicit natural for ${pitch}, returning as is.`);
+    return pitch;
+  }
+
+  // If the pitch *already* contains an accidental (e.g. F#4, Bb4),
+  // it means it's either an explicit sharp/flat or a courtesy accidental.
+  // The key signature should not override an existing explicit sharp or flat in the pitch string itself.
   if (pitch.includes('#') || pitch.includes('b')) {
+    // console.log(`getModifiedPitchForKeySignature: Pitch ${pitch} already has accidental, returning as is.`);
     return pitch;
   }
 
   const noteName = pitch.charAt(0);
-  const octave = pitch.slice(-1);
+  const octave = pitch.slice(pitch.length - 1); // Correctly get last char for octave
 
-  // Check if this note is affected by the key signature
-  for (const accidental of currentKeySignatureAccidentals.value) {
-    if (accidental.startsWith(noteName)) {
-      // Apply the key signature accidental
-      if (accidental.includes('#')) {
-        return `${noteName}#${octave}`;
-      } else if (accidental.includes('b')) {
-        return `${noteName}b${octave}`;
-      }
+  for (const accidentalInKey of currentKeySignatureAccidentals.value) {
+    if (accidentalInKey.startsWith(noteName)) {
+      // console.log(`getModifiedPitchForKeySignature: Applying key sig to ${pitch} -> ${noteName}${accidentalInKey.includes('#') ? '#' : 'b'}${octave}`);
+      return `${noteName}${accidentalInKey.includes('#') ? '#' : 'b'}${octave}`;
     }
   }
-
+  // console.log(`getModifiedPitchForKeySignature: No key sig effect on ${pitch}, returning as is.`);
   return pitch;
 };
 
 // Refine the playNoteSound function for robustness
-const playNoteSound = async (pitch, duration = "8n", isDotted = false, volumeDb = 0) => {
+const playNoteSound = async (pitch, duration = "8n", isDotted = false, volumeDb = 0, explicitNatural = false) => {
   let pitchToPlay = pitch;
   let noteDuration = duration;
 
@@ -888,9 +898,19 @@ const playNoteSound = async (pitch, duration = "8n", isDotted = false, volumeDb 
     // Make sure Tone.js is started
     await Tone.start();
 
-    // Apply key signature if needed
-    if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
-      pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay);
+    // Update the playNoteSound function's handling of explicitNatural
+    if (explicitNatural) {
+      // The pitch *should* already be natural if explicitNatural is true.
+      // This block is more of a safeguard or for clarity.
+      const noteLetter = pitch.charAt(0);
+      const octave = pitch.slice(pitch.length - 1);
+      pitchToPlay = `${noteLetter}${octave}`;
+      // console.log(`Playing explicitly natural note: ${pitchToPlay} (original pitch: ${pitch})`);
+    } else {
+      // If not explicitly natural, apply key signature if the pitch doesn't already have an accidental
+      if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
+        pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay, false); // explicitNatural is false here
+      }
     }
 
     // Calculate the actual duration in seconds first for reliability
@@ -960,7 +980,7 @@ const playComposition = () => {
   playScore();
 };
 
-// Update the existing handleStaffClick function to include the dotted property
+// Update the existing handleStaffClick function to handle explicit natural accidentals
 const handleStaffClick = (event) => {
   // If we were dragging, don't add a note
   if (isDragging.value) {
@@ -1005,7 +1025,8 @@ const handleStaffClick = (event) => {
         duration: selectedDuration.value,
         dotted: isDottedNote.value,
         pitch: selectedNoteType.value === 'note' ?
-          applyAccidental(pitch || 'C4', selectedAccidental.value) : undefined
+          applyAccidental(pitch || 'C4', selectedAccidental.value) : undefined,
+        explicitNatural: selectedNoteType.value === 'note' && selectedAccidental.value === 'natural' ? true : undefined
       };
 
       // Replace the note in the array
@@ -1020,7 +1041,13 @@ const handleStaffClick = (event) => {
           'eighth': '8n',
           'sixteenth': '16n'
         };
-        playNoteSound(updatedNote.pitch || '', durationMap[updatedNote.duration], updatedNote.dotted);
+        playNoteSound(
+          updatedNote.pitch || '', 
+          durationMap[updatedNote.duration], 
+          updatedNote.dotted,
+          0, // volumeDb
+          updatedNote.explicitNatural  // Add this parameter
+        );
       }
 
       console.log(`Updated note in voice ${activeVoiceId.value} at position ${position}, pitch: ${updatedNote.pitch || 'rest'}, dotted: ${updatedNote.dotted}`);
@@ -1041,7 +1068,8 @@ const handleStaffClick = (event) => {
       duration: selectedDuration.value,
       dotted: isDottedNote.value,
       pitch: selectedNoteType.value === 'note' ?
-        applyAccidental(pitch || 'C4', selectedAccidental.value) : undefined
+        applyAccidental(pitch || 'C4', selectedAccidental.value) : undefined,
+      explicitNatural: selectedNoteType.value === 'note' && selectedAccidental.value === 'natural' ? true : undefined
     };
 
     // Add the note to the active voice
@@ -1056,7 +1084,7 @@ const handleStaffClick = (event) => {
         'eighth': '8n',
         'sixteenth': '16n'
       };
-      playNoteSound(newNote.pitch || '', durationMap[newNote.duration], newNote.dotted);
+      playNoteSound(newNote.pitch || '', durationMap[newNote.duration], newNote.dotted, 0, newNote.explicitNatural);
     }
 
     console.log(`Added ${selectedNoteType.value} to voice ${activeVoiceId.value} at position ${position}, pitch: ${newNote.pitch || 'rest'}, dotted: ${newNote.dotted}`);
@@ -1657,24 +1685,31 @@ const mapPositionToPitch = (verticalPosition: number): string | null => {
   return positions[verticalPosition] || null;
 };
 
-// Add the applyAccidental function
-const applyAccidental = (pitch: string, accidental: string): string => {
+// Update the applyAccidental function to be more aggressive about naturals
+const applyAccidental = (pitch: string, accidental: string | null): string => {
   if (!pitch) return '';
 
-  // Extract the note letter and octave
   const noteLetter = pitch.charAt(0);
   const octave = pitch.charAt(pitch.length - 1);
 
-  // Apply the accidental
-  switch (accidental) {
-    case 'sharp':
-      return `${noteLetter}#${octave}`;
-    case 'flat':
-      return `${noteLetter}b${octave}`;
-    case 'natural':
-    default:
-      // Remove any existing accidentals
-      return `${noteLetter}${octave}`;
+  // console.log(`Applying ${accidental} to ${pitch}`); // Keep for debugging if needed
+
+  if (accidental === 'natural') {
+    // ALWAYS return the natural note (no accidental), regardless of key signature
+    // console.log(`Forcing natural for ${noteLetter}${octave}`); // Keep for debugging
+    return `${noteLetter}${octave}`; // This ensures the pitch *value* is natural
+  } else if (accidental === null) {
+    // If no specific accidental is selected, apply key signature (respecting explicitNatural if passed)
+    // This function is usually called when placing a new note without an explicit accidental selected.
+    // The `explicitNatural` flag on the note object itself will handle display/playback.
+    return getModifiedPitchForKeySignature(pitch, false); // Assume not explicitly natural here
+  } else if (accidental === 'sharp') {
+    return `${noteLetter}#${octave}`;
+  } else if (accidental === 'flat') {
+    return `${noteLetter}b${octave}`;
+  } else {
+    // Default: remove any existing accidentals (should be rare if logic is correct)
+    return `${noteLetter}${octave}`;
   }
 };
 
@@ -1789,21 +1824,27 @@ const savedCompositions = ref<CompositionData[]>([]);
 
 // Function that prepares a composition object for saving
 const prepareCompositionData = (): CompositionData => {
+  // console.log('Saving with notes having naturalAccidentals:', // Debug log
+  //   voiceLayers.value.flatMap(v =>
+  //     v.notes.filter(n => n.explicitNatural).map(n => ({
+  //       id: n.id, pitch: n.pitch, explicitNatural: n.explicitNatural
+  //     }))
+  //   )
+  // );
+
   return {
     id: currentCompositionId.value || generateId(),
     name: compositionName.value.trim(),
     dateCreated: Date.now(),
-    // Flatten all notes from all voices for the 'notes' property
-    notes: allVisibleNotes.value.map(note => ({
-      id: note.id,
-      type: note.type,
-      pitch: note.pitch,
-      duration: note.duration,
-      position: note.position,
-      verticalPosition: note.verticalPosition,
-      dotted: note.dotted,
-      lyric: note.lyric,
-    })),
+    notes: voiceLayers.value.flatMap(voice => // Flattened notes for top-level (if used)
+      voice.notes.map(note => ({
+        ...note,
+        pitch: note.pitch, // Ensure pitch is the one stored on the note
+        explicitNatural: !!note.explicitNatural, // Ensure boolean
+        voiceId: voice.id,
+        voiceColor: voice.color
+      }))
+    ),
     voiceLayers: voiceLayers.value.map(voice => ({
       id: voice.id,
       name: voice.name,
@@ -1812,7 +1853,11 @@ const prepareCompositionData = (): CompositionData => {
       active: voice.active,
       selected: voice.selected,
       volume: voice.volume,
-      notes: [...voice.notes] // Create a copy of the notes array
+      notes: voice.notes.map(note => ({ // Deep copy notes
+        ...note,
+        pitch: note.pitch, // Ensure pitch is the one stored on the note
+        explicitNatural: !!note.explicitNatural // Ensure boolean
+      }))
     })),
     tempo: tempo.value,
     clef: selectedClef.value,
@@ -1821,13 +1866,11 @@ const prepareCompositionData = (): CompositionData => {
     chordSymbols: [...chordSymbols.value],
     activeVoiceId: activeVoiceId.value,
     staffWidth: staffWidth.value,
-    // UI state properties
     selectedDuration: selectedDuration.value,
     selectedNoteType: selectedNoteType.value,
     selectedAccidental: selectedAccidental.value,
     selectedOctave: selectedOctave.value,
     isDottedNote: isDottedNote.value,
-    // Save sections and sequenceItems
     sections: JSON.parse(JSON.stringify(sections.value)),
     sequenceItems: JSON.parse(JSON.stringify(sequenceItems.value)),
   };
@@ -1841,6 +1884,14 @@ const saveComposition = () => {
   }
 
   const newComposition = prepareCompositionData();
+  
+  // Add near the start of saveComposition
+  const notesWithNaturals = voiceLayers.value.flatMap(voice => 
+    voice.notes.filter(note => note.explicitNatural)
+  );
+  console.log(`About to save composition with ${notesWithNaturals.length} natural notes:`, 
+    notesWithNaturals.map(n => ({id: n.id, pitch: n.pitch, position: n.position}))
+  );
   
   // Save the composition
   savedCompositions.value.push(newComposition);
@@ -1883,147 +1934,83 @@ const loadComposition = (compositionId: string) => {
       chordSymbols.value = [];
     }
 
-    // Load voice layers if they exist
     if (composition.voiceLayers && Array.isArray(composition.voiceLayers)) {
-      // First, ensure all voices are valid
-      const validVoices = composition.voiceLayers.filter(voice =>
-        voice && typeof voice === 'object' && voice.id
-      ).map(voice => ({
-        id: voice.id,
-        name: voice.name || 'Unnamed Voice',
-        color: voice.color || getRandomColor(),
-        visible: voice.visible !== undefined ? voice.visible : true,
-        active: voice.active !== undefined ? voice.active : false,
-        selected: voice.selected !== undefined ? voice.selected : true,
-        volume: voice.volume !== undefined ? voice.volume : 0,
-        notes: Array.isArray(voice.notes) ? voice.notes.map(note => {
-          // Ensure each note is valid
-          if (!note || typeof note !== 'object') return null;
-
-          return {
-            id: note.id || generateId(),
-            type: note.type || 'note',
-            pitch: note.pitch,
-            duration: note.duration || 'quarter',
-            position: typeof note.position === 'number' ? note.position : 0,
-            verticalPosition: typeof note.verticalPosition === 'number' ? note.verticalPosition : 145,
-            dotted: note.dotted || false,
-            lyric: note.lyric || ''
-          };
-        }).filter(Boolean) : [] // Remove any null notes
+      voiceLayers.value = composition.voiceLayers.map(voice => ({
+        ...voice,
+        notes: voice.notes.map(note => ({
+          ...note,
+          explicitNatural: !!note.explicitNatural // Ensure boolean on load
+        }))
       }));
-
-      // Replace the entire voiceLayers array with the validated one
-      voiceLayers.value = validVoices;
-
-      // Set the active voice ID, making sure it exists
-      const requestedActiveVoiceId = composition.activeVoiceId;
-      const activeVoiceExists = voiceLayers.value.some(v => v.id === requestedActiveVoiceId);
-
-      if (requestedActiveVoiceId && activeVoiceExists) {
-        activeVoiceId.value = requestedActiveVoiceId;
-      } else if (voiceLayers.value.length > 0) {
-        // Set the first voice as active if the requested one doesn't exist
-        activeVoiceId.value = voiceLayers.value[0].id;
-        voiceLayers.value[0].active = true;
-      } else {
-        // Create a default voice if no valid voices were found
-        const defaultVoice = {
-          id: 'voice1',
-          name: 'Voice 1',
-          color: getRandomColor(),
-          visible: true,
-          active: true,
-          selected: true,
-          volume: 0,
-          notes: []
-        };
-        voiceLayers.value = [defaultVoice];
-        activeVoiceId.value = 'voice1';
-      }
-
-      // Ensure exactly one voice is active
-      let activeFound = false;
-      for (const voice of voiceLayers.value) {
-        if (!activeFound && voice.id === activeVoiceId.value) {
-          voice.active = true;
-          activeFound = true;
-        } else {
-          voice.active = false;
-        }
-      }
-    } else if (composition.notes && Array.isArray(composition.notes)) {
-      // Legacy support for compositions without voice layers
-      // Create a single voice with all the notes
-      voiceLayers.value = [
-        {
-          id: 'voice1',
-          name: 'Voice 1',
-          color: '#1976D2',
-          visible: true,
-          active: true,
-          selected: true,
-          volume: 0,
-          notes: composition.notes ? composition.notes.map(note => ({ ...note })) : []
-        }
-      ];
-
-      activeVoiceId.value = 'voice1';
     } else {
-      // No voices and no notes - create a default empty voice
-      voiceLayers.value = [
-        {
-          id: 'voice1',
-          name: 'Voice 1',
-          color: getRandomColor(),
-          visible: true,
-          active: true,
-          selected: true,
-          volume: 0,
-          notes: []
-        }
-      ];
+      // Initialize with a default voice if none are loaded
+      voiceLayers.value = [{ id: 'voice1', name: 'Voice 1', color: getRandomColor(), visible: true, active: true, selected: true, volume: 0, notes: [] }];
       activeVoiceId.value = 'voice1';
     }
-
-    // Set staff width if it exists
-    if (composition.staffWidth) {
-      staffWidth.value = composition.staffWidth;
-    } else {
-      // Set a default staff width if not specified
-      staffWidth.value = 2000;
-    }
-
-    // Update the composition name
-    compositionName.value = composition.name;
-
-    // Update the display
-    nextTick(() => {
-      updateStaffDisplay();
-
-      // Provide user feedback
-      console.log(`Loaded composition: ${composition.name}`);
+    
+    // CRITICAL: Post-load processing for explicit naturals
+    // This ensures the pitch *value* is correct if explicitNatural is true.
+    let naturalNotesCorrectedCount = 0;
+    voiceLayers.value.forEach(voice => {
+      voice.notes.forEach(note => {
+        if (note.explicitNatural && note.pitch) {
+          const noteLetter = note.pitch.charAt(0);
+          const octave = note.pitch.slice(note.pitch.length - 1); // Correctly get last char for octave
+          const naturalPitch = `${noteLetter}${octave}`;
+          
+          if (note.pitch !== naturalPitch) {
+            // console.log(`LOAD FIX: Correcting pitch for explicit natural. ID: ${note.id}, Was: ${note.pitch}, Now: ${naturalPitch}`);
+            note.pitch = naturalPitch; // Set the pitch to its natural form
+            naturalNotesCorrectedCount++;
+          }
+        }
+      });
     });
+
+    if (naturalNotesCorrectedCount > 0) {
+      console.log(`Corrected ${naturalNotesCorrectedCount} natural note pitches during load.`);
+    }
 
     // Load sections if available
     if (composition.sections && Array.isArray(composition.sections)) {
       sections.value = JSON.parse(JSON.stringify(composition.sections));
     } else {
-      sections.value = []; // Reset if no sections
+      sections.value = [];
     }
     
     // Load sequence if available
     if (composition.sequenceItems && Array.isArray(composition.sequenceItems)) {
       sequenceItems.value = JSON.parse(JSON.stringify(composition.sequenceItems));
-      console.log('Loaded sequence items:', sequenceItems.value);
     } else {
-      sequenceItems.value = []; // Reset if no sequence
+      sequenceItems.value = [];
     }
+
+    // ... (load UI state properties like selectedDuration, etc.) ...
+    selectedDuration.value = composition.selectedDuration || 'quarter';
+    selectedNoteType.value = composition.selectedNoteType || 'note';
+    selectedAccidental.value = composition.selectedAccidental !== undefined ? composition.selectedAccidental : null;
+    selectedOctave.value = composition.selectedOctave || 4;
+    isDottedNote.value = composition.isDottedNote || false;
+    staffWidth.value = composition.staffWidth || 960;
+    activeVoiceId.value = composition.activeVoiceId || (voiceLayers.value.length > 0 ? voiceLayers.value[0].id : 'voice1');
+
+
+    // Update compositionName ref to reflect the loaded composition's name
+    compositionName.value = composition.name;
+
+    // Save to localStorage AFTER all corrections and assignments
+    saveToLocalStorage(); 
+    
+    // console.log('After loading and processing naturals:', // Debug log
+    //   voiceLayers.value.map(v => ({
+    //     id: v.id,
+    //     notes: v.notes.filter(n => n.explicitNatural).map(n => ({id: n.id, pitch: n.pitch, explicitNatural: n.explicitNatural}))
+    //   }))
+    // );
+
   } catch (error) {
     console.error('Error loading composition:', error);
     alert(`Error loading composition: ${error instanceof Error ? error.message : 'Unknown error'}`);
-
-    // Reset to a safe state
     clearScore();
   }
 };
@@ -2262,7 +2249,9 @@ const exportCurrentComposition = async () => {
         voice.notes.map(note => ({
           ...note,
           voiceId: voice.id,
-          voiceColor: voice.color
+          voiceColor: voice.color,
+          // Explicitly preserve the explicitNatural flag
+          explicitNatural: note.explicitNatural
         }))
       ),
       tempo: tempo.value,
@@ -2996,7 +2985,13 @@ const playScore = () => {
             const voice = voiceLayers.value.find(v => v.id === noteToPlay.voiceId);
             const volume = voice ? voice.volume || 0 : 0; // Default to 0dB if not specified
 
-            playNoteSound(noteToPlay.pitch, toneDuration, noteToPlay.dotted, volume);
+            playNoteSound(
+              noteToPlay.pitch, 
+              toneDuration, 
+              noteToPlay.dotted, 
+              volume,
+              noteToPlay.explicitNatural  // Add this parameter
+            );
           }
         });
 
@@ -3628,10 +3623,10 @@ watch(savedCompositions, () => {
 }, { deep: true });
 
 // Function to change the key signature (this is the handler for the event)
-const changeKeySignatureDirectly = (key: string) => {
-  keySignature.value = key;
-  // Potentially other logic that was in the original changeKeySignature if it did more than set the ref
-};
+// const changeKeySignatureDirectly = (key: string) => {
+//   keySignature.value = key;
+//   // Potentially other logic that was in the original changeKeySignature if it did more than set the ref
+// };
 
 // Add a function to handle the clearOrRestart emit from PlaybackControls
 const handleClearOrRestart = () => {
@@ -4237,7 +4232,13 @@ const playCompositionWithCallback = (sectionStartMeasure = null, sectionEndMeasu
             const voice = voiceLayers.value.find(v => v.id === noteToPlay.voiceId);
             const volume = voice ? voice.volume || 0 : 0;
             
-            playNoteSound(noteToPlay.pitch, toneDuration, noteToPlay.dotted, volume);
+            playNoteSound(
+              noteToPlay.pitch, 
+              toneDuration, 
+              noteToPlay.dotted, 
+              volume,
+              noteToPlay.explicitNatural  // Add this parameter
+            );
           }
         });
       };
@@ -4299,6 +4300,61 @@ watch(sequenceItems, (newValue) => {
   
 //   // ... rest of function
 // };
+
+// Add this new function
+const enforceNaturalNotes = () => {
+  let enforcedCount = 0;
+  
+  voiceLayers.value.forEach(voice => {
+    voice.notes.forEach(note => {
+      if (note.explicitNatural && note.pitch) {
+        // Always force natural notes to be natural
+        const noteLetter = note.pitch.charAt(0);
+        const octave = note.pitch.slice(-1);
+        
+        // Set the pitch to explicitly have no accidentals
+        if (note.pitch !== `${noteLetter}${octave}`) {
+          note.pitch = `${noteLetter}${octave}`;
+          enforcedCount++;
+        }
+      }
+    });
+  });
+  
+  if (enforcedCount > 0) {
+    console.log(`Enforced ${enforcedCount} natural notes`);
+  }
+  
+  return enforcedCount;
+};
+
+// Add a call to this function after key signature changes
+const changeKeySignatureDirectly = (newKeySignature: string) => {
+  // console.log(`Changing key signature from ${keySignature.value} to ${newKeySignature}`);
+  keySignature.value = newKeySignature;
+  
+  // Enforce natural notes after key signature change to ensure their pitches remain natural
+  const changedCount = enforceNaturalNotes();
+  if (changedCount > 0) {
+    // console.log('Saving to localStorage after enforcing naturals due to key signature change.');
+    saveToLocalStorage(); // Save changes if any note pitches were corrected
+  }
+};
+
+// Watch for keySignature changes (this might be redundant if AppHeader directly calls changeKeySignatureDirectly)
+// However, it's a good safeguard if keySignature.value can be changed by other means.
+watch(keySignature, (newValue, oldValue) => {
+  if (newValue !== oldValue) { // Only run if there's an actual change
+    // console.log(`Key signature watcher: changed from ${oldValue} to ${newValue}`);
+    const enforcedCount = enforceNaturalNotes();
+    if (enforcedCount > 0) {
+      // console.log('Saving to localStorage from keySignature watcher after enforcing naturals.');
+      saveToLocalStorage();
+    }
+  }
+}, { deep: true }); // deep might not be necessary for a simple string ref
+
+// existing code...
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
@@ -4442,4 +4498,5 @@ watch(sequenceItems, (newValue) => {
   pointer-events: none; /* Allow clicks to pass through to the staff */
   z-index: 5; /* Above staff lines but below notes */
 }
+
 </style>

@@ -11,6 +11,7 @@ export interface Note {
   lyric?: string;
   voiceId?: string;
   voiceColor?: string;
+  explicitNatural?: boolean;
 }
 
 export interface ChordSymbol {
