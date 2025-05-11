@@ -1904,52 +1904,93 @@ const saveComposition = () => {
 };
 
 // Update the loadComposition function to be more robust
-const loadComposition = (compositionId: string) => {
+const loadComposition = async (compositionId: string) => { // Make it async for nextTick
   try {
-    // Find the composition by ID
     const composition = savedCompositions.value.find(comp => comp.id === compositionId);
-
     if (!composition) {
       throw new Error(`Composition with ID ${compositionId} not found`);
     }
-
     console.log('Loading composition:', composition.name);
 
-    // Set the current composition ID
     currentCompositionId.value = composition.id;
 
-    // Clear existing data
-    clearScore();
+    // Stop playback and reset relevant parts of the score before loading
+    stopPlayback();
+    voiceLayers.value.forEach(voice => { voice.notes = []; }); // Clear notes from existing layers
+    chordSymbols.value = [];
+    sections.value = [];
+    sequenceItems.value = [];
+    scrollPosition.value = 0; // Reset scroll position
 
-    // Load basic properties with safe defaults
+    // 1. Load essential musical parameters first
     selectedClef.value = composition.clef || 'treble';
     keySignature.value = composition.keySignature || 'C';
-    timeSignature.value = composition.timeSignature || '4/4';
+    timeSignature.value = composition.timeSignature || '4/4'; // CRITICAL: Load this early
     tempo.value = composition.tempo || 120;
 
-    // Load chord symbols if they exist
+    // 2. Wait for Vue to update computed properties dependent on the above
+    // This ensures measureWidthByTimeSignature is correct for subsequent calculations.
+    await nextTick();
+
+    // 3. Load structural data (voices, notes, chords)
+    // Load chord symbols
     if (composition.chordSymbols && Array.isArray(composition.chordSymbols)) {
       chordSymbols.value = composition.chordSymbols.map(chord => ({ ...chord }));
     } else {
       chordSymbols.value = [];
     }
 
-    if (composition.voiceLayers && Array.isArray(composition.voiceLayers)) {
+    // Load voice layers and notes
+    if (composition.voiceLayers && Array.isArray(composition.voiceLayers) && composition.voiceLayers.length > 0) {
       voiceLayers.value = composition.voiceLayers.map(voice => ({
         ...voice,
-        notes: voice.notes.map(note => ({
+        // Ensure notes array exists and map notes
+        notes: (voice.notes || []).map(note => ({
           ...note,
-          explicitNatural: !!note.explicitNatural // Ensure boolean on load
+          explicitNatural: !!note.explicitNatural
         }))
       }));
     } else {
-      // Initialize with a default voice if none are loaded
-      voiceLayers.value = [{ id: 'voice1', name: 'Voice 1', color: getRandomColor(), visible: true, active: true, selected: true, volume: 0, notes: [] }];
-      activeVoiceId.value = 'voice1';
+      // Fallback for older compositions or if voiceLayers is missing but top-level notes exist
+      const defaultVoiceId = 'voice1';
+      voiceLayers.value = [{
+        id: defaultVoiceId,
+        name: 'Voice 1',
+        color: getRandomColor(),
+        visible: true,
+        active: true,
+        selected: true,
+        volume: 0,
+        notes: (composition.notes && Array.isArray(composition.notes))
+          ? composition.notes.map(note => ({ ...note, explicitNatural: !!note.explicitNatural }))
+          : []
+      }];
+      activeVoiceId.value = defaultVoiceId;
     }
-    
-    // CRITICAL: Post-load processing for explicit naturals
-    // This ensures the pitch *value* is correct if explicitNatural is true.
+
+    // Ensure at least one voice layer exists and one is active
+    if (voiceLayers.value.length === 0) {
+        const defaultVoiceId = 'voice1_fallback'; // Use a distinct ID if creating a fallback
+        voiceLayers.value.push({
+            id: defaultVoiceId,
+            name: 'Voice 1 (Fallback)',
+            color: getRandomColor(),
+            visible: true,
+            active: true,
+            selected: true,
+            volume: 0,
+            notes: []
+        });
+        activeVoiceId.value = defaultVoiceId;
+    } else {
+        // Determine active voice: use loaded one, or first one if loaded is invalid
+        const targetActiveVoiceId = composition.activeVoiceId || voiceLayers.value[0].id;
+        const activeVoiceExists = voiceLayers.value.some(v => v.id === targetActiveVoiceId);
+        activeVoiceId.value = activeVoiceExists ? targetActiveVoiceId : voiceLayers.value[0].id;
+        voiceLayers.value.forEach(v => v.active = v.id === activeVoiceId.value);
+    }
+
+    // Correct explicit natural pitches after notes are loaded
     let naturalNotesCorrectedCount = 0;
     voiceLayers.value.forEach(voice => {
       voice.notes.forEach(note => {
@@ -1957,61 +1998,137 @@ const loadComposition = (compositionId: string) => {
           const noteLetter = note.pitch.charAt(0);
           const octave = note.pitch.slice(note.pitch.length - 1); // Correctly get last char for octave
           const naturalPitch = `${noteLetter}${octave}`;
-          
           if (note.pitch !== naturalPitch) {
-            // console.log(`LOAD FIX: Correcting pitch for explicit natural. ID: ${note.id}, Was: ${note.pitch}, Now: ${naturalPitch}`);
-            note.pitch = naturalPitch; // Set the pitch to its natural form
+            note.pitch = naturalPitch;
             naturalNotesCorrectedCount++;
           }
         }
       });
     });
-
     if (naturalNotesCorrectedCount > 0) {
       console.log(`Corrected ${naturalNotesCorrectedCount} natural note pitches during load.`);
     }
 
-    // Load sections if available
+    // 4. Calculate staff width directly based on rightmost note position
+    const allNotesInLoadedComposition: ImportedNote[] = voiceLayers.value.flatMap(voice => voice.notes);
+    
+    // Log key measurements for debugging
+    console.log(`Current measureWidthByTimeSignature: ${measureWidthByTimeSignature.value}px`);
+    
+    if (allNotesInLoadedComposition.length > 0) {
+        // Find the rightmost note position
+        let maxPosition = -1;
+        let rightmostNote: ImportedNote | null = null;
+        
+        allNotesInLoadedComposition.forEach(note => {
+            if (note.position > maxPosition) {
+                maxPosition = note.position;
+                rightmostNote = note;
+            }
+        });
+        
+        if (rightmostNote) {
+            console.log(`Composition from storage had staffWidth: ${composition.staffWidth || 'undefined'}`);
+            
+            // Set a truly massive staff width to ensure it's enough for any composition
+            const absoluteWidth = 10000; // 10,000 pixels should be plenty for any composition
+            
+            // Set the reactive values
+            staffWidth.value = absoluteWidth;
+            
+            // Log what we're doing
+            console.log(`Setting staff to MASSIVE width: ${absoluteWidth}px`);
+            
+            // Log the staffWidth value after setting it
+            console.log(`Immediately after setting - staffWidth.value: ${staffWidth.value}`);
+            
+            // Directly modify the DOM for the staff element before any computed properties run
+            const staffElement = document.querySelector('.staff');
+            if (staffElement) {
+                (staffElement as HTMLElement).style.width = `${absoluteWidth}px`;
+                console.log(`Directly set staff element width to ${absoluteWidth}px`);
+            } else {
+                console.warn('Staff element not found for direct width setting');
+            }
+            
+            // Wait for Vue to process updates
+            await nextTick();
+            
+            // Double check and fix again if needed
+            setTimeout(() => {
+                // Check what happened
+                const staffEl = document.querySelector('.staff');
+                const currentWidth = staffEl ? (staffEl as HTMLElement).clientWidth : 'unknown';
+                console.log(`After timeout - staffWidth.value: ${staffWidth.value}, actual DOM width: ${currentWidth}px`);
+                
+                // Force it again if needed
+                if (staffEl && (staffEl as HTMLElement).clientWidth < 7000) {
+                    console.warn('Staff width still not properly set, forcing again...');
+                    (staffEl as HTMLElement).style.width = `${absoluteWidth}px`;
+                    
+                    // Count how many measure bars are actually rendered
+                    const barlineElements = document.querySelectorAll('.barline');
+                    console.log(`Number of barlines rendered: ${barlineElements.length}`);
+                }
+            }, 300);
+        } else {
+            // Fallback - if no rightmost note was found
+            const calculatedStaffWidth = 8 * measureWidthByTimeSignature.value + 100; // 8 measures + extra space
+            staffWidth.value = calculatedStaffWidth;
+            measuresCount.value = 8;
+            
+            console.log(`No rightmost note found. Using default width: ${calculatedStaffWidth}px`);
+        }
+    } else {
+        // No notes in the composition - default to 8 measures
+        const calculatedStaffWidth = 8 * measureWidthByTimeSignature.value + 100;
+        staffWidth.value = calculatedStaffWidth;
+        measuresCount.value = 8;
+        
+        console.log(`No notes in composition. Using default width: ${calculatedStaffWidth}px`);
+    }
+
+    // 6. Ensure DOM updates for staff width and scroll (moved from end of function to here)
+    await nextTick(); // Wait for Vue to process the direct staffWidth assignment
+    
+    // Force update the DOM with explicit width
+    updateStaffDisplay(staffWidth.value); // Pass explicit width to ensure it's used
+    
+    // Double-check staffWidth is being applied (sometimes DOM updates can lag)
+    setTimeout(() => {
+        updateStaffDisplay(staffWidth.value); // Apply again after a short delay
+        updateStaffScroll(); // Make sure scroll position is applied too
+    }, 100);
+
+    // 5. Load other UI state properties
+    selectedDuration.value = composition.selectedDuration || 'quarter';
+    selectedNoteType.value = composition.selectedNoteType || 'note';
+    selectedAccidental.value = composition.selectedAccidental !== undefined ? composition.selectedAccidental : null;
+    selectedOctave.value = composition.selectedOctave || 4;
+    isDottedNote.value = composition.isDottedNote || false;
+    // activeVoiceId is already set based on loaded data or fallback
+
+    // 7. Load sections and sequence items (can depend on measure count for validation if any)
     if (composition.sections && Array.isArray(composition.sections)) {
       sections.value = JSON.parse(JSON.stringify(composition.sections));
     } else {
       sections.value = [];
     }
-    
-    // Load sequence if available
     if (composition.sequenceItems && Array.isArray(composition.sequenceItems)) {
       sequenceItems.value = JSON.parse(JSON.stringify(composition.sequenceItems));
     } else {
       sequenceItems.value = [];
     }
 
-    // ... (load UI state properties like selectedDuration, etc.) ...
-    selectedDuration.value = composition.selectedDuration || 'quarter';
-    selectedNoteType.value = composition.selectedNoteType || 'note';
-    selectedAccidental.value = composition.selectedAccidental !== undefined ? composition.selectedAccidental : null;
-    selectedOctave.value = composition.selectedOctave || 4;
-    isDottedNote.value = composition.isDottedNote || false;
-    staffWidth.value = composition.staffWidth || 960;
-    activeVoiceId.value = composition.activeVoiceId || (voiceLayers.value.length > 0 ? voiceLayers.value[0].id : 'voice1');
-
-
-    // Update compositionName ref to reflect the loaded composition's name
-    compositionName.value = composition.name;
-
-    // Save to localStorage AFTER all corrections and assignments
-    saveToLocalStorage(); 
-    
-    // console.log('After loading and processing naturals:', // Debug log
-    //   voiceLayers.value.map(v => ({
-    //     id: v.id,
-    //     notes: v.notes.filter(n => n.explicitNatural).map(n => ({id: n.id, pitch: n.pitch, explicitNatural: n.explicitNatural}))
-    //   }))
-    // );
+    compositionName.value = composition.name; // Set the composition name input field
+    saveToLocalStorage(); // Save the current state of savedCompositions (if it was modified by this load)
+    console.log(`Composition "${composition.name}" loaded. Staff width: ${staffWidth.value}, Measures: ${measuresCount.value}`);
 
   } catch (error) {
     console.error('Error loading composition:', error);
     alert(`Error loading composition: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    clearScore();
+    // Optionally, reset to a clean state if loading fails badly
+    // clearScore(); // Or a more specific reset if clearScore is too broad here
   }
 };
 
@@ -2600,7 +2717,19 @@ const showBeatMarkers = ref(false); // Set to true for debugging
 
 // Make sure this computed property is correctly calculating measure width
 const measureWidthByTimeSignature = computed(() => {
-  const [numerator, denominator] = timeSignature.value.split('/').map(n => parseInt(n));
+  const parts = timeSignature.value.split('/');
+  if (parts.length !== 2) {
+    // console.warn(`Invalid time signature format: ${timeSignature.value}, using default width.`);
+    return 50 * 4; // Default to 4 quarter notes width (200px)
+  }
+  const [numeratorStr, denominatorStr] = parts;
+  const numerator = parseInt(numeratorStr);
+  const denominator = parseInt(denominatorStr);
+
+  if (isNaN(numerator) || isNaN(denominator) || denominator === 0 || numerator === 0) {
+    // console.warn(`Invalid time signature numbers: N=${numerator}, D=${denominator}, using default width.`);
+    return 50 * 4; // Default to 4 quarter notes width
+  }
 
   // Base width per quarter note
   const quarterNoteWidth = 50;
