@@ -311,6 +311,12 @@
       @renameVoice="renameVoice" @changeVoiceColor="changeVoiceColor" @switchActiveVoice="switchActiveVoice"
       @toggleVoiceVisibility="toggleVoiceVisibility" @updateVoiceSelection="updateVoiceLayerSelection"
       @confirmDeleteVoice="confirmDeleteVoice" @addVoiceLayer="addVoiceLayer" />
+    
+    <!-- Add the FirstTimeInstructionModal component -->
+    <FirstTimeInstructionModal 
+      :is-visible="showFirstTimeInstructions" 
+      @close="closeFirstTimeInstructions" 
+    />
   </div>
 </template>
 
@@ -324,14 +330,14 @@ import TempoControl from '@/components/TempoControl.vue';
 import PlaybackControls from '@/components/PlaybackControls.vue';
 import NoteInputControls from '@/components/NoteInputControls.vue';
 import SavedCompositionsPanel from '@/components/SavedCompositionsPanel.vue';
-import PlaybackSettings from '@/components/PlaybackSettings.vue'; // Import new
-import LyricsControls from '@/components/LyricsControls.vue'; // Import new
-import VoiceLayersPanel from '@/components/VoiceLayersPanel.vue'; // Import new
-import SettingsPanel from '@/components/SettingsPanel.vue'; // Import new
-import DebugPanel from '@/components/DebugPanel.vue'; // Import new
-import { useDebug } from '@/composables/useDebug'; // Import the new composable
+import PlaybackSettings from '@/components/PlaybackSettings.vue';
+import LyricsControls from '@/components/LyricsControls.vue';
+import VoiceLayersPanel from '@/components/VoiceLayersPanel.vue';
+import SettingsPanel from '@/components/SettingsPanel.vue';
+import DebugPanel from '@/components/DebugPanel.vue';
+import FirstTimeInstructionModal from '@/components/FirstTimeInstructionModal.vue'; // Import the new component
+import { useDebug } from '@/composables/useDebug';
 import SectionsPanel from '@/components/SectionsPanel.vue';
-// import type { Section } from '@/components/SectionsPanel.vue';
 
 // Import types
 import type {
@@ -666,6 +672,12 @@ onMounted(async () => {
 
     // Add window resize listener
     window.addEventListener('resize', handleResize);
+    
+    // Load saved compositions from localStorage
+    loadSavedCompositions();
+    
+    // Check if it's the first time visit
+    checkFirstTimeVisit();
   } catch (error) {
     console.error('Error initializing Tone.js:', error);
     // Fallback to basic synth if piano samples fail to load
@@ -4484,6 +4496,27 @@ watch(keySignature, (newValue, oldValue) => {
 }, { deep: true }); // deep might not be necessary for a simple string ref
 
 // existing code...
+
+// Add ref for instruction modal visibility
+const showFirstTimeInstructions = ref(false);
+
+// Function to check if it's the first time visit
+const checkFirstTimeVisit = () => {
+  const hasSeenInstructions = localStorage.getItem('musicNotationAppInstructionSeen');
+  if (!hasSeenInstructions) {
+    // Wait a short moment before showing the modal to ensure UI is loaded
+    setTimeout(() => {
+      showFirstTimeInstructions.value = true;
+    }, 1000);
+  }
+};
+
+// Function to close the instruction modal
+const closeFirstTimeInstructions = () => {
+  showFirstTimeInstructions.value = false;
+};
+
+// ... existing code ...
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
