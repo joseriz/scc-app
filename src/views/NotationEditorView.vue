@@ -1,8 +1,8 @@
 <template>
   <!-- Add responsive meta tag -->
   <div class="notation-editor">
-    <AppHeader v-model:selectedClef="selectedClef" v-model:keySignature="keySignature"
-      v-model:timeSignature="timeSignature" @clefChange="handleClefChange"
+    <AppHeader v-model:keySignature="keySignature"
+      v-model:timeSignature="timeSignature"
       @keySignatureChange="changeKeySignatureDirectly" @timeSignatureChange="updateTimeSignature" />
 
     <!-- Floating Help Button -->
@@ -12,288 +12,264 @@
 
     <TempoControl v-model="tempo" />
 
-    <!-- Replace the existing staff-container with this new staves-container structure -->
-    <div class="staves-container">
-      <div v-for="staff in staves" :key="staff.id" class="staff-wrapper">
-        <div class="staff-header">
-          <div class="staff-title">{{ staff.name }}</div>
-          <div class="staff-actions">
-            <button 
-              class="staff-action-btn"
-              @click="changeStaffClef(staff.id, staff.clef === 'treble' ? 'bass' : 'treble')"
-            >
-              {{ staff.clef === 'treble' ? 'Switch to Bass Clef' : 'Switch to Treble Clef' }}
-            </button>
-            <button 
-              v-if="staves.length > 1"
-              class="staff-action-btn remove"
-              @click="removeStaff(staff.id)"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-        
-        <!-- Staff connections if needed -->
-        <div v-if="staves.length > 1 && staves.indexOf(staff) < staves.length - 1" class="staff-connector staff-connector-bottom"></div>
-        <div v-if="staves.length > 1 && staves.indexOf(staff) > 0" class="staff-connector staff-connector-top"></div>
-        
-        <!-- Staff container (similar to original but with staff-specific data) -->
-        <div class="staff-container-multi" :style="{ minHeight: staffContainerMinHeight }">
-      <div class="clef">
-            <img v-if="staff.clef === 'treble'" src="@/assets/treble-clef.svg" alt="Treble Clef" />
-            <img v-else-if="staff.clef === 'bass'" src="@/assets/bass-clef.svg" alt="Bass Clef" />
-      </div>
+    <!-- Button to add a new staff -->
+    <div class="add-staff-controls">
+      <button @click="addNewStaff" class="add-staff-btn">Add New Staff</button>
+    </div>
 
-      <!-- Key Signature -->
-      <div class="key-signature">
-            <div v-for="(accidental, index) in currentKeySignatureAccidentals" :key="`key-sig-${staff.id}-${index}`"
-          class="key-signature-accidental" :style="{
-                top: `${getKeySignaturePosition(accidental, staff.clef)}px`,
+    <!-- Staves container -->
+    <div class="staves-wrapper">
+      <div v-for="(stave, staveIndex) in staves" :key="stave.id" class="staff-outer-container">
+        <div class="staff-header-controls">
+          <span class="staff-name">{{ stave.name || `Staff ${staveIndex + 1}` }}</span>
+          <select v-model="stave.clef" @change="handleStaffClefChange(stave)">
+            <option value="treble">Treble</option>
+            <option value="bass">Bass</option>
+          </select>
+          <button v-if="staves.length > 1" @click="removeStaff(stave.id)" class="remove-staff-btn">Remove Staff</button>
+        </div>
+
+        <!-- Staff container with improved mobile layout -->
+        <div class="staff-container" :style="{ minHeight: staffContainerMinHeight }">
+          <div class="clef">
+            <img v-if="stave.clef === 'treble'" src="@/assets/treble-clef.svg" alt="Treble Clef" />
+            <img v-else-if="stave.clef === 'bass'" src="@/assets/bass-clef.svg" alt="Bass Clef" />
+          </div>
+
+          <!-- Key Signature -->
+          <div class="key-signature">
+            <div v-for="(accidental, index) in currentKeySignatureAccidentals" :key="`key-sig-${stave.id}-${index}`"
+              class="key-signature-accidental" :style="{
+                top: `${getKeySignaturePosition(accidental, stave.clef)}px`,
                 left: `${15 + (index * 8)}px`
-          }">
-          {{ getAccidentalSymbolForKeySignature(accidental) }}
-        </div>
-      </div>
-
-          <!-- Time signature -->
-      <div class="time-signature-display"
-        :style="{ left: `${45 + (currentKeySignatureAccidentals.length * 10) + 5}px` }">
-        <div class="time-signature-numerator">{{ timeSignatureNumerator }}</div>
-        <div class="time-signature-denominator">{{ timeSignatureDenominator }}</div>
-      </div>
-
-      <!-- Scrollable staff -->
-      <div class="staff-scroll-container">
-            <div class="staff" 
-                 @click="handleStaffClick($event, staff.id)" 
-                 @mousedown="startDrag($event, staff.id)" 
-                 @touchstart="startDrag($event, staff.id)" 
-                 :data-staff-id="staff.id"
-                 :style="{
-                   width: `${getStaffWidth(staff.id)}px`,
-                   transform: `translateX(-${getStaffScrollPosition(staff.id)}px)`
-        }">
-          <!-- Staff lines -->
-          <div class="staff-lines">
-                <div class="staff-line" v-for="i in 5" :key="`line-${staff.id}-${i}`"></div>
-          </div>
-
-              <!-- Section markers container -->
-          <div class="section-markers-container">
-            <div v-for="section in sections" 
-                 :key="`section-${section.id}`" 
-                 class="section-markers"
-                 :class="{ 'playing-section': section.id === playingSequenceSectionId }">
-              <!-- Start marker -->
-              <div class="section-marker section-start" 
-                   :style="{ 
-                     left: `${getSectionPosition(section.startMeasure)}px`,
-                     top: '80px' 
-                   }"
-                   :title="`${section.name} (Start)`">
-                ◀ {{ section.name }}
-              </div>
-              
-              <!-- End marker -->
-              <div class="section-marker section-end" 
-                   :style="{ 
-                     left: `${getSectionPosition(section.endMeasure + 1) - 6}px`,
-                     top: '80px' 
-                   }"
-                   :title="`${section.name} (End)`">
-                {{ section.name }} ▶
-              </div>
-              
-              <!-- Section background highlight -->
-              <div class="section-background" 
-                   :style="{ 
-                     left: `${getSectionPosition(section.startMeasure)}px`,
-                     width: `${getSectionPosition(section.endMeasure + 1) - getSectionPosition(section.startMeasure)}px`,
-                     height: '100%'
-                   }">
-              </div>
-            </div>
-          </div>
-
-          <!-- Then remove the duplicate section markers from inside the ledger lines -->
-
-          <!-- Measure bars -->
-              <div v-for="(barline, i) in barlinesList" :key="`barline-${staff.id}-${i}`" class="barline" :class="{
-            'barline-single': barline.type === 'single',
-            'barline-double': barline.type === 'double',
-            'barline-final': barline.type === 'final',
-            'barline-repeat-start': barline.type === 'repeat-start',
-            'barline-repeat-end': barline.type === 'repeat-end'
-          }" :style="{ left: `${barline.position}px` }">
-
-            <!-- Add repeat dots for repeat barlines -->
-            <template v-if="barline.type === 'repeat-start' || barline.type === 'repeat-end'">
-              <div class="repeat-dots">
-                <div class="repeat-dot"></div>
-                <div class="repeat-dot"></div>
-              </div>
-            </template>
-
-            <!-- Add measure number (only show if showMeasureNumbers is true) -->
-            <div v-if="showMeasureNumbers && barline.measureNumber > 0" class="measure-number">
-              {{ barline.measureNumber }}
-            </div>
-          </div>
-
-          <!-- Beat markers (optional, for visual aid) -->
-          <div v-if="showBeatMarkers" v-for="beat in beatPositionsList" :key="`beat-${beat.position}`" class="beat-marker"
-            :style="{ left: `${beat.position}px` }">
-          </div>
-
-          <!-- Notes container -->
-          <div class="notes-container">
-                <!-- Get notes specifically for this staff -->
-                <template v-for="note in getNotesForStaff(staff.id)" :key="`ledger-${note.id}`">
-              <!-- Ledger lines for notes above the staff -->
-              <div v-if="needsLedgerLines(note, 'above')" class="ledger-lines-container above" :style="{
-                left: `${note.position * 50 - 10}px`
               }">
-                <div v-for="linePos in getLedgerLines(note, 'above')" :key="`above-${note.id}-${linePos}`"
-                  class="ledger-line" :style="{
-                    top: `${linePos}px`,
-                    width: '20px'
-                  }">
-                </div>
-              </div>
-
-              <!-- Ledger lines for notes below the staff -->
-              <div v-if="needsLedgerLines(note, 'below')" class="ledger-lines-container below" :style="{
-                left: `${note.position * 50 - 10}px`
-              }">
-                <div v-for="linePos in getLedgerLines(note, 'below')" :key="`below-${note.id}-${linePos}`"
-                  class="ledger-line" :style="{
-                    top: `${linePos}px`,
-                    width: '20px'
-                  }">
-                </div>
-              </div>
-            </template>
-
-            <!-- Notes -->
-                <div v-for="note in getNotesForStaff(staff.id)" :key="note.id" class="note" :class="{
-              'rest': note.type === 'rest',
-                  'playing': isNotePlaying(note.id),
-              'selected': note.id === selectedNoteId,
-              'key-signature-affected': note.type === 'note' &&
-                note.pitch &&
-                !note.pitch.includes('#') &&
-                !note.pitch.includes('b') &&
-                isNoteAffectedByKeySignature(note.pitch.charAt(0)),
-              'dotted': note.dotted,
-              'whole-note': note.duration === 'whole',
-              'has-lyric': note.lyric,
-              'natural-accidental': note.explicitNatural
-            }" :style="{
-                  ...getNoteStyle(note),
-                  borderColor: note.voiceColor || 'black'
-                }" :data-duration="note.duration" :data-voice="note.voiceId" @contextmenu.prevent="removeNote(note)"
-              @touchstart="handleTouchStart(note, $event)" @touchend="handleTouchEnd" @touchmove="handleTouchMove"
-              @click.stop="selectNote(note)">
-
-              <!-- For rests, use the existing symbol -->
-              <template v-if="note.type === 'rest'">
-                {{ getNoteSymbol(note) }}
-                <!-- Add dot for dotted rests -->
-                <span v-if="note.dotted" class="dot">•</span>
-              </template>
-
-              <!-- For notes, use separate notehead and stem -->
-              <template v-else>
-                <!-- Notehead -->
-                <div class="notehead" :class="note.duration">
-                  <!-- Different noteheads for different durations -->
-                </div>
-
-                <!-- Stem (only for non-whole notes) -->
-                <div v-if="note.duration !== 'whole'" class="stem"
-                  :class="[getStemDirection(note.pitch || ''), note.duration]">
-                </div>
-
-                <!-- Flag for eighth and sixteenth notes -->
-                <div v-if="['eighth', 'sixteenth'].includes(note.duration)" class="flag"
-                  :class="[getStemDirection(note.pitch || ''), note.duration]">
-                </div>
-
-                <!-- Add dot for dotted notes -->
-                <span v-if="note.dotted" class="dot">•</span>
-              </template>
-
-              <!-- Accidental -->
-              <span v-if="note.type === 'note' && note.pitch && (
-    (note.pitch.includes('#') || note.pitch.includes('b')) || 
-    isNoteAffectedByKeySignature(note.pitch.charAt(0)) ||
-    note.explicitNatural
-  )" class="accidental">
-  {{ 
-    note.explicitNatural ? '♮' : 
-    (note.pitch.includes('#') || note.pitch.includes('b')) ?
-      getAccidentalSymbol(note) :
-      getAccidentalSymbolForKeySignature(getKeySignatureAccidentalForNote(note.pitch.charAt(0)))
-  }}
-</span>
+              {{ getAccidentalSymbolForKeySignature(accidental) }}
             </div>
+          </div>
 
-            <!-- Chord symbols -->
-                <div v-for="chord in chordSymbols.filter(c => isChordInStaffRange(c, staff.id))" 
-                     :key="`chord-${staff.id}-${chord.id}`" 
-                     class="chord-symbol" 
-                     :style="{
-              left: `${chord.position * 50}px`,
-              top: `${chord.top}px`
+          <!-- Update time signature positioning to appear after key signature -->
+          <div class="time-signature-display"
+            :style="{ left: `${45 + (currentKeySignatureAccidentals.length * 10) + 5}px` }">
+            <div class="time-signature-numerator">{{ timeSignatureNumerator }}</div>
+            <div class="time-signature-denominator">{{ timeSignatureDenominator }}</div>
+          </div>
+
+          <!-- Scrollable staff -->
+          <div class="staff-scroll-container">
+            <div class="staff" @click="handleStaffClick($event, stave.id)" @mousedown="startDrag" @touchstart="startDrag" :style="{
+              width: `${staffWidth}px`,
+              transform: `translateX(-${scrollPosition}px)`
             }">
-              {{ formatChordName(chord.chordName) }}
-            </div>
+              <!-- Staff lines -->
+              <div class="staff-lines">
+                <div class="staff-line" v-for="i in 5" :key="`line-${stave.id}-${i}`"></div>
+              </div>
 
-            <!-- ADD Lyric Rendering - Separate loop outside the notes loop -->
-                <div v-for="note in getNotesForStaff(staff.id).filter(n => n.lyric)" 
-                     :key="`lyric-${note.id}`" 
-                     class="lyric"
-                     :class="{ 'playing': isNotePlaying(note.id) }"
-                     :style="{
-                left: `${note.position * 50}px`,
-                       top: getLyricVerticalOffset(note.voiceId),
-                       color: note.voiceColor || 'black'
-              }">
-              {{ note.lyric }}
+              <!-- Add this right after the staff-lines div and before the notes container -->
+              <!-- Render section markers only on the first staff to avoid duplication -->
+              <div v-if="staveIndex === 0" class="section-markers-container">
+                <div v-for="section in sections"
+                     :key="`section-${section.id}`"
+                     class="section-markers"
+                     :class="{ 'playing-section': section.id === playingSequenceSectionId }">
+                  <!-- Start marker -->
+                  <div class="section-marker section-start"
+                       :style="{
+                         left: `${getSectionPosition(section.startMeasure)}px`,
+                         top: '80px'
+                       }"
+                       :title="`${section.name} (Start)`">
+                    ◀ {{ section.name }}
+                  </div>
+
+                  <!-- End marker -->
+                  <div class="section-marker section-end"
+                       :style="{
+                         left: `${getSectionPosition(section.endMeasure + 1) - 6}px`,
+                         top: '80px'
+                       }"
+                       :title="`${section.name} (End)`">
+                    {{ section.name }} ▶
+                  </div>
+
+                  <!-- Section background highlight -->
+                  <div class="section-background"
+                       :style="{
+                         left: `${getSectionPosition(section.startMeasure)}px`,
+                         width: `${getSectionPosition(section.endMeasure + 1) - getSectionPosition(section.startMeasure)}px`,
+                         height: '100%'
+                       }">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Then remove the duplicate section markers from inside the ledger lines -->
+
+              <!-- Measure bars -->
+              <div v-for="(barline, i) in barlines" :key="`barline-${stave.id}-${i}`" class="barline" :class="{
+                'barline-single': barline.type === 'single',
+                'barline-double': barline.type === 'double',
+                'barline-final': barline.type === 'final',
+                'barline-repeat-start': barline.type === 'repeat-start',
+                'barline-repeat-end': barline.type === 'repeat-end'
+              }" :style="{ left: `${barline.position}px` }">
+
+                <!-- Add repeat dots for repeat barlines -->
+                <template v-if="barline.type === 'repeat-start' || barline.type === 'repeat-end'">
+                  <div class="repeat-dots">
+                    <div class="repeat-dot"></div>
+                    <div class="repeat-dot"></div>
+                  </div>
+                </template>
+
+                <!-- Add measure number (only show if showMeasureNumbers is true and on the first staff) -->
+                <div v-if="staveIndex === 0 && showMeasureNumbers && barline.measureNumber > 0" class="measure-number">
+                  {{ barline.measureNumber }}
+                </div>
+              </div>
+
+              <!-- Beat markers (optional, for visual aid) -->
+              <div v-if="showBeatMarkers" v-for="beat in beatPositions" :key="`beat-${stave.id}-${beat.position}`" class="beat-marker"
+                :style="{ left: `${beat.position}px` }">
+              </div>
+
+              <!-- Notes container -->
+              <div class="notes-container">
+                <!-- Ledger lines for notes -->
+                <template v-for="note in notesForStaff(stave.id)" :key="`ledger-${note.id}`">
+                  <!-- Ledger lines for notes above the staff -->
+                  <div v-if="needsLedgerLines(note, 'above', note.staffClef)" class="ledger-lines-container above" :style="{
+                    left: `${note.position * 50 - 10}px`
+                  }">
+                    <div v-for="linePos in getLedgerLines(note, 'above', note.staffClef)" :key="`above-${note.id}-${linePos}`"
+                      class="ledger-line" :style="{
+                        top: `${linePos}px`,
+                        width: '20px'
+                      }">
+                    </div>
+                  </div>
+
+                  <!-- Ledger lines for notes below the staff -->
+                  <div v-if="needsLedgerLines(note, 'below', note.staffClef)" class="ledger-lines-container below" :style="{
+                    left: `${note.position * 50 - 10}px`
+                  }">
+                    <div v-for="linePos in getLedgerLines(note, 'below', note.staffClef)" :key="`below-${note.id}-${linePos}`"
+                      class="ledger-line" :style="{
+                        top: `${linePos}px`,
+                        width: '20px'
+                      }">
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Notes -->
+                <div v-for="note in notesForStaff(stave.id)" :key="note.id" class="note" :class="{
+                  'rest': note.type === 'rest',
+                  'playing': note.id === currentPlayingNoteId,
+                  'selected': note.id === selectedNoteId,
+                  'key-signature-affected': note.type === 'note' &&
+                    note.pitch &&
+                    !note.pitch.includes('#') &&
+                    !note.pitch.includes('b') &&
+                    isNoteAffectedByKeySignature(note.pitch.charAt(0)),
+                  'dotted': note.dotted,
+                  'whole-note': note.duration === 'whole',
+                  'has-lyric': note.lyric,
+                  'natural-accidental': note.explicitNatural
+                }" :style="{
+                      ...getNoteStyle(note),
+                      borderColor: note.voiceColor || 'black'
+                    }" :data-duration="note.duration" :data-voice="note.voiceId" @contextmenu.prevent="removeNote(note)"
+                  @touchstart="handleTouchStart(note, $event)" @touchend="handleTouchEnd" @touchmove="handleTouchMove"
+                  @click.stop="selectNote(note)">
+
+                  <!-- For rests, use the existing symbol -->
+                  <template v-if="note.type === 'rest'">
+                    {{ getNoteSymbol(note) }}
+                    <!-- Add dot for dotted rests -->
+                    <span v-if="note.dotted" class="dot">•</span>
+                  </template>
+
+                  <!-- For notes, use separate notehead and stem -->
+                  <template v-else>
+                    <!-- Notehead -->
+                    <div class="notehead" :class="note.duration">
+                      <!-- Different noteheads for different durations -->
+                    </div>
+
+                    <!-- Stem (only for non-whole notes) -->
+                    <div v-if="note.duration !== 'whole'" class="stem"
+                      :class="[getStemDirection(note.pitch || '', note.staffClef), note.duration]">
+                    </div>
+
+                    <!-- Flag for eighth and sixteenth notes -->
+                    <div v-if="['eighth', 'sixteenth'].includes(note.duration)" class="flag"
+                      :class="[getStemDirection(note.pitch || '', note.staffClef), note.duration]">
+                    </div>
+
+                    <!-- Add dot for dotted notes -->
+                    <span v-if="note.dotted" class="dot">•</span>
+                  </template>
+
+                  <!-- Accidental -->
+                  <span v-if="note.type === 'note' && note.pitch && (
+        (note.pitch.includes('#') || note.pitch.includes('b')) ||
+        isNoteAffectedByKeySignature(note.pitch.charAt(0)) ||
+        note.explicitNatural
+      )" class="accidental">
+      {{
+        note.explicitNatural ? '♮' :
+        (note.pitch.includes('#') || note.pitch.includes('b')) ?
+          getAccidentalSymbol(note) :
+          getAccidentalSymbolForKeySignature(getKeySignatureAccidentalForNote(note.pitch.charAt(0)))
+      }}
+    </span>
+                </div>
+
+                <!-- Chord symbols (render only on the first staff) -->
+                <div v-if="staveIndex === 0" v-for="chord in chordSymbols" :key="chord.id" class="chord-symbol" :style="{
+                  left: `${chord.position * 50}px`,
+                  top: `${chord.top}px`
+                }">
+                  {{ formatChordName(chord.chordName) }}
+                </div>
+
+                <!-- ADD Lyric Rendering - Separate loop outside the notes loop -->
+                <div v-for="note in notesForStaffWithLyrics(stave.id)" :key="`lyric-${note.id}`" class="lyric"
+                  :class="{ 'playing': note.id === currentPlayingNoteId }" :style="{
+                    left: `${note.position * 50}px`,
+                    top: getLyricVerticalOffset(note.voiceId, stave.id), // Pass staveId
+                    color: note.voiceColor || 'black'
+                  }">
+                  {{ note.lyric }}
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Scroll controls -->
-      <div class="staff-scroll-controls">
-            <button @click="scrollStaffById('left', staff.id)" class="scroll-btn left" 
-                    :disabled="getStaffScrollPosition(staff.id) === 0">
-          ◀
-        </button>
-            <button @click="extendStaffById(staff.id)" class="extend-btn">
-          Extend Staff
-        </button>
-            <button @click="scrollStaffById('right', staff.id)" class="scroll-btn right" 
-                    :disabled="getStaffScrollPosition(staff.id) >= (getStaffWidth(staff.id) - visibleStaffWidth)">
-          ▶
-        </button>
-          </div>
-      </div>
-      </div>
-      
-      <!-- Button to add a new staff -->
-      <button @click="addStaff" class="add-staff-button">
-        Add Staff
+
+    <!-- Scroll controls (global for all staves) -->
+    <div class="staff-scroll-controls-global">
+      <button @click="scrollStaff('left')" class="scroll-btn left" :disabled="scrollPosition === 0">
+        ◀
+      </button>
+      <button @click="extendStaff" class="extend-btn">
+        Extend Staff
+      </button>
+      <button @click="scrollStaff('right')" class="scroll-btn right" :disabled="scrollPosition >= maxScrollPosition">
+        ▶
       </button>
     </div>
+    
 
     <PlaybackControls :is-playing="isPlaying" :is-paused="isPaused" @toggle-playback="togglePlayback"
       @stop-playback="stopPlayback" @clear-or-restart="handleClearOrRestart" />
 
     <PlaybackSettings v-model:playbackStartMeasure="playbackStartMeasure"
-      v-model:playbackEndMeasure="playbackEndMeasure" :maxMeasures="barlinesList.length"
+      v-model:playbackEndMeasure="playbackEndMeasure" :maxMeasures="barlines.length"
       v-model:autoScrollToPlayingNote="autoScrollToPlayingNote" v-model:showMeasureNumbers="showMeasureNumbers" />
 
     <!-- Mobile-optimized note controls with tabs -->
@@ -324,28 +300,19 @@
       </div> -->
 
     <DebugPanel :debugMode="debugMode" :showNotePositions="showNotePositions" :lastClickY="lastClickY"
-      :selectedOctave="selectedOctave" :notesForDebug="notes" :needsLedgerLines="needsLedgerLines"
-      :getLedgerLines="getLedgerLines" @toggleShowNotePositions="showNotePositions = !showNotePositions"
+      :selectedOctave="selectedOctave" :notesForDebug="notes" 
+      :needsLedgerLines="needsLedgerLinesForDebug"
+      :getLedgerLines="getLedgerLinesForDebug" 
+      @toggleShowNotePositions="showNotePositions = !showNotePositions"
       @testAllNotes="testAllNotes" />
 
     <div v-if="activeTab === 'saved'">
-      <SavedCompositionsPanel
-        :savedCompositions="savedCompositions"
-        :compositionName="compositionName"
-        :currentCompositionId="currentCompositionId"
-        :exportOnlySelectedVoices="exportOnlySelectedVoices"
-        @update:compositionName="compositionName = $event"
-        @saveComposition="saveComposition"
-        @loadComposition="loadComposition"
-        @updateComposition="updateComposition"
-        @saveRename="saveRename"
-        @deleteComposition="deleteComposition"
-        @exportAllCompositions="exportAllCompositions"
-        @exportCurrentComposition="exportCurrentComposition"
-        @importCompositions="importCompositions"
-        @update:exportOnlySelectedVoices="exportOnlySelectedVoices = $event"
-        @combineCompositions="combineCompositions"
-      />
+      <SavedCompositionsPanel :savedCompositions="savedCompositions" v-model:compositionName="compositionName"
+        :currentCompositionId="currentCompositionId" v-model:exportOnlySelectedVoices="exportOnlySelectedVoices"
+        @saveComposition="saveComposition" @loadComposition="loadComposition" @updateComposition="updateComposition"
+        @saveRename="handleSaveRename" @deleteComposition="deleteComposition"
+        @exportAllCompositions="exportAllCompositions" @exportCurrentComposition="exportCurrentComposition"
+        @importCompositions="importCompositions" @combineCompositions="combineCompositions"></SavedCompositionsPanel>
     </div>
 
     <div v-if="activeTab === 'sections'">
@@ -404,7 +371,8 @@ import type {
   CompositionData,
   NoteWithVoiceInfo,
   Section,
-  SequenceItem
+  SequenceItem,
+  Stave, // Import Stave
 } from '@/types/types'; // Updated path
 
 // Store
@@ -424,9 +392,13 @@ const lastClickY = ref(0);
 const tempo = ref(120);
 // const debugMode = ref(false); // Moved to composable
 // const showNotePositions = ref(false); // Moved to composable
-const currentPlayingNoteIds = ref<string[]>([]);
-const selectedClef = ref('treble');
+const currentPlayingNoteId = ref<string | null>(null);
+// const selectedClef = ref('treble'); // REMOVED - Clef is now per staff
 const exportOnlySelectedVoices = ref(false); // New ref for export option
+
+// --- Stave Management ---
+const staves = ref<Stave[]>([]);
+const activeStaffId = ref<string | null>(null); // ID of the staff currently active for input
 
 // Helper function to generate a random hex color
 const getRandomColor = (): string => {
@@ -440,50 +412,57 @@ const getRandomColor = (): string => {
 
 // Add voice layers and related refs near the top
 // Default to one voice with a random color
-const voiceLayers = ref<VoiceLayer[]>([ // Explicitly type voiceLayers
-  {
-    id: 'voice1',
-    name: 'Voice 1',
-    color: getRandomColor(), // Use random color for the first voice
-    visible: true,
-    active: true,
-    selected: true,
-    volume: 0,
-    notes: []
-  }
-]);
+const voiceLayers = ref<VoiceLayer[]>([]); // Explicitly type voiceLayers
 
 // Track the currently active voice layer
-const activeVoiceId = ref('voice1'); // Still defaults to the first voice
+const activeVoiceId = ref(''); // Still defaults to the first voice
 
 // Get the active voice layer
 const activeVoice = computed<VoiceLayer>(() => { // Explicitly type activeVoice
   const foundVoice = voiceLayers.value.find(layer => layer.id === activeVoiceId.value);
 
-  // If the active voice ID doesn't exist in the voices, return the first voice
-  // If there are no voices at all, create a default voice to prevent errors
   if (foundVoice) {
     return foundVoice;
   } else if (voiceLayers.value.length > 0) {
-    // Set activeVoiceId to the first available voice
     activeVoiceId.value = voiceLayers.value[0].id;
+    // Ensure the active voice's staff is also the active staff
+    const newActiveVoice = voiceLayers.value.find(v => v.id === activeVoiceId.value);
+    if (newActiveVoice && newActiveVoice.staffId) {
+        activeStaffId.value = newActiveVoice.staffId;
+    }
     return voiceLayers.value[0];
   } else {
     // Create a default voice if no voices exist
+    // This should ideally be rare if initializeDefaultStaffAndVoice works correctly on mount/load
+    let staffIdForDefaultVoice = activeStaffId.value;
+    if (!staffIdForDefaultVoice && staves.value.length > 0) {
+        staffIdForDefaultVoice = staves.value[0].id;
+    } else if (!staffIdForDefaultVoice && staves.value.length === 0) {
+        // Emergency: if no staves exist, create one.
+        const newDefaultStaffId = generateId();
+        staves.value.push({ id: newDefaultStaffId, clef: 'treble', order: 0, name: 'Emergency Staff'});
+        staffIdForDefaultVoice = newDefaultStaffId;
+        activeStaffId.value = newDefaultStaffId; // Make it active
+        console.warn("activeVoice computed created an emergency staff.");
+    }
+
     const defaultVoice: VoiceLayer = {
-      id: 'voice1',
-      name: 'Voice 1',
+      id: 'voice1_fallback', // More unique ID
+      name: 'Voice 1 (Fallback)',
       color: getRandomColor(),
       visible: true,
       active: true,
       selected: true,
       volume: 0,
-      notes: []
+      notes: [],
+      staffId: staffIdForDefaultVoice! // Assert non-null after the logic above
     };
 
-    // Add the default voice to the voice layers
     voiceLayers.value.push(defaultVoice);
-    activeVoiceId.value = 'voice1';
+    activeVoiceId.value = defaultVoice.id;
+    if (defaultVoice.staffId) { // Ensure activeStaffId is also set
+        activeStaffId.value = defaultVoice.staffId;
+    }
     return defaultVoice;
   }
 });
@@ -495,14 +474,17 @@ const allVisibleNotes = computed((): NoteWithVoiceInfo[] => { // Specify return 
 
   voiceLayers.value.forEach(voice => {
     if (voice.visible) {
-      // Add voice information to each note
-      const notesWithVoiceInfo = voice.notes.map(note => ({
-        ...note,
-        voiceId: voice.id,
-        voiceColor: voice.color
-      })) as NoteWithVoiceInfo[]; // Ensure this maps to NoteWithVoiceInfo
-
-      allNotes = [...allNotes, ...notesWithVoiceInfo];
+      const staff = staves.value.find(s => s.id === voice.staffId);
+      if (staff) {
+        const notesWithVoiceInfo = voice.notes.map(note => ({
+          ...note,
+          voiceId: voice.id,
+          voiceColor: voice.color,
+          staffId: staff.id,
+          staffClef: staff.clef,
+        })) as NoteWithVoiceInfo[];
+        allNotes = [...allNotes, ...notesWithVoiceInfo];
+      }
     }
   });
 
@@ -595,10 +577,10 @@ interface Composition {
   id: string;
   name: string;
   dateCreated: number;
-  notes?: ImportedNote[]; // Use aliased import
+  staves?: Stave[]; // Add staves
   voiceLayers?: VoiceLayer[];
   tempo: number;
-  clef: string;
+  // clef: string; // Removed, clef is per-staff
   keySignature: string;
   timeSignature?: string;
   chordSymbols?: ImportedChordSymbol[]; // Use aliased import
@@ -731,7 +713,12 @@ onMounted(async () => {
     window.addEventListener('resize', handleResize);
     
     // Load saved compositions from localStorage
-    loadSavedCompositions();
+    loadSavedCompositions(); // This will also handle initializing staves if loading a composition
+
+    // If after loading, staves are still empty (e.g. new user, no saved data), initialize default.
+    if (staves.value.length === 0) {
+        initializeDefaultStaffAndVoice();
+    }
     
     // Check if it's the first time visit
     checkFirstTimeVisit();
@@ -796,7 +783,27 @@ const keySignatures = {
   'Cb': ['Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb', 'Fb'],
 
   // No sharps/flats
-  'C': []
+  'C': [],
+
+  // Minor keys (relative minor, accidentals are the same as major)
+  // Sharp minor keys
+  'Am': [], // Relative to C
+  'Em': ['F#'], // Relative to G
+  'Bm': ['F#', 'C#'], // Relative to D
+  'F#m': ['F#', 'C#', 'G#'], // Relative to A
+  'C#m': ['F#', 'C#', 'G#', 'D#'], // Relative to E
+  'G#m': ['F#', 'C#', 'G#', 'D#', 'A#'], // Relative to B
+  'D#m': ['F#', 'C#', 'G#', 'D#', 'A#', 'E#'], // Relative to F#
+  'A#m': ['F#', 'C#', 'G#', 'D#', 'A#', 'E#', 'B#'], // Relative to C#
+
+  // Flat minor keys
+  'Dm': ['Bb'], // Relative to F
+  'Gm': ['Bb', 'Eb'], // Relative to Bb
+  'Cm': ['Bb', 'Eb', 'Ab'], // Relative to Eb
+  'Fm': ['Bb', 'Eb', 'Ab', 'Db'], // Relative to Ab
+  'Bbm': ['Bb', 'Eb', 'Ab', 'Db', 'Gb'], // Relative to Db
+  'Ebm': ['Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb'], // Relative to Gb
+  'Abm': ['Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb', 'Fb'] // Relative to Cb
 };
 
 // Get the current key signature accidentals
@@ -807,37 +814,45 @@ const currentKeySignatureAccidentals = computed(() => {
 // Function to change the key signature
 const changeKeySignature = (key: string) => {
   keySignature.value = key;
+  // After changing key signature, re-evaluate natural notes for all voices on all staves
+  enforceNaturalNotes();
 };
 
 // Function to get the position of a key signature accidental on the staff
-const getKeySignaturePosition = (accidental: string, clef: string) => {
-  // Remove the accidental symbol to get the base note
+const getKeySignaturePosition = (accidental: string, clef: 'treble' | 'bass') => {
   const note = accidental.charAt(0);
+  let positions: Record<string, number> = {};
 
-  // Staff-specific positions
   if (clef === 'treble') {
-    const positions = {
-    'F': 145, // F4 line
-    'C': 115, // C5 line
-    'G': 137.5, // G4 space
-    'D': 160, // D4 line
-    'A': 130, // A4 line
-    'E': 152.5, // E4 space
-    'B': 122.5, // B4 space
-  };
-  return positions[note] || 0;
-  } else { // Bass clef
-    const positions = {
-      'F': 167.5, // F2 line
-      'C': 137.5, // C3 line
-      'G': 160, // G2 line
-      'D': 130, // D3 line
-      'A': 152.5, // A2 space
-      'E': 122.5, // E3 space
-      'B': 145, // B2 line
+    positions = { // Treble clef positions for sharps/flats
+      'F': 100, 'C': 122.5, 'G': 92.5, 'D': 115, 'A': 137.5, 'E': 85, 'B': 107.5, // Sharps (F,C,G,D,A,E,B)
+      'B': 130, 'E': 107.5, 'A': 130-7.5, 'D': 152.5, 'G': 115+7.5, 'C': 145+7.5, 'F': 107.5+7.5 // Flats (B,E,A,D,G,C,F) - adjust as needed
+      // More precise flat positions for treble:
+      // B♭: 130 (B4 line)
+      // E♭: 107.5 (E5 space)
+      // A♭: 130 - 7.5 (A4 space, but higher A) -> 137.5 (A4 space)
+      // D♭: 115 + 7.5 (D5 line, but higher D) -> 115 (D5 line)
+      // G♭: 145 (G4 line)
+      // C♭: 122.5 (C5 space)
+      // F♭: 152.5 (F4 space)
     };
-    return positions[note] || 0;
+     // Standard order for sharps: F, C, G, D, A, E, B
+    const sharpPositionsTreble: Record<string, number> = { 'F': 100, 'C': 122.5, 'G': 92.5, 'D': 115, 'A': 137.5, 'E': 85, 'B': 107.5 };
+    // Standard order for flats: B, E, A, D, G, C, F
+    const flatPositionsTreble: Record<string, number> = { 'B': 130, 'E': 107.5, 'A': 137.5, 'D': 115, 'G': 145, 'C': 122.5, 'F': 152.5 };
+
+    positions = accidental.includes('#') ? sharpPositionsTreble : flatPositionsTreble;
+
+  } else { // Bass clef
+    // Standard order for sharps: F, C, G, D, A, E, B
+    const sharpPositionsBass: Record<string, number> = { 'F': 145, 'C': 115, 'G': 137.5, 'D': 160, 'A': 130, 'E': 152.5, 'B': 122.5 };
+    // Standard order for flats: B, E, A, D, G, C, F
+    const flatPositionsBass: Record<string, number> = { 'B': 107.5, 'E': 130, 'A': 100, 'D': 122.5, 'G': 152.5, 'C': 115, 'F': 137.5 };
+    
+    positions = accidental.includes('#') ? sharpPositionsBass : flatPositionsBass;
   }
+
+  return positions[note] || 0;
 };
 
 // Update this function to make key signatures more compact
@@ -857,12 +872,12 @@ const getAccidentalSymbolForKeySignature = (accidental: string) => {
 };
 
 // Functions
-const getPitchPosition = (pitch: string) => {
+const getPitchPosition = (pitch: string, clef: 'treble' | 'bass') => {
   // Map pitches to vertical positions (in pixels)
   const octave = parseInt(pitch.slice(-1));
   const note = pitch.slice(0, -1).replace(/[#b]/, ''); // Remove accidentals
 
-  if (selectedClef.value === 'treble') {
+  if (clef === 'treble') {
     // Treble clef staff positions (pixels from top)
     const staffPositions: Record<string, number> = {
       'F5': 100, 'E5': 107.5, 'D5': 115, 'C5': 122.5, 'B4': 130,
@@ -1061,116 +1076,121 @@ const playComposition = () => {
 };
 
 // Update the existing handleStaffClick function to handle explicit natural accidentals
-const handleStaffClick = (event, staffId) => {
-  // If we were dragging, don't add a note
+const handleStaffClick = (event, staffId: string) => {
   if (isDragging.value) {
     return;
   }
 
-  // Get the click position relative to the staff
+  const targetStaff = staves.value.find(s => s.id === staffId);
+  if (!targetStaff) {
+    console.error("Clicked on a non-existent staff:", staffId);
+    return;
+  }
+  const currentClef = targetStaff.clef;
+
+  // Determine the target voice on the clicked staff for input
+  let targetVoiceForInput = voiceLayers.value.find(v => v.staffId === staffId && v.active);
+  if (!targetVoiceForInput) {
+    targetVoiceForInput = voiceLayers.value.find(v => v.staffId === staffId && v.visible);
+  }
+  if (!targetVoiceForInput) {
+    targetVoiceForInput = voiceLayers.value.find(v => v.staffId === staffId);
+  }
+
+  if (!targetVoiceForInput) {
+    alert("No voice layer available on this staff. Please add or activate a voice for this staff.");
+    console.warn(`No suitable voice layer found for staff ${staffId} to add/modify note.`);
+    return;
+  }
+
+  // If the determined voice for input is not the globally active voice, switch to it.
+  if (targetVoiceForInput.id !== activeVoiceId.value) {
+    switchActiveVoice(targetVoiceForInput.id);
+    // After switchActiveVoice, activeVoice.value will be targetVoiceForInput.
+    // For consistency within this function, we'll use the explicitly found 'targetVoiceForInput'.
+  }
+  
+  const notesInTargetVoice = targetVoiceForInput.notes;
+
   const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const x = event.clientX - staffRect.left;
   const y = event.clientY - staffRect.top;
 
-  console.log(`Staff click at x=${x}, y=${y} on staff ${staffId}`);
-
-  // Calculate the position in the staff (horizontal)
   const position = Math.floor(x / 50) + 0.5; // Center the note in the grid
-
-  // Find the staff object
-  const staff = staves.value.find(s => s.id === staffId);
-  if (!staff) return;
-
-  // First, ensure active voice is assigned to the current staff
-  if (!staff.voiceLayerIds.includes(activeVoiceId.value)) {
-    assignVoiceToStaff(activeVoiceId.value, staffId);
-  }
-
-  // Get the active voice's notes (this must happen AFTER potentially assigning to staff)
-  const activeNotes = activeVoice.value.notes;
-
-  // Calculate the vertical position to determine the pitch
   const verticalPosition = Math.round((y - 100) / 7.5) * 7.5 + 100;
+  const pitch = mapPositionToPitch(verticalPosition, currentClef);
 
-  // Map the vertical position to a pitch using the staff's clef
-  const pitch = mapPositionToPitch(verticalPosition, staff.clef);
-
-  // Check if there's already a note at this position in the active voice
-  const existingNoteIndex = activeNotes.findIndex(note =>
-    Math.abs(note.position - position) < 0.1 // Allow for small rounding differences
+  const existingNoteIndex = notesInTargetVoice.findIndex(note =>
+    Math.abs(note.position - position) < 0.1
   );
 
+  const durationMap = {
+    'whole': '1n',
+    'half': '2n',
+    'quarter': '4n',
+    'eighth': '8n',
+    'sixteenth': '16n'
+  };
+
   if (existingNoteIndex !== -1) {
-    // Only update if we have a valid pitch or it's a rest
+    const existingNote = notesInTargetVoice[existingNoteIndex];
     if (pitch || selectedNoteType.value === 'rest') {
-      // Create the updated note
-      const updatedNote = {
-        ...activeNotes[existingNoteIndex],
+      const updatedNoteBase = {
+        ...existingNote,
         type: selectedNoteType.value as "note" | "rest",
-        verticalPosition,
         duration: selectedDuration.value,
         dotted: isDottedNote.value,
         pitch: selectedNoteType.value === 'note' ?
-          applyAccidental(pitch || 'C4', selectedAccidental.value) : undefined,
+          applyAccidental(pitch || (currentClef === 'treble' ? 'C4' : 'C3'), selectedAccidental.value) : undefined,
         explicitNatural: selectedNoteType.value === 'note' && selectedAccidental.value === 'natural' ? true : undefined
       };
+      const updatedNote = {
+        ...updatedNoteBase,
+        verticalPosition: getPitchPosition(updatedNoteBase.pitch || (currentClef === 'treble' ? 'C4' : 'C3'), currentClef)
+      };
+      
+      notesInTargetVoice.splice(existingNoteIndex, 1, updatedNote);
 
-      // Replace the note in the array
-      activeVoice.value.notes.splice(existingNoteIndex, 1, updatedNote);
-
-      // Play the note sound with correct duration
-      if (selectedNoteType.value === 'note' && pitch) {
-        const durationMap = {
-          'whole': '1n',
-          'half': '2n',
-          'quarter': '4n',
-          'eighth': '8n',
-          'sixteenth': '16n'
-        };
+      if (selectedNoteType.value === 'note' && updatedNote.pitch) {
         playNoteSound(
-          updatedNote.pitch || '', 
-          durationMap[updatedNote.duration], 
+          updatedNote.pitch,
+          durationMap[updatedNote.duration],
           updatedNote.dotted,
           0, // volumeDb
-          updatedNote.explicitNatural  // Add this parameter
+          updatedNote.explicitNatural
         );
       }
-
-      console.log(`Updated note in voice ${activeVoiceId.value} at position ${position}, pitch: ${updatedNote.pitch || 'rest'}, dotted: ${updatedNote.dotted}`);
+      console.log(`Updated note in voice ${targetVoiceForInput.id} on staff ${staffId} at position ${position}, pitch: ${updatedNote.pitch || 'rest'}, dotted: ${updatedNote.dotted}`);
     }
   } else {
-    // If no existing note, add a new one
-  // Only add a note if we have a valid pitch or it's a rest
-  if (pitch || selectedNoteType.value === 'rest') {
-    // Create a new note
-    const newNote = {
-      id: Date.now().toString(),
-      type: selectedNoteType.value as "note" | "rest",
-      position,
-      verticalPosition,
-      duration: selectedDuration.value,
-      dotted: isDottedNote.value,
-      pitch: selectedNoteType.value === 'note' ?
-        applyAccidental(pitch || 'C4', selectedAccidental.value) : undefined,
-      explicitNatural: selectedNoteType.value === 'note' && selectedAccidental.value === 'natural' ? true : undefined
-    };
-
-    // Add the note to the active voice
-    activeVoice.value.notes.push(newNote);
-
-    // Play the note sound with correct duration
-    if (selectedNoteType.value === 'note' && pitch) {
-      const durationMap = {
-        'whole': '1n',
-        'half': '2n',
-        'quarter': '4n',
-        'eighth': '8n',
-        'sixteenth': '16n'
+    if (pitch || selectedNoteType.value === 'rest') {
+      const newNoteBase = {
+        id: Date.now().toString(),
+        type: selectedNoteType.value as "note" | "rest",
+        position,
+        duration: selectedDuration.value,
+        dotted: isDottedNote.value,
+        pitch: selectedNoteType.value === 'note' ?
+          applyAccidental(pitch || (currentClef === 'treble' ? 'C4' : 'C3'), selectedAccidental.value) : undefined,
+        explicitNatural: selectedNoteType.value === 'note' && selectedAccidental.value === 'natural' ? true : undefined
       };
-      playNoteSound(newNote.pitch || '', durationMap[newNote.duration], newNote.dotted, 0, newNote.explicitNatural);
-    }
+      const newNote = {
+        ...newNoteBase,
+        verticalPosition: getPitchPosition(newNoteBase.pitch || (currentClef === 'treble' ? 'C4' : 'C3'), currentClef)
+      };
 
-    console.log(`Added ${selectedNoteType.value} to voice ${activeVoiceId.value} at position ${position}, pitch: ${newNote.pitch || 'rest'}, dotted: ${newNote.dotted}`);
+      notesInTargetVoice.push(newNote);
+
+      if (selectedNoteType.value === 'note' && newNote.pitch) {
+        playNoteSound(
+            newNote.pitch, 
+            durationMap[newNote.duration], 
+            newNote.dotted, 
+            0, // volumeDb
+            newNote.explicitNatural
+        );
+      }
+      console.log(`Added ${selectedNoteType.value} to voice ${targetVoiceForInput.id} on staff ${staffId} at position ${position}, pitch: ${newNote.pitch || 'rest'}, dotted: ${newNote.dotted}`);
     }
   }
 };
@@ -1184,14 +1204,14 @@ const handleStaffClick = (event, staffId) => {
 // };
 
 // Add a function to determine stem direction based on note position
-const getStemDirection = (pitch: string) => {
+const getStemDirection = (pitch: string, clef: 'treble' | 'bass') => {
   if (!pitch) return 'up';
 
   // Get the base note without accidentals
   const octave = parseInt(pitch.slice(-1));
   const note = pitch.slice(0, -1).replace(/[#b]/, '');
 
-  if (selectedClef.value === 'treble') {
+  if (clef === 'treble') {
     // Middle line is B4 in treble clef
     // Notes above middle line have stems down, below have stems up
     if (octave > 4) return 'down';
@@ -1219,7 +1239,7 @@ const getStemDirection = (pitch: string) => {
 };
 
 // Update the getNoteSymbol function to only handle rests
-const getNoteSymbol = (note: ImportedNote) => {
+const getNoteSymbol = (note: ImportedNote | NoteWithVoiceInfo) => { // Accept both types
   if (note.type === 'rest') {
     // Return rest symbols based on duration
     switch (note.duration) {
@@ -1235,20 +1255,18 @@ const getNoteSymbol = (note: ImportedNote) => {
 };
 
 // Find the getNoteStyle function and update it to use voice colors
-const getNoteStyle = (note: NoteWithVoiceInfo) => { // Use NoteWithVoiceInfo and define return type
-  // Base position calculations
+const getNoteStyle = (note: NoteWithVoiceInfo) => {
   const style: {
     left: string;
     top: string;
     color: string;
-    borderColor?: string; // Ensure borderColor is allowed and is a string
+    borderColor?: string;
   } = {
     left: `${note.position * 50}px`,
-    top: `${note.verticalPosition}px`,
-    color: note.voiceColor || 'black', // This sets the text/SVG color
+    top: `${note.verticalPosition}px`, // verticalPosition is already calculated based on staffClef
+    color: note.voiceColor || 'black',
   };
 
-  // For notes (not rests), set the border color but NOT the background color
   if (note.type === 'note') {
     style.borderColor = note.voiceColor || 'black';
 
@@ -1271,72 +1289,61 @@ const updateStaffScroll = () => {
 };
 
 // Update the stopPlayback function
-// const stopPlayback = () => {
-//   isPlaying.value = false;
-//   isPaused.value = false;
+const stopPlayback = () => {
+  isPlaying.value = false;
+  isPaused.value = false;
+  isPlayingSequence.value = false; // Ensure this is reset
+  currentPlayingNoteId.value = null;
+  playingSequenceSectionId.value = null; // Ensure this is reset
+  pausedTimeouts.value = [];
+  pauseTime.value = null;
   
-//   // Clear timeouts
-//   if (window.playbackTimeouts) {
-//     window.playbackTimeouts.forEach(id => clearTimeout(id));
-//     window.playbackTimeouts = [];
-//   }
+  // Clear all timeouts
+  if (window.playbackTimeouts) {
+    window.playbackTimeouts.forEach(id => clearTimeout(id));
+    window.playbackTimeouts = [];
+  }
   
-//   // Clear playing notes highlighting
-//   currentPlayingNoteIds.value = [];
-  
-//   console.log('Playback stopped');
-// };
+  console.log('Playback stopped');
+};
 
 // Update the clearScore function to handle voice layers
 const clearScore = () => {
-  // First stop any playback
   stopPlayback();
 
-  // Clear all notes from all voices, but maintain the voice structure
+  // Clear notes from all voices
   voiceLayers.value.forEach(voice => {
     voice.notes = [];
   });
 
-  // Ensure that at least one voice exists and is active
-  if (voiceLayers.value.length === 0) {
-    // Re-create the default voice
-    voiceLayers.value.push({
-      id: 'voice1',
-      name: 'Voice 1',
-      color: getRandomColor(),
-      visible: true,
-      active: true,
-      selected: true,
-      volume: 0,
-      notes: []
-    });
-    activeVoiceId.value = 'voice1';
-  } else {
-    // Make sure activeVoiceId points to an existing voice
-    if (!voiceLayers.value.some(v => v.id === activeVoiceId.value)) {
-      activeVoiceId.value = voiceLayers.value[0].id;
-    }
-  }
+  // Reset staves to a single default staff
+  staves.value = [];
+  initializeDefaultStaffAndVoice(); // This will create one staff and one voice
 
-  // Reset scroll position
+  chordSymbols.value = [];
+  sections.value = [];
+  sequenceItems.value = [];
+
   scrollPosition.value = 0;
   updateStaffScroll();
 
-  // Reset playback range to default
   playbackStartMeasure.value = 1;
-  playbackEndMeasure.value = 0;
+  playbackEndMeasure.value = 0; // 0 means play to the end
 
-  console.log('Score cleared for all voices');
+  compositionName.value = 'Untitled';
+  currentCompositionId.value = '';
+
+
+  console.log('Score cleared. Reset to default staff and voice.');
 };
 
 // Add these functions to handle ledger lines
-const needsLedgerLines = (note, position) => {
-  if (note.type !== 'note') return false;
+const needsLedgerLines = (note: NoteWithVoiceInfo, position: 'above' | 'below', clef: 'treble' | 'bass') => {
+  if (note.type !== 'note' || !note.pitch) return false;
 
-  // Get the vertical position
-  const verticalPos = note.verticalPosition;
+  const verticalPos = note.verticalPosition; // This is already calculated based on the note's staff clef
 
-  if (selectedClef.value === 'treble') {
+  if (clef === 'treble') {
     // For treble clef
     if (position === 'above') {
       // Notes above the staff (higher than F5)
@@ -1359,13 +1366,13 @@ const needsLedgerLines = (note, position) => {
   return false;
 };
 
-const getLedgerLines = (note, position) => {
-  if (!needsLedgerLines(note, position)) return [];
+const getLedgerLines = (note: NoteWithVoiceInfo, position: 'above' | 'below', clef: 'treble' | 'bass') => {
+  if (!needsLedgerLines(note, position, clef)) return [];
 
-  const verticalPos = note.verticalPosition;
+  const verticalPos = note.verticalPosition; // Already calculated for the correct clef
   const lines = [];
 
-  if (selectedClef.value === 'treble') {
+  if (clef === 'treble') {
     // For treble clef
     if (position === 'above') {
       // Add ledger lines above the staff
@@ -1453,48 +1460,48 @@ const maxScrollPosition = computed(() => {
 });
 
 // Function to extend the staff
-// const extendStaff = () => {
-//   // Add 4 more measures
-//   measuresCount.value += 4;
+const extendStaff = () => {
+  // Add 4 more measures
+  measuresCount.value += 4;
 
-//   // Log for debugging
-//   console.log(`Extended staff: ${measuresCount.value} measures, width: ${staffWidth.value}px`);
+  // Log for debugging
+  console.log(`Extended staff: ${measuresCount.value} measures, width: ${staffWidth.value}px`);
 
-//   // Force a re-render of the staff lines
-//   nextTick(() => {
-//     const staffElement = document.querySelector('.staff');
-//     if (staffElement) {
-//       (staffElement as HTMLElement).style.width = `${staffWidth.value}px`;
+  // Force a re-render of the staff lines
+  nextTick(() => {
+    const staffElement = document.querySelector('.staff');
+    if (staffElement) {
+      (staffElement as HTMLElement).style.width = `${staffWidth.value}px`;
 
-//       // Make sure staff lines extend across the full width
-//       const staffLines = document.querySelectorAll('.staff-line');
-//       staffLines.forEach(line => {
-//         (line as HTMLElement).style.width = `${staffWidth.value}px`;
-//       });
-//     }
-//   });
-// };
+      // Make sure staff lines extend across the full width
+      const staffLines = document.querySelectorAll('.staff-line');
+      staffLines.forEach(line => {
+        (line as HTMLElement).style.width = `${staffWidth.value}px`;
+      });
+    }
+  });
+};
 
 // Function to handle staff scrolling
-// const scrollStaff = (direction: 'left' | 'right') => {
-//   const scrollAmount = 200; // Amount to scroll in pixels
+const scrollStaff = (direction: 'left' | 'right') => {
+  const scrollAmount = 200; // Amount to scroll in pixels
 
-//   if (direction === 'left') {
-//     // Scroll left (decrease position)
-//     scrollPosition.value = Math.max(0, scrollPosition.value - scrollAmount);
-//   } else {
-//     // Scroll right (increase position)
-//     scrollPosition.value = Math.min(maxScrollPosition.value, scrollPosition.value + scrollAmount);
-//   }
+  if (direction === 'left') {
+    // Scroll left (decrease position)
+    scrollPosition.value = Math.max(0, scrollPosition.value - scrollAmount);
+  } else {
+    // Scroll right (increase position)
+    scrollPosition.value = Math.min(maxScrollPosition.value, scrollPosition.value + scrollAmount);
+  }
 
-//   // Apply the scroll position directly to the staff element
-//   const staffElement = document.querySelector('.staff');
-//   if (staffElement) {
-//     (staffElement as HTMLElement).style.transform = `translateX(-${scrollPosition.value}px)`;
-//   }
+  // Apply the scroll position directly to the staff element
+  const staffElement = document.querySelector('.staff');
+  if (staffElement) {
+    (staffElement as HTMLElement).style.transform = `translateX(-${scrollPosition.value}px)`;
+  }
 
-//   console.log(`Scrolled ${direction}: position=${scrollPosition.value}, max=${maxScrollPosition.value}`);
-// };
+  console.log(`Scrolled ${direction}: position=${scrollPosition.value}, max=${maxScrollPosition.value}`);
+};
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
@@ -1534,17 +1541,32 @@ const getAccidentalSymbol = (note: ImportedNote) => {
 };
 
 // Add this new function to handle clef change
-const handleClefChange = () => {
-  // Clear the score when changing clefs to avoid confusion
-  if (notes.value.length > 0) {
-    if (confirm('Changing clef will clear the current score. Continue?')) {
-      clearScore();
+const handleStaffClefChange = (staveToUpdate: Stave) => {
+  const staffIndex = staves.value.findIndex(s => s.id === staveToUpdate.id);
+  if (staffIndex === -1) return;
+
+  // Confirm if notes exist on this staff
+  const notesOnStaff = voiceLayers.value.some(vl => vl.staffId === staveToUpdate.id && vl.notes.length > 0);
+
+  if (notesOnStaff) {
+    if (confirm(`Changing clef for "${staveToUpdate.name || `Staff ${staffIndex + 1}`}" might misplace existing notes. Continue?`)) {
+      // Update vertical positions of notes on this staff
+      voiceLayers.value.forEach(voice => {
+        if (voice.staffId === staveToUpdate.id) {
+          voice.notes.forEach(note => {
+            if (note.pitch) {
+              note.verticalPosition = getPitchPosition(note.pitch, staveToUpdate.clef);
+            }
+          });
+        }
+      });
     } else {
-      // Revert selection if user cancels
-      selectedClef.value = selectedClef.value === 'treble' ? 'bass' : 'treble';
+      // Revert clef change if user cancels
+      staves.value[staffIndex].clef = staves.value[staffIndex].clef === 'treble' ? 'bass' : 'treble';
       return;
     }
   }
+  console.log(`Clef for staff ${staveToUpdate.id} changed to ${staveToUpdate.clef}`);
 };
 
 // Add a new ref for the active tab
@@ -1556,123 +1578,112 @@ const dragStartX = ref(0);
 const dragStartScrollPosition = ref(0);
 
 // Add these functions to handle drag scrolling
-// const startDrag = (event, staffId) => {
-//   // Only start dragging if it's not a click on a note
-//   if (event.target.closest('.note') || event.target.closest('.chord-symbol')) {
-//     return;
-//   }
+const startDrag = (event) => {
+  // Only start dragging if it's not a click on a note
+  if (event.target.closest('.note') || event.target.closest('.chord-symbol')) {
+    return;
+  }
 
-//   // Store the initial position for drag detection
-//   const startX = event.touches ? event.touches[0].clientX : event.clientX;
-//   const startY = event.touches ? event.touches[0].clientY : event.clientY;
-//   const startTime = Date.now();
-  
-//   // Store the staff ID for the drag operation
-//   const dragStaffId = staffId;
+  // Store the initial position for drag detection
+  const startX = event.touches ? event.touches[0].clientX : event.clientX;
+  const startY = event.touches ? event.touches[0].clientY : event.clientY;
+  const startTime = Date.now();
 
-//   // Prevent default to avoid text selection during drag
-//   event.preventDefault();
+  // Prevent default to avoid text selection during drag
+  event.preventDefault();
 
-//   // Get the starting position for scroll calculation
-//   const clientX = event.touches ? event.touches[0].clientX : event.clientX;
-//   dragStartX.value = clientX;
-  
-//   // Get the staff-specific scroll position
-//   const settings = initializeStaffSettings(dragStaffId);
-//   dragStartScrollPosition.value = settings.scrollPosition;
+  // Get the starting position for scroll calculation
+  const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+  dragStartX.value = clientX;
+  dragStartScrollPosition.value = scrollPosition.value;
 
-//   // Create a flag to track if we've moved enough to consider it a drag
-//   let hasDragged = false;
+  // Create a flag to track if we've moved enough to consider it a drag
+  let hasDragged = false;
 
-//   // Define the move handler with drag detection
-//   const moveHandler = (moveEvent) => {
-//     // Get current position
-//     const currentX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX;
-//     const currentY = moveEvent.touches ? moveEvent.touches[0].clientY : moveEvent.clientY;
+  // Define the move handler with drag detection
+  const moveHandler = (moveEvent) => {
+    // Get current position
+    const currentX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX;
+    const currentY = moveEvent.touches ? moveEvent.touches[0].clientY : moveEvent.clientY;
 
-//     // Calculate distance moved
-//     const distanceX = Math.abs(currentX - startX);
-//     const distanceY = Math.abs(currentY - startY);
-//     const totalDistance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+    // Calculate distance moved (use both X and Y for better detection)
+    const distanceX = Math.abs(currentX - startX);
+    const distanceY = Math.abs(currentY - startY);
+    const totalDistance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
 
-//     // Only consider it a drag if moved more than 15px
-//     if (totalDistance > 15) {
-//       if (!hasDragged) {
-//         hasDragged = true;
-//         isDragging.value = true;
-//       }
+    // Only consider it a drag if moved more than 15px (higher threshold for mobile)
+    if (totalDistance > 15) {
+      if (!hasDragged) {
+        hasDragged = true;
+        isDragging.value = true;
+      }
 
-//       // Now handle the drag
-//       moveEvent.preventDefault();
+      // Now handle the drag
+      // Prevent default to avoid scrolling the page
+      moveEvent.preventDefault();
 
-//       // Calculate the distance moved for scrolling
-//       const deltaX = dragStartX.value - currentX;
+      // Calculate the distance moved for scrolling
+      const deltaX = dragStartX.value - currentX;
 
-//       // Update the scroll position for this specific staff
-//       const settings = initializeStaffSettings(dragStaffId);
-//       const newScrollPosition = Math.max(
-//         0, 
-//         Math.min(
-//           calculateMaxScrollPosition(settings.width), 
-//           dragStartScrollPosition.value + deltaX
-//         )
-//       );
-//       settings.scrollPosition = newScrollPosition;
+      // Update the scroll position
+      const newScrollPosition = Math.max(0, Math.min(maxScrollPosition.value, dragStartScrollPosition.value + deltaX));
+      scrollPosition.value = newScrollPosition;
 
-//       // Update the staff transform
-//       const staffElement = document.querySelector(`.staff[data-staff-id="${dragStaffId}"]`);
-//       if (staffElement) {
-//         (staffElement as HTMLElement).style.transform = `translateX(-${settings.scrollPosition}px)`;
-//       }
-//     }
-//   };
+      // Update the staff transform
+      updateStaffScroll();
+    }
+  };
 
-//   // Define the end handler
-//   const endHandler = (endEvent) => {
-//     // Calculate the time elapsed
-//     const endTime = Date.now();
-//     const timeElapsed = endTime - startTime;
+  // Define the end handler
+  const endHandler = (endEvent) => {
+    // Calculate the time elapsed
+    const endTime = Date.now();
+    const timeElapsed = endTime - startTime;
 
-//     // If it was a quick tap and didn't move much, treat as a click
-//     if (timeElapsed < 300 && !hasDragged) {
-//       isDragging.value = false;
+    // If it was a quick tap (less than 300ms) and didn't move much, treat as a click
+    if (timeElapsed < 300 && !hasDragged) {
+      isDragging.value = false;
 
-//       // For touch events, trigger a synthetic click
-//       if (endEvent.type === 'touchend') {
-//         const clickEvent = new MouseEvent('click', {
-//           clientX: startX,
-//           clientY: startY,
-//           bubbles: true,
-//           cancelable: true,
-//           view: window
-//         });
-//         endEvent.target.dispatchEvent(clickEvent);
-//       }
-//     } else if (hasDragged) {
-//       // Reset after a short delay
-//       setTimeout(() => {
-//         isDragging.value = false;
-//       }, 50);
-//     } else {
-//       isDragging.value = false;
-//     }
+      // For touch events, we need to manually trigger a click at the right position
+      if (endEvent.type === 'touchend') {
+        // Create a synthetic click event at the touch position
+        const clickEvent = new MouseEvent('click', {
+          clientX: startX,
+          clientY: startY,
+          bubbles: true,
+          cancelable: true,
+          view: window
+        });
 
-//     // Remove event listeners
-//     document.removeEventListener('mousemove', moveHandler);
-//     document.removeEventListener('mouseup', endHandler);
-//     document.removeEventListener('touchmove', moveHandler);
-//     document.removeEventListener('touchend', endHandler);
-//   };
+        // Dispatch the click event on the staff element
+        endEvent.target.dispatchEvent(clickEvent);
+      }
+    } else if (hasDragged) {
+      // Reset after a short delay
+      setTimeout(() => {
+        isDragging.value = false;
+      }, 50);
+    } else {
+      // It wasn't a drag but also wasn't a quick tap
+      isDragging.value = false;
+    }
 
-//   // Add event listeners
-//   if (event.type === 'mousedown') {
-//     document.addEventListener('mousemove', moveHandler);
-//     document.addEventListener('mouseup', endHandler);
-//   } else if (event.type === 'touchstart') {
-//     document.addEventListener('touchmove', moveHandler, { passive: false });
-//     document.addEventListener('touchend', endHandler);
-//   }
-// };
+    // Remove event listeners
+    document.removeEventListener('mousemove', moveHandler);
+    document.removeEventListener('mouseup', endHandler);
+    document.removeEventListener('touchmove', moveHandler);
+    document.removeEventListener('touchend', endHandler);
+  };
+
+  // Add event listeners for drag and end events
+  if (event.type === 'mousedown') {
+    document.addEventListener('mousemove', moveHandler);
+    document.addEventListener('mouseup', endHandler);
+  } else if (event.type === 'touchstart') {
+    document.addEventListener('touchmove', moveHandler, { passive: false });
+    document.addEventListener('touchend', endHandler);
+  }
+};
 
 const handleDrag = (event) => {
   if (!isDragging.value) return;
@@ -1719,15 +1730,19 @@ onBeforeUnmount(() => {
   document.removeEventListener('touchmove', handleDrag);
   document.removeEventListener('touchend', endDrag);
   window.removeEventListener('resize', handleResize);
+  // Clear playback timeouts if any are running
+  if (window.playbackTimeouts) {
+    window.playbackTimeouts.forEach(clearTimeout);
+    window.playbackTimeouts = [];
+  }
 });
 
 // Add the mapPositionToPitch function
-const mapPositionToPitch = (verticalPosition: number, clef: string): string | null => {
-  // Define positions based on clef
-  const positions = {};
+const mapPositionToPitch = (verticalPosition: number, clef: 'treble' | 'bass'): string | null => {
+  const positions: Record<number, string> = {};
 
   if (clef === 'treble') {
-    // Treble clef positions (same as before)
+    // Treble clef positions (rounded to nearest 7.5px)
     positions[85] = 'A5';    // Ledger line above staff
     positions[92.5] = 'G5';  // Space above top line
     positions[100] = 'F5';   // Top line
@@ -1750,7 +1765,7 @@ const mapPositionToPitch = (verticalPosition: number, clef: string): string | nu
     positions[227.5] = 'C3'; // Space
     positions[235] = 'B2';   // Ledger line
   } else {
-    // Bass clef positions (same as before)
+    // Bass clef positions (rounded to nearest 7.5px)
     positions[85] = 'C4';    // Ledger line above staff
     positions[92.5] = 'B3';  // Space above top line
     positions[100] = 'A3';   // Top line
@@ -1780,7 +1795,7 @@ const mapPositionToPitch = (verticalPosition: number, clef: string): string | nu
 
 // Update the applyAccidental function to be more aggressive about naturals
 const applyAccidental = (pitch: string, accidental: string | null): string => {
-  if (!pitch) return '';
+  if (!pitch) return ''; // Should not happen if mapPositionToPitch returns a valid pitch
 
   const noteLetter = pitch.charAt(0);
   const octave = pitch.charAt(pitch.length - 1);
@@ -1813,26 +1828,20 @@ const toggleDottedNote = () => {
 };
 
 // Add a function to remove a note
-const removeNote = (note) => {
-  // If the note has a voiceId property, it's from allVisibleNotes
-  if ((note as NoteWithVoiceInfo).voiceId) { // Cast to NoteWithVoiceInfo to access voiceId
-    const voiceIndex = voiceLayers.value.findIndex(v => v.id === (note as NoteWithVoiceInfo).voiceId);
-    if (voiceIndex !== -1) {
-      const noteIndex = voiceLayers.value[voiceIndex].notes.findIndex(n => n.id === note.id);
-      if (noteIndex !== -1) {
-        voiceLayers.value[voiceIndex].notes.splice(noteIndex, 1);
-      }
-    }
-  } else {
-    // Otherwise, it's from the active voice
-    const noteIndex = activeVoice.value.notes.findIndex(n => n.id === note.id);
+const removeNote = (noteToRemove: NoteWithVoiceInfo | ImportedNote) => { // Can be either type
+  const voiceId = (noteToRemove as NoteWithVoiceInfo).voiceId || activeVoice.value?.id;
+  if (!voiceId) return;
+
+  const voiceIndex = voiceLayers.value.findIndex(v => v.id === voiceId);
+  if (voiceIndex !== -1) {
+    const noteIndex = voiceLayers.value[voiceIndex].notes.findIndex(n => n.id === noteToRemove.id);
     if (noteIndex !== -1) {
-      activeVoice.value.notes.splice(noteIndex, 1);
+      voiceLayers.value[voiceIndex].notes.splice(noteIndex, 1);
+      console.log(`Removed note ${noteToRemove.id} from voice ${voiceId}`);
     }
   }
 
-  // Clear selected note if it was the one removed
-  if (selectedNoteId.value === note.id) {
+  if (selectedNoteId.value === noteToRemove.id) {
     selectedNoteId.value = null;
   }
 };
@@ -1916,78 +1925,44 @@ interface SavedComposition {
 const savedCompositions = ref<CompositionData[]>([]);
 
 // Function that prepares a composition object for saving
-const prepareCompositionData = () => {
-  // Calculate the furthest note position to set proper width
-  const maxWidth = calculateMaxRequiredWidth();
-  
-  // Start with basic composition data
-  const compositionData = {
-    id: currentCompositionId.value,
-    name: compositionName.value,
-    dateCreated: currentCompositionDateCreated.value || Date.now(),
-    dateModified: Date.now(),
-    notes: getAllNotes(), // Get all notes from all voices
-    timeSignature: timeSignature.value,
-    keySignature: keySignature.value,
-    tempo: tempo.value,
-    chordSymbols: chordSymbols.value,
-    lyrics: getLyricsFromNotes(),
-    
-    // Voice-related data
-    voiceLayers: voiceLayers.value,
-    
-    // Add staff-related data
-    staves: staves.value.map(staff => ({
-      id: staff.id,
-      name: staff.name,
-      clef: staff.clef,
-      voiceLayerIds: staff.voiceLayerIds
-    })),
-    
-    // Additional data for sections and sequences if available
-    sections: sections.value,
-    sequenceItems: sequenceItems.value,
-    
-    // Store global staff settings
-    staffSettings: {
-      width: globalStaffSettings.value.width,
-      scrollPosition: 0 // Don't save scroll position
-    }
-  };
-  
-  return compositionData;
-};
+const prepareCompositionData = (): CompositionData => {
+  // console.log('Saving with notes having naturalAccidentals:', // Debug log
+  //   voiceLayers.value.flatMap(v =>
+  //     v.notes.filter(n => n.explicitNatural).map(n => ({
+  //       id: n.id, pitch: n.pitch, explicitNatural: n.explicitNatural
+  //     }))
+  //   )
+  // );
 
-// Function to collect all notes from all voices for saving
-const getAllNotes = () => {
-  return voiceLayers.value.flatMap(voice => 
-      voice.notes.map(note => ({
+  return {
+    id: currentCompositionId.value || generateId(),
+    name: compositionName.value.trim(),
+    dateCreated: Date.now(),
+    staves: JSON.parse(JSON.stringify(staves.value)), // Save staves
+    voiceLayers: voiceLayers.value.map(voice => ({ // Save voice layers with staffId
+      ...voice,
+      notes: voice.notes.map(note => ({
         ...note,
-      voiceId: voice.id // Ensure each note has its voice ID
-    }))
-  );
-};
-
-// Extract lyrics from notes for better accessibility
-const getLyricsFromNotes = () => {
-  const lyricsMap = {};
-  
-  voiceLayers.value.forEach(voice => {
-    voice.notes.forEach(note => {
-      if (note.lyric && note.lyric.trim()) {
-        if (!lyricsMap[voice.id]) {
-          lyricsMap[voice.id] = [];
-        }
-        lyricsMap[voice.id].push({
-          text: note.lyric,
-          position: note.position,
-          noteId: note.id
-        });
-      }
-    });
-  });
-  
-  return lyricsMap;
+        pitch: note.pitch, // Ensure pitch is the one stored on the note
+        explicitNatural: !!note.explicitNatural, // Ensure boolean
+        voiceId: voice.id,
+        voiceColor: voice.color
+      }))
+    })),
+    tempo: tempo.value,
+    keySignature: keySignature.value,
+    timeSignature: timeSignature.value,
+    chordSymbols: [...chordSymbols.value],
+    activeVoiceId: activeVoiceId.value,
+    staffWidth: staffWidth.value,
+    selectedDuration: selectedDuration.value,
+    selectedNoteType: selectedNoteType.value,
+    selectedAccidental: selectedAccidental.value,
+    selectedOctave: selectedOctave.value,
+    isDottedNote: isDottedNote.value,
+    sections: JSON.parse(JSON.stringify(sections.value)),
+    sequenceItems: JSON.parse(JSON.stringify(sequenceItems.value)),
+  };
 };
 
 // Update existing saveComposition function
@@ -2018,265 +1993,227 @@ const saveComposition = () => {
 };
 
 // Update the loadComposition function to be more robust
-const loadComposition = async (compositionId: string) => { // Make it async for nextTick
-  try {
-    const composition = savedCompositions.value.find(comp => comp.id === compositionId);
-    if (!composition) {
-      throw new Error(`Composition with ID ${compositionId} not found`);
-    }
-    console.log('Loading composition:', composition.name);
+const loadComposition = (compositionId: string) => {
+  const compositionToLoad = savedCompositions.value.find(comp => comp.id === compositionId);
+  if (compositionToLoad) {
+    try {
+      console.log('Loading composition:', compositionToLoad.name, compositionToLoad);
+      stopPlayback();
 
-    currentCompositionId.value = composition.id;
-
-    // Stop playback and reset relevant parts of the score before loading
-    stopPlayback();
-    voiceLayers.value.forEach(voice => { voice.notes = []; }); // Clear notes from existing layers
-    chordSymbols.value = [];
-    sections.value = [];
-    sequenceItems.value = [];
-    scrollPosition.value = 0; // Reset scroll position
-
-    // 1. Load essential musical parameters first
-    selectedClef.value = composition.clef || 'treble';
-    keySignature.value = composition.keySignature || 'C';
-    timeSignature.value = composition.timeSignature || '4/4'; // CRITICAL: Load this early
-    tempo.value = composition.tempo || 120;
-
-    // 2. Wait for Vue to update computed properties dependent on the above
-    // This ensures measureWidthByTimeSignature is correct for subsequent calculations.
-    await nextTick();
-
-    // 3. Load structural data (voices, notes, chords)
-    // Load chord symbols
-    if (composition.chordSymbols && Array.isArray(composition.chordSymbols)) {
-      chordSymbols.value = composition.chordSymbols.map(chord => ({ ...chord }));
-    } else {
+      // Clear current state
+      voiceLayers.value = [];
+      staves.value = [];
       chordSymbols.value = [];
-    }
+      sections.value = [];
+      sequenceItems.value = [];
 
-    // Load voice layers and notes
-    if (composition.voiceLayers && Array.isArray(composition.voiceLayers) && composition.voiceLayers.length > 0) {
-      voiceLayers.value = composition.voiceLayers.map(voice => ({
-        ...voice,
-        // Ensure notes array exists and map notes
-        notes: (voice.notes || []).map(note => ({
-          ...note,
-          explicitNatural: !!note.explicitNatural
-        }))
-      }));
-    } else {
-      // Fallback for older compositions or if voiceLayers is missing but top-level notes exist
-      const defaultVoiceId = 'voice1';
-      voiceLayers.value = [{
-        id: defaultVoiceId,
-        name: 'Voice 1',
-        color: getRandomColor(),
-        visible: true,
-        active: true,
-        selected: true,
-        volume: 0,
-        notes: (composition.notes && Array.isArray(composition.notes))
-          ? composition.notes.map(note => ({ ...note, explicitNatural: !!note.explicitNatural }))
-          : []
-      }];
-      activeVoiceId.value = defaultVoiceId;
-    }
+      currentCompositionId.value = compositionToLoad.id;
+      compositionName.value = compositionToLoad.name;
+      tempo.value = Number(compositionToLoad.tempo) || 120; // Ensure tempo is a number
+      keySignature.value = compositionToLoad.keySignature || 'C';
+      timeSignature.value = compositionToLoad.timeSignature || '4/4';
+      
+      // Use staffSettings if available, otherwise staffWidth
+      if (compositionToLoad.staffSettings) {
+        staffWidth.value = compositionToLoad.staffSettings.width || 2000;
+        scrollPosition.value = compositionToLoad.staffSettings.scrollPosition || 0;
+      } else {
+        staffWidth.value = compositionToLoad.staffWidth || 2000;
+        scrollPosition.value = 0;
+      }
 
-    // Ensure at least one voice layer exists and one is active
-    if (voiceLayers.value.length === 0) {
-        const defaultVoiceId = 'voice1_fallback'; // Use a distinct ID if creating a fallback
-        voiceLayers.value.push({
-            id: defaultVoiceId,
-            name: 'Voice 1 (Fallback)',
-            color: getRandomColor(),
-            visible: true,
-            active: true,
-            selected: true,
-            volume: 0,
-            notes: []
+      selectedDuration.value = compositionToLoad.selectedDuration || 'quarter';
+      selectedNoteType.value = compositionToLoad.selectedNoteType || 'note';
+      selectedAccidental.value = compositionToLoad.selectedAccidental !== undefined ? compositionToLoad.selectedAccidental : null;
+      selectedOctave.value = compositionToLoad.selectedOctave || 4;
+      isDottedNote.value = compositionToLoad.isDottedNote || false;
+
+      // Load Staves
+      if (compositionToLoad.staves && compositionToLoad.staves.length > 0) {
+        // Ensure staves have id, clef, order, name
+        staves.value = JSON.parse(JSON.stringify(compositionToLoad.staves)).map((s, index) => ({
+          id: s.id || generateId(),
+          clef: s.clef || 'treble',
+          order: s.order !== undefined ? s.order : index,
+          name: s.name || `Staff ${index + 1}`,
+          // Keep voiceLayerIds temporarily if present in old data, for mapping
+          voiceLayerIds: s.voiceLayerIds 
+        }));
+      } else {
+        const defaultStaffId = generateId();
+        staves.value = [{ id: defaultStaffId, clef: 'treble', order: 0, name: 'Staff 1' }];
+      }
+      activeStaffId.value = staves.value.length > 0 ? staves.value[0].id : null;
+
+      // Load Voice Layers
+      const loadedVoiceLayers: VoiceLayer[] = [];
+      if (compositionToLoad.voiceLayers && compositionToLoad.voiceLayers.length > 0) {
+        const tempVoiceLayers = JSON.parse(JSON.stringify(compositionToLoad.voiceLayers));
+        
+        tempVoiceLayers.forEach(vl => {
+          let staffIdForVoice: string | null = null;
+          // Attempt to find staffId using the old voiceLayerIds structure on staves
+          if (!vl.staffId) {
+            for (const staff of staves.value) {
+              if (staff.voiceLayerIds && staff.voiceLayerIds.includes(vl.id)) {
+                staffIdForVoice = staff.id;
+                break;
+              }
+            }
+          } else {
+            staffIdForVoice = vl.staffId;
+          }
+
+          // If still no staffId, assign to the first staff or create one if needed
+          if (!staffIdForVoice || !staves.value.some(s => s.id === staffIdForVoice)) {
+            console.warn(`Voice layer ${vl.name} has missing/invalid staffId or mapping. Assigning to first available staff.`);
+            staffIdForVoice = activeStaffId.value || (staves.value.length > 0 ? staves.value[0].id : null);
+            if (!staffIdForVoice) { // Should be very rare: no staves exist at all
+                const newEmergencyStaffId = generateId();
+                staves.value.push({ id: newEmergencyStaffId, clef: 'treble', order: staves.value.length, name: `Emergency Staff for ${vl.name}`});
+                staffIdForVoice = newEmergencyStaffId;
+                if (!activeStaffId.value) activeStaffId.value = newEmergencyStaffId;
+            }
+          }
+          
+          loadedVoiceLayers.push({
+            ...vl,
+            staffId: staffIdForVoice!, // Assert non-null after logic above
+            notes: (vl.notes || []).map(note => {
+              const { voiceId, voiceColor, ...restOfNote } = note; // Strip voiceId and voiceColor
+              return restOfNote;
+            }),
+            active: vl.active || false // Ensure active is boolean
+          });
         });
-        activeVoiceId.value = defaultVoiceId;
-    } else {
-        // Determine active voice: use loaded one, or first one if loaded is invalid
-        const targetActiveVoiceId = composition.activeVoiceId || voiceLayers.value[0].id;
-        const activeVoiceExists = voiceLayers.value.some(v => v.id === targetActiveVoiceId);
-        activeVoiceId.value = activeVoiceExists ? targetActiveVoiceId : voiceLayers.value[0].id;
-        voiceLayers.value.forEach(v => v.active = v.id === activeVoiceId.value);
-    }
+      } else if (compositionToLoad.notes && compositionToLoad.notes.length > 0) {
+        // Backwards compatibility: Convert flat notes array
+        console.warn("Loading composition with old flat notes structure. Converting to voice layers.");
+        const firstStaffId = activeStaffId.value || (staves.value.length > 0 ? staves.value[0].id : generateId());
+        if (!staves.value.find(s => s.id === firstStaffId)) {
+             staves.value.push({ id: firstStaffId, clef: 'treble', order: 0, name: 'Default Staff (Import)' });
+             if(!activeStaffId.value) activeStaffId.value = firstStaffId;
+        }
+        
+        // Group notes by their original voiceId from the flat array
+        const notesByOldVoiceId: Record<string, any[]> = {};
+        compositionToLoad.notes.forEach(note => {
+            const { voiceId, voiceColor, ...restOfNote } = note;
+            if (!notesByOldVoiceId[voiceId]) {
+                notesByOldVoiceId[voiceId] = [];
+            }
+            notesByOldVoiceId[voiceId].push({ ...restOfNote, originalVoiceId: voiceId, originalVoiceColor: voiceColor });
+        });
 
-    // Correct explicit natural pitches after notes are loaded
-    let naturalNotesCorrectedCount = 0;
-    voiceLayers.value.forEach(voice => {
-      voice.notes.forEach(note => {
-        if (note.explicitNatural && note.pitch) {
-          const noteLetter = note.pitch.charAt(0);
-          const octave = note.pitch.slice(note.pitch.length - 1); // Correctly get last char for octave
-          const naturalPitch = `${noteLetter}${octave}`;
-          if (note.pitch !== naturalPitch) {
-            note.pitch = naturalPitch;
-            naturalNotesCorrectedCount++;
+        Object.entries(notesByOldVoiceId).forEach(([oldVoiceId, notesInVoice], index) => {
+            const originalColor = notesInVoice[0]?.originalVoiceColor || getRandomColor();
+            loadedVoiceLayers.push({
+                id: oldVoiceId || generateId(),
+                name: `Voice ${index + 1} (Imported ${oldVoiceId.substring(0,10)})`,
+                color: originalColor,
+                visible: true,
+                active: index === 0, // Make first imported voice active
+                selected: true,
+                volume: 0,
+                notes: notesInVoice.map(n => { const {originalVoiceId, originalVoiceColor, ...rest} = n; return rest; }),
+                staffId: firstStaffId
+            });
+        });
+      }
+      voiceLayers.value = loadedVoiceLayers;
+
+      // Migrate Lyrics from old structure if present
+      if (compositionToLoad.lyrics) {
+        console.warn("Migrating lyrics from old structure.");
+        for (const voiceIdWithLyrics in compositionToLoad.lyrics) {
+          const voiceLayer = voiceLayers.value.find(vl => vl.id === voiceIdWithLyrics);
+          if (voiceLayer) {
+            const lyricEntries = compositionToLoad.lyrics[voiceIdWithLyrics];
+            if (Array.isArray(lyricEntries)) {
+              lyricEntries.forEach(lyricEntry => {
+                const noteToUpdate = voiceLayer.notes.find(n => n.id === lyricEntry.noteId);
+                if (noteToUpdate && lyricEntry.text) {
+                  noteToUpdate.lyric = lyricEntry.text;
+                }
+              });
+            }
           }
         }
-      });
-    });
-    if (naturalNotesCorrectedCount > 0) {
-      console.log(`Corrected ${naturalNotesCorrectedCount} natural note pitches during load.`);
-    }
+      }
+      
+      // Clean up temporary voiceLayerIds from staves object
+      staves.value.forEach(s => delete s.voiceLayerIds);
 
-    // 4. Calculate staff width directly based on rightmost note position
-    const allNotesInLoadedComposition: ImportedNote[] = voiceLayers.value.flatMap(voice => voice.notes);
-    
-    // Log key measurements for debugging
-    console.log(`Current measureWidthByTimeSignature: ${measureWidthByTimeSignature.value}px`);
-    
-    if (allNotesInLoadedComposition.length > 0) {
-        // Find the rightmost note position
-        let maxPosition = -1;
-        let rightmostNote: ImportedNote | null = null;
-        
-        allNotesInLoadedComposition.forEach(note => {
-            if (note.position > maxPosition) {
-                maxPosition = note.position;
-                rightmostNote = note;
-            }
-        });
-        
-        if (rightmostNote) {
-            console.log(`Composition from storage had staffWidth: ${composition.staffWidth || 'undefined'}`);
-            
-            // Set a truly massive staff width to ensure it's enough for any composition
-            const absoluteWidth = 10000; // 10,000 pixels should be plenty for any composition
-            
-            // Set the reactive values
-            staffWidth.value = absoluteWidth;
-            
-            // Log what we're doing
-            console.log(`Setting staff to MASSIVE width: ${absoluteWidth}px`);
-            
-            // Log the staffWidth value after setting it
-            console.log(`Immediately after setting - staffWidth.value: ${staffWidth.value}`);
-            
-            // Directly modify the DOM for the staff element before any computed properties run
-            const staffElement = document.querySelector('.staff');
-            if (staffElement) {
-                (staffElement as HTMLElement).style.width = `${absoluteWidth}px`;
-                console.log(`Directly set staff element width to ${absoluteWidth}px`);
-            } else {
-                console.warn('Staff element not found for direct width setting');
-            }
-            
-            // Wait for Vue to process updates
-            await nextTick();
-            
-            // Double check and fix again if needed
-            setTimeout(() => {
-                // Check what happened
-                const staffEl = document.querySelector('.staff');
-                const currentWidth = staffEl ? (staffEl as HTMLElement).clientWidth : 'unknown';
-                console.log(`After timeout - staffWidth.value: ${staffWidth.value}, actual DOM width: ${currentWidth}px`);
-                
-                // Force it again if needed
-                if (staffEl && (staffEl as HTMLElement).clientWidth < 7000) {
-                    console.warn('Staff width still not properly set, forcing again...');
-                    (staffEl as HTMLElement).style.width = `${absoluteWidth}px`;
-                    
-                    // Count how many measure bars are actually rendered
-                    const barlineElements = document.querySelectorAll('.barline');
-                    console.log(`Number of barlines rendered: ${barlineElements.length}`);
-                }
-            }, 300);
-        } else {
-            // Fallback - if no rightmost note was found
-            const calculatedStaffWidth = 8 * measureWidthByTimeSignature.value + 100; // 8 measures + extra space
-            staffWidth.value = calculatedStaffWidth;
-            measuresCount.value = 8;
-            
-            console.log(`No rightmost note found. Using default width: ${calculatedStaffWidth}px`);
+
+      // Set active voice and staff
+      if (compositionToLoad.activeVoiceId && voiceLayers.value.some(v => v.id === compositionToLoad.activeVoiceId)) {
+        activeVoiceId.value = compositionToLoad.activeVoiceId;
+      } else if (voiceLayers.value.length > 0) {
+        activeVoiceId.value = voiceLayers.value[0].id;
+      } else {
+        activeVoiceId.value = '';
+      }
+
+      if (activeVoiceId.value) {
+        const currentActiveVoice = voiceLayers.value.find(v => v.id === activeVoiceId.value);
+        if (currentActiveVoice) {
+          voiceLayers.value.forEach(v => v.active = (v.id === activeVoiceId.value));
+          activeStaffId.value = currentActiveVoice.staffId;
         }
-    } else {
-        // No notes in the composition - default to 8 measures
-        const calculatedStaffWidth = 8 * measureWidthByTimeSignature.value + 100;
-        staffWidth.value = calculatedStaffWidth;
-        measuresCount.value = 8;
-        
-        console.log(`No notes in composition. Using default width: ${calculatedStaffWidth}px`);
+      } else if (staves.value.length > 0) {
+        activeStaffId.value = staves.value[0].id;
+      }
+
+
+      chordSymbols.value = compositionToLoad.chordSymbols ? JSON.parse(JSON.stringify(compositionToLoad.chordSymbols)) : [];
+      sections.value = compositionToLoad.sections ? JSON.parse(JSON.stringify(compositionToLoad.sections)) : [];
+      sequenceItems.value = compositionToLoad.sequenceItems ? JSON.parse(JSON.stringify(compositionToLoad.sequenceItems)) : [];
+
+      if (voiceLayers.value.length === 0 && staves.value.length > 0) {
+        const defaultVoiceId = generateId();
+        voiceLayers.value.push({
+          id: defaultVoiceId, name: 'Default Voice', color: getRandomColor(),
+          visible: true, active: true, selected: true, volume: 0, notes: [], staffId: staves.value[0].id
+        });
+        activeVoiceId.value = defaultVoiceId;
+        activeStaffId.value = staves.value[0].id;
+      } else if (staves.value.length === 0) {
+        initializeDefaultStaffAndVoice();
+      }
+
+      nextTick(() => {
+        updateStaffScroll();
+      });
+
+      console.log('Composition loaded successfully.');
+      saveToLocalStorage();
+
+    } catch (error) {
+      console.error(`Error loading composition: ${error}`); // Log the error object itself
+      if (error instanceof Error) {
+        console.error("Error name:", error.name);
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack); 
+      }
+      alert(`Error loading composition: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    // 6. Ensure DOM updates for staff width and scroll (moved from end of function to here)
-    await nextTick(); // Wait for Vue to process the direct staffWidth assignment
-    
-    // Force update the DOM with explicit width
-    updateStaffDisplay(staffWidth.value); // Pass explicit width to ensure it's used
-    
-    // Double-check staffWidth is being applied (sometimes DOM updates can lag)
-    setTimeout(() => {
-        updateStaffDisplay(staffWidth.value); // Apply again after a short delay
-        updateStaffScroll(); // Make sure scroll position is applied too
-    }, 100);
-
-    // 5. Load other UI state properties
-    selectedDuration.value = composition.selectedDuration || 'quarter';
-    selectedNoteType.value = composition.selectedNoteType || 'note';
-    selectedAccidental.value = composition.selectedAccidental !== undefined ? composition.selectedAccidental : null;
-    selectedOctave.value = composition.selectedOctave || 4;
-    isDottedNote.value = composition.isDottedNote || false;
-    // activeVoiceId is already set based on loaded data or fallback
-
-    // 7. Load sections and sequence items (can depend on measure count for validation if any)
-    if (composition.sections && Array.isArray(composition.sections)) {
-      sections.value = JSON.parse(JSON.stringify(composition.sections));
-    } else {
-      sections.value = [];
-    }
-    if (composition.sequenceItems && Array.isArray(composition.sequenceItems)) {
-      sequenceItems.value = JSON.parse(JSON.stringify(composition.sequenceItems));
-    } else {
-      sequenceItems.value = [];
-    }
-
-    compositionName.value = composition.name; // Set the composition name input field
-    saveToLocalStorage(); // Save the current state of savedCompositions (if it was modified by this load)
-    console.log(`Composition "${composition.name}" loaded. Staff width: ${staffWidth.value}, Measures: ${measuresCount.value}`);
-
-  } catch (error) {
-    console.error('Error loading composition:', error);
-    alert(`Error loading composition: ${error.message}`);
-    return false;
+  } else {
+    alert('Composition not found.');
   }
-};
-
-// Make sure every voice is assigned to a staff
-const ensureVoiceAssignment = () => {
-  // If no staves exist, create one
-  if (staves.value.length === 0) {
-    staves.value.push({
-      id: 'staff1',
-      name: 'Staff 1',
-      clef: 'treble',
-      voiceLayerIds: []
-    });
-  }
-  
-  // Make sure every voice is assigned to a staff
-  voiceLayers.value.forEach(voice => {
-    const isAssigned = staves.value.some(staff => staff.voiceLayerIds.includes(voice.id));
-    if (!isAssigned) {
-      // Assign to first staff if not assigned elsewhere
-      staves.value[0].voiceLayerIds.push(voice.id);
-    }
-  });
 };
 
 // Update updateStaffDisplay to accept an optional width parameter
 const updateStaffDisplay = (width?: number) => {
-  const staffElement = document.querySelector('.staff');
-  if (staffElement) {
-    // Use the provided width or the current staffWidth.value
-    const displayWidth = width || staffWidth.value;
-    (staffElement as HTMLElement).style.width = `${displayWidth}px`;
-    console.log(`Set staff width to ${displayWidth}px`);
+  document.querySelectorAll('.staff').forEach(staffElement => {
+    if (staffElement) {
+      const displayWidth = width || staffWidth.value;
+      (staffElement as HTMLElement).style.width = `${displayWidth}px`;
+    }
+  });
+  if (document.querySelectorAll('.staff').length > 0) {
+    console.log(`Set staff width to ${width || staffWidth.value}px for ${document.querySelectorAll('.staff').length} staves`);
   } else {
-    console.warn('Staff element not found');
+    console.warn('No staff elements found to update display');
   }
 };
 
@@ -2328,7 +2265,13 @@ const compositionName = ref('');
 // Update the onMounted hook to handle errors gracefully
 onMounted(async () => {
   // Load saved compositions from localStorage
-  loadSavedCompositions();
+  loadSavedCompositions(); // This will call initializeDefaultStaffAndVoice if needed
+
+  // If staves are still empty after load (e.g., first visit), initialize them.
+  if (staves.value.length === 0) {
+    initializeDefaultStaffAndVoice();
+  }
+
 
   try {
     // Initialize Tone.js
@@ -2476,32 +2419,113 @@ const exportAllCompositions = async () => {
   }
 };
 
-// Update exportCurrentComposition to include staves
 const exportCurrentComposition = async () => {
+  if (!currentCompositionId.value && voiceLayers.value.flatMap(vl => vl.notes).length === 0) {
+    alert('No composition is currently loaded or no notes to export.');
+    return;
+  }
+
   try {
-    // Prepare the full composition data
-    const compositionToExport = prepareCompositionData();
+    const baseLoadedComposition = savedCompositions.value.find(comp => comp.id === currentCompositionId.value);
     
-    // Create a Blob with the JSON data
-    const compositionBlob = new Blob(
-      [JSON.stringify(compositionToExport, null, 2)], 
-      { type: 'application/json' }
-    );
+    let compositionToExport: CompositionData = {
+      id: baseLoadedComposition?.id || generateId(),
+      name: compositionName.value || baseLoadedComposition?.name || 'Untitled Export',
+      dateCreated: baseLoadedComposition?.dateCreated || Date.now(),
+      staves: JSON.parse(JSON.stringify(staves.value)), // Include staves
+      voiceLayers: JSON.parse(JSON.stringify(voiceLayers.value)),
+      // notes: // This is derived from voiceLayers, so not explicitly set here.
+      //         // The prepareCompositionData or a similar function would flatten it if needed for older formats.
+      tempo: tempo.value,
+      keySignature: keySignature.value,
+      timeSignature: timeSignature.value,
+      chordSymbols: JSON.parse(JSON.stringify(chordSymbols.value)),
+      activeVoiceId: activeVoiceId.value,
+      staffWidth: staffWidth.value,
+      selectedDuration: selectedDuration.value,
+      selectedNoteType: selectedNoteType.value,
+      selectedAccidental: selectedAccidental.value,
+      selectedOctave: selectedOctave.value,
+      isDottedNote: isDottedNote.value,
+      sections: baseComposition.sections ? JSON.parse(JSON.stringify(baseComposition.sections)) : [],
+      sequenceItems: baseComposition.sequenceItems ? JSON.parse(JSON.stringify(baseComposition.sequenceItems)) : [],
+    };
+
+    console.log('Exporting composition with sequence items:', compositionToExport.sequenceItems);
     
-    // Create a download link and trigger download
-    const downloadLink = document.createElement('a');
-    downloadLink.href = URL.createObjectURL(compositionBlob);
-    downloadLink.download = `${compositionName.value || 'composition'}.json`;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    
-    console.log('Composition exported successfully');
-    return true;
+    console.log('[Export] Initial compositionToExport from live state:', JSON.parse(JSON.stringify(compositionToExport)));
+    console.log('[Export] exportOnlySelectedVoices flag:', exportOnlySelectedVoices.value);
+
+    if (exportOnlySelectedVoices.value) {
+      console.log('[Export] Filtering for selected voices. Initial voiceLayers from live state:', JSON.parse(JSON.stringify(compositionToExport.voiceLayers)));
+
+      if (compositionToExport.voiceLayers && Array.isArray(compositionToExport.voiceLayers)) {
+        const allVoiceStates = compositionToExport.voiceLayers.map(v => ({ id: v.id, name: v.name, selected: v.selected }));
+        console.log('[Export] All voice selected states from live data:', allVoiceStates);
+
+        const selectedVoiceLayers = compositionToExport.voiceLayers.filter(v => v.selected === true);
+        console.log('[Export] Filtered selectedVoiceLayers:', JSON.parse(JSON.stringify(selectedVoiceLayers)));
+
+        if (selectedVoiceLayers.length === 0 && compositionToExport.voiceLayers.length > 0) {
+          alert("No voices are selected for export. Please select at least one voice or uncheck 'Export selected voices only'.");
+          return;
+        }
+
+        compositionToExport.voiceLayers = selectedVoiceLayers; // Update the voiceLayers on the object to be exported
+
+        // Re-flatten notes from the NOW-FILTERED selectedVoiceLayers for the 'notes' property
+        compositionToExport.notes = selectedVoiceLayers.flatMap(voice =>
+          voice.notes.map(note => ({
+            ...note,
+            // Ensure voiceId and voiceColor are consistent if they are part of the Note type
+            // and if the original flat notes array might not have them or have outdated ones.
+            voiceId: voice.id,
+            voiceColor: voice.color
+          }))
+        );
+        console.log('[Export] Updated compositionToExport.voiceLayers after filtering:', JSON.parse(JSON.stringify(compositionToExport.voiceLayers)));
+        console.log('[Export] Updated compositionToExport.notes count after filtering:', compositionToExport.notes.length);
+      }
+    } else {
+      console.log('[Export] Not filtering by selected voices. Exporting all from live state.');
+    }
+
+    console.log('[Export] Final compositionToExport for stringify:', JSON.parse(JSON.stringify(compositionToExport)));
+    const dataToExport = JSON.stringify(compositionToExport, null, 2);
+    const fileName = `music-notation-${compositionToExport.name.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.txt`;
+
+    // Check if running in a capacitor environment (mobile app)
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      try {
+        // Use Capacitor Filesystem API for native platforms
+        await Filesystem.writeFile({
+          path: fileName,
+          data: dataToExport,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8  // Use the Encoding enum from Capacitor
+        });
+
+        alert(`Composition saved to Documents/${fileName}`);
+      } catch (error) {
+        console.error('Error writing file with Capacitor:', error);
+        alert(`Error saving file: ${error.message}`);
+      }
+    } else {
+      // Use web approach for browsers
+      const blob = new Blob([dataToExport], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+
+      console.log('Composition exported successfully via browser download');
+    }
   } catch (error) {
     console.error('Error exporting composition:', error);
-    alert(`Error exporting composition: ${error.message}`);
-    return false;
+    alert('Error exporting composition: ' + error.message);
   }
 };
 
@@ -2512,7 +2536,8 @@ const validateComposition = (comp: any): boolean => {
   return (
     comp &&
     typeof comp === 'object' &&
-    (Array.isArray(comp.voiceLayers) || Array.isArray(comp.notes)) &&
+    // Check for staves or voiceLayers (which imply notes)
+    (Array.isArray(comp.staves) || Array.isArray(comp.voiceLayers) || Array.isArray(comp.notes)) &&
     typeof comp.name === 'string'
   );
 };
@@ -2576,24 +2601,47 @@ const importCompositions = async (event) => {
 
     try {
       const allFileResults = await processWebFiles(Array.from(files));
-
-      // Process the imported compositions
       let importCount = 0;
 
       allFileResults.forEach(fileResult => {
         if (fileResult.parsedCompositions && fileResult.parsedCompositions.length > 0) {
-          fileResult.parsedCompositions.forEach(comp => {
-            // Generate a new ID for the imported composition
-            const newId = generateId();
-
-            // Create a new composition object with the imported data
+          fileResult.parsedCompositions.forEach(compFromFile => {
+            // Ensure the imported composition has a unique ID
             const importedComposition: CompositionData = {
-              ...comp,
-              id: newId,
-              dateCreated: comp.dateCreated || Date.now()
+              ...compFromFile,
+              id: generateId(), // Always generate a new ID for imported compositions
+              dateCreated: compFromFile.dateCreated || Date.now(),
+              // Ensure staves and voiceLayers are properly structured
+              staves: compFromFile.staves || [{ id: generateId(), clef: 'treble', order: 0, name: 'Staff 1'}],
+              voiceLayers: compFromFile.voiceLayers || [],
             };
 
-            // Add to savedCompositions
+            // If voiceLayers exist, ensure they have staffId. If not, assign to first staff.
+            if (importedComposition.voiceLayers && importedComposition.staves && importedComposition.staves.length > 0) {
+              const firstStaffId = importedComposition.staves[0].id;
+              importedComposition.voiceLayers.forEach(vl => {
+                if (!vl.staffId || !importedComposition.staves!.some(s => s.id === vl.staffId)) {
+                  vl.staffId = firstStaffId;
+                }
+              });
+            }
+            // If only comp.notes exists (old format), create a default voice on the first staff
+            else if (compFromFile.notes && importedComposition.staves && importedComposition.staves.length > 0) {
+                const firstStaffId = importedComposition.staves[0].id;
+                importedComposition.voiceLayers = [{
+                    id: generateId(),
+                    name: "Imported Voice",
+                    color: getRandomColor(),
+                    visible: true,
+                    active: true,
+                    selected: true,
+                    volume: 0,
+                    staffId: firstStaffId,
+                    notes: compFromFile.notes
+                }];
+            }
+
+
             savedCompositions.value.push(importedComposition);
             importCount++;
           });
@@ -2750,8 +2798,8 @@ const animateButton = (event) => {
 
 // Add these reactive variables
 const timeSignature = ref('4/4');
-const timeSignatureNumerator = computed(() => timeSignature.value.split('/')[0]);
-const timeSignatureDenominator = computed(() => timeSignature.value.split('/')[1]);
+const timeSignatureNumerator = computed(() => parseInt(timeSignature.value.split('/')[0]) || 4);
+const timeSignatureDenominator = computed(() => parseInt(timeSignature.value.split('/')[1]) || 4);
 const showBeatMarkers = ref(false); // Set to true for debugging
 
 // Make sure this computed property is correctly calculating measure width
@@ -2913,32 +2961,13 @@ const updateBeatMarkers = () => {
 };
 
 // Update exportComposition
-const exportComposition = () => {
-  // Create the export data object with all measure information
-  const exportData = {
-    name: compositionName.value || 'Untitled',
-    notes: notes.value.map(note => ({
-      ...note,
-      type: note.type,
-      position: note.position,
-      verticalPosition: note.verticalPosition,
-      duration: note.duration,
-      dotted: note.dotted,
-      pitch: note.pitch
-    })),
-    // Include all necessary measure and musical data
-    timeSignature: timeSignature.value,
-    clef: selectedClef.value,
-    keySignature: keySignature.value, // FIX: Use keySignature instead of selectedKeySignature
-    tempo: tempo.value,
-    chordSymbols: chordSymbols.value,
-    // Add metadata
-    version: '1.0',
-    dateExported: new Date().toISOString()
-  };
+const exportComposition = () => { // This function seems to be a duplicate of exportCurrentComposition. Consolidate if possible.
+  // For now, let's assume this is a simplified export.
+  // It should use prepareCompositionData() for consistency.
+  const compositionData = prepareCompositionData();
 
   // Convert to JSON
-  const jsonString = JSON.stringify(exportData, null, 2);
+  const jsonString = JSON.stringify(compositionData, null, 2);
 
   // Create a download link
   const blob = new Blob([jsonString], { type: 'application/json' });
@@ -2958,7 +2987,7 @@ const exportComposition = () => {
 
 // Add the missing generateId function
 const generateId = () => {
-  return Date.now().toString() + Math.random().toString(36).substring(2, 9);
+  return `id-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
 };
 
 // Add a new ref for the selected note
@@ -2979,11 +3008,11 @@ const selectNote = (note) => {
   }
 };
 
-// Update getLyricStyle to work with the array
-const getLyricStyle = (note: ImportedNote) => {
+// Add a function to get the lyric style
+const getLyricStyle = (note: NoteWithVoiceInfo) => { // Use NoteWithVoiceInfo
   return {
-    color: isNotePlaying(note.id) ? 'red' : 'black',
-    fontWeight: isNotePlaying(note.id) ? 'bold' : 'normal'
+    color: note.id === currentPlayingNoteId.value ? 'red' : (note.voiceColor || 'black'),
+    fontWeight: note.id === currentPlayingNoteId.value ? 'bold' : 'normal'
   };
 };
 
@@ -2993,7 +3022,7 @@ const playbackEndMeasure = ref(0); // 0 means play to the end
 const autoScrollToPlayingNote = ref(true);
 
 // Add this helper function to calculate which measure a note is in
-const getNotesMeasure = (note: ImportedNote) => { // Update to use aliased import
+const getNotesMeasure = (note: ImportedNote | NoteWithVoiceInfo) => { // Update to use aliased import or union
   // Calculate the horizontal position in pixels
   const notePosition = note.position * 50;
 
@@ -3019,7 +3048,7 @@ const playScore = () => {
   if (isPlaying.value) return;
 
   isPlaying.value = true;
-  currentPlayingNoteIds.value = []; // Clear any previously playing notes
+  currentPlayingNoteId.value = null;
 
   // Initialize Tone.js if needed
   initializeToneJs();
@@ -3037,20 +3066,57 @@ const playScore = () => {
     voicesToPlay.push(...visibleVoices);
   }
 
-  // Filter notes to only include those that should be played
-  const allNotes = voicesToPlay.flatMap(voice => 
-    voice.notes.map(note => ({
+  console.log(`Playing ${voicesToPlay.length} voices:`, voicesToPlay.map(v => v.name));
+
+  // Collect all notes from the voices to play
+  let allNotesToPlay = [];
+  voicesToPlay.forEach(voice => {
+    // Add voice ID to each note for identification during playback
+    const voiceNotes = voice.notes.map(note => ({
       ...note,
       voiceId: voice.id,
       voiceColor: voice.color
-    }))
-  );
-  
-  // Rest of the function remains the same until we get to playing notes
-  
-  // Group notes by position
+    }));
+    allNotesToPlay = allNotesToPlay.concat(voiceNotes);
+  });
+
+  // Sort all notes by position
+  const sortedNotes = allNotesToPlay.sort((a, b) => a.position - b.position);
+
+  // Calculate measure boundaries
+  const measureWidth = measureWidthByTimeSignature.value;
+  const initialPosition = 70 + (currentKeySignatureAccidentals.value.length * 10) + 20;
+
+  console.log(`Playback range: measures ${playbackStartMeasure.value} to ${playbackEndMeasure.value || 'end'}`);
+  console.log(`Measure width: ${measureWidth}px, Initial position: ${initialPosition}px`);
+
+  // Filter notes based on selected measures
+  let filteredNotes = sortedNotes;
+  if (playbackStartMeasure.value > 1 || (playbackEndMeasure.value > 0)) {
+    filteredNotes = sortedNotes.filter(note => {
+      const noteMeasure = getNotesMeasure(note);
+
+      // Check if the note is within the selected measure range
+      const isAfterStart = noteMeasure >= playbackStartMeasure.value;
+      const isBeforeEnd = playbackEndMeasure.value === 0 || noteMeasure <= playbackEndMeasure.value;
+
+      return isAfterStart && isBeforeEnd;
+    });
+  }
+
+  console.log(`Playing ${filteredNotes.length} notes out of ${sortedNotes.length} total notes`);
+
+  // Initialize array to track timeout IDs for cleanup
+  if (!window.playbackTimeouts) window.playbackTimeouts = [];
+  window.playbackTimeouts = [];
+
+  // Clear any existing timeouts
+  window.playbackTimeouts.forEach(id => clearTimeout(id));
+  window.playbackTimeouts = [];
+
+  // Group notes by position for chord playback
   const notesByPosition = {};
-  allNotes.forEach(note => {
+  filteredNotes.forEach(note => {
     if (!notesByPosition[note.position]) {
       notesByPosition[note.position] = [];
     }
@@ -3062,18 +3128,11 @@ const playScore = () => {
 
   // Play notes in sequence with proper timing
   let totalDelay = 0;
-  
-  // Clear previous timeouts
-  if (window.playbackTimeouts) {
-    window.playbackTimeouts.forEach(id => clearTimeout(id));
-    window.playbackTimeouts = [];
-  }
-  window.playbackTimeouts = [];
 
   positions.forEach(position => {
     const notesAtPosition = notesByPosition[position];
 
-    // Find longest duration at this position
+    // Find the longest note duration at this position
     let longestDuration = 0;
     const durationMap = {
       'whole': 4,
@@ -3089,22 +3148,25 @@ const playScore = () => {
       longestDuration = Math.max(longestDuration, noteDuration);
     });
 
-    // Calculate timing
+    // Calculate the wait duration in seconds
     const secondsPerBeat = 60 / tempo.value;
     const waitDurationSeconds = longestDuration * secondsPerBeat;
 
-    // Schedule the notes
-    const timeoutId = setTimeout(() => {
-      // Clear previous notes
-      currentPlayingNoteIds.value = [];
-      
-      // Add all current notes to the playing array
-      notesAtPosition.forEach(note => {
-        // Add to currently playing notes
-        currentPlayingNoteIds.value.push(note.id);
-        
-        // Play the note sound
-        if (note.type === 'note' && note.pitch) {
+    // Function to play all notes at this position
+    const playNotesWithDelay = (notesToPlay, delay) => {
+      const callback = () => {
+        // Play all notes at this position simultaneously
+        notesToPlay.forEach(noteToPlay => {
+          // Set the current playing note ID
+          currentPlayingNoteId.value = noteToPlay.id;
+
+          // Auto-scroll to the playing note if enabled
+          if (autoScrollToPlayingNote.value) {
+            autoScrollToNote(noteToPlay);
+          }
+
+          if (noteToPlay.type === 'note' && noteToPlay.pitch) {
+            // Map durations to Tone.js format
             const toneDurationMap = {
               'whole': '1n',
               'half': '2n',
@@ -3113,91 +3175,116 @@ const playScore = () => {
               'sixteenth': '16n'
             };
 
-          // Get voice volume
-          const voice = voiceLayers.value.find(v => v.id === note.voiceId);
-          const volume = voice ? voice.volume || 0 : 0;
+            // Play the note using the Tone.js duration format
+            const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
 
-          // Play the note
+            // Adjust volume based on voice settings
+            const voice = voiceLayers.value.find(v => v.id === noteToPlay.voiceId);
+            const volume = voice ? voice.volume || 0 : 0; // Default to 0dB if not specified
+
             playNoteSound(
-            note.pitch,
-            toneDurationMap[note.duration] || '4n',
-            note.dotted,
+              noteToPlay.pitch, 
+              toneDuration, 
+              noteToPlay.dotted, 
               volume,
-            note.explicitNatural
+              noteToPlay.explicitNatural  // Add this parameter
             );
           }
         });
 
-      // Auto-scroll to the first note if enabled
-      if (autoScrollToPlayingNote.value && notesAtPosition.length > 0) {
-        autoScrollToNote(notesAtPosition[0]);
-      }
-    }, totalDelay * 1000);
+        // Schedule the end of these notes
+        const noteEndCallback = () => {
+          notesToPlay.forEach(noteToPlay => {
+            if (currentPlayingNoteId.value === noteToPlay.id) {
+              currentPlayingNoteId.value = null;
+            }
+          });
+        };
+
+        const noteEndTimeoutId = setTimeout(noteEndCallback, waitDurationSeconds * 1000);
+
+        // Store timeout info for potential pausing
+        (window as any)[`timeout_${noteEndTimeoutId}_info`] = {
+          startTime: Date.now(),
+          duration: waitDurationSeconds * 1000,
+          callback: noteEndCallback
+        };
+
+        window.playbackTimeouts.push(noteEndTimeoutId);
+      };
+
+      const timeoutId = setTimeout(callback, delay);
+
+      // Store timeout info for potential pausing
+      (window as any)[`timeout_${timeoutId}_info`] = {
+        startTime: Date.now(),
+        duration: delay,
+        callback
+      };
 
       window.playbackTimeouts.push(timeoutId);
+    };
+
+    // Schedule these notes
+    playNotesWithDelay(notesAtPosition, totalDelay * 1000);
     totalDelay += waitDurationSeconds;
   });
 
-  // Final timeout to end playback
+  // Stop playing after all notes have played
   const finalTimeoutId = setTimeout(() => {
+    // Reset all playback state variables
     isPlaying.value = false;
     isPaused.value = false;
-    currentPlayingNoteIds.value = [];
+    currentPlayingNoteId.value = null;
 
-    // Clear timeouts
-      window.playbackTimeouts.forEach(id => clearTimeout(id));
-      window.playbackTimeouts = [];
-
-    console.log('Playback complete');
-  }, totalDelay * 1000 + 100);
-
-  window.playbackTimeouts.push(finalTimeoutId);
-};
-
-// Fix togglePlayback function to work with the array of note IDs
-const togglePlayback = () => {
-  if (isPlaying.value) {
-    // Pause playback
-    isPaused.value = true;
-      isPlaying.value = false;
-    
-    // Clear timeouts but don't clear playing notes - keep them highlighted
+    // Clear any remaining timeouts
     if (window.playbackTimeouts) {
       window.playbackTimeouts.forEach(id => clearTimeout(id));
       window.playbackTimeouts = [];
     }
-  } else if (isPaused.value) {
-    // Resume playback
+
+    console.log('Playback complete');
+  }, totalDelay * 1000 + 100); // Add a small buffer
+
+  // Store the final timeout ID for potential cleanup
+  window.playbackTimeouts.push(finalTimeoutId);
+
+  // Store timeout info for the final timeout
+  (window as any)[`timeout_${finalTimeoutId}_info`] = {
+    startTime: Date.now(),
+    duration: totalDelay * 1000 + 100,
+    callback: () => {
+      isPlaying.value = false;
       isPaused.value = false;
-    isPlaying.value = true;
-    
-    // Start from current notes - don't clear currentPlayingNoteIds
-    // Logic to resume playback should go here
-    
-    // For simplicity, we'll restart playback for now
-    playScore();
-  } else {
-    // Start new playback
-    currentPlayingNoteIds.value = []; // Clear any playing notes
-    playScore();
-  }
+      currentPlayingNoteId.value = null;
+    }
+  };
 };
 
-// Fix stopPlayback to clear the array of playing note IDs
-const stopPlayback = () => {
-  isPlaying.value = false;
-  isPaused.value = false;
-  
-  // Clear timeouts
-  if (window.playbackTimeouts) {
-    window.playbackTimeouts.forEach(id => clearTimeout(id));
-    window.playbackTimeouts = [];
+// Add the autoScrollToNote function
+const autoScrollToNote = (note: ImportedNote) => {
+  // Calculate the horizontal position of the note
+  const noteXPosition = note.position * 50;
+
+  // Calculate the visible area boundaries
+  const leftBoundary = scrollPosition.value;
+  const rightBoundary = scrollPosition.value + visibleStaffWidth.value;
+
+  // Check if the note is outside the visible area
+  if (noteXPosition < leftBoundary + 100) {
+    // Note is to the left of the visible area or too close to the left edge
+    // Scroll left to show the note with some margin
+    scrollPosition.value = Math.max(0, noteXPosition - 100);
+    updateStaffScroll();
+  } else if (noteXPosition > rightBoundary - 100) {
+    // Note is to the right of the visible area or too close to the right edge
+    // Scroll right to show the note with some margin
+    scrollPosition.value = Math.min(
+      maxScrollPosition.value,
+      noteXPosition - visibleStaffWidth.value + 200
+    );
+    updateStaffScroll();
   }
-  
-  // Clear playing notes highlighting
-  currentPlayingNoteIds.value = [];
-  
-  console.log('Playback stopped');
 };
 
 // Add this ref for measure visibility
@@ -3282,7 +3369,7 @@ const resumePlayback = () => {
   isPlaying.value = true;
 
   // Reset the currently playing note ID to avoid multiple highlights
-  currentPlayingNoteIds.value = [];
+  currentPlayingNoteId.value = null;
 
   // Recreate all timeouts with their remaining time
   window.playbackTimeouts = [];
@@ -3345,6 +3432,20 @@ const resumePlayback = () => {
   pauseTime.value = null;
 
   console.log('Playback resumed with', groupedTimeouts.length, 'grouped timeouts');
+};
+
+// Add a function to toggle playback
+const togglePlayback = () => {
+  if (!isPlaying.value && !isPaused.value) {
+    // Not playing and not paused -> Start playing
+    playComposition();
+  } else if (isPlaying.value && !isPaused.value) {
+    // Playing and not paused -> Pause
+    pausePlayback();
+  } else if (isPaused.value) {
+    // Paused -> Resume
+    resumePlayback();
+  }
 };
 
 // Add a function to restart playback
@@ -3470,19 +3571,20 @@ const handleLyricInputKeypress = (event: KeyboardEvent) => {
 // });
 
 // Add a function to switch between voice layers
-const switchActiveVoice = (voiceId) => {
-  // Update the active state for all voices
+const switchActiveVoice = (voiceIdToActivate: string) => {
+  const voiceToActivate = voiceLayers.value.find(v => v.id === voiceIdToActivate);
+  if (!voiceToActivate) return;
+
+  // Deactivate all other voices
   voiceLayers.value.forEach(voice => {
-    voice.active = voice.id === voiceId;
+    voice.active = voice.id === voiceIdToActivate;
   });
 
-  // Set the active voice ID
-  activeVoiceId.value = voiceId;
+  activeVoiceId.value = voiceIdToActivate;
+  activeStaffId.value = voiceToActivate.staffId; // Also set the active staff
 
-  // Clear the selected note when switching voices
   selectedNoteId.value = null;
-
-  console.log(`Switched to voice: ${voiceId}`);
+  console.log(`Switched to voice: ${voiceIdToActivate} on staff: ${activeStaffId.value}`);
 };
 
 // Add a function to toggle voice visibility
@@ -3576,29 +3678,30 @@ const deleteVoice = (voiceIdToDelete: string) => {
 
 // Add a function to add a new voice layer
 const addVoiceLayer = () => {
-  const newId = `voice${voiceLayers.value.length + 1}`;
-  const newName = `Voice ${voiceLayers.value.length + 1}`;
+  if (!activeStaffId.value && staves.value.length > 0) {
+    activeStaffId.value = staves.value[0].id; // Default to first staff if none active
+  } else if (staves.value.length === 0) {
+    alert("Please add a staff before adding a voice layer.");
+    return;
+  }
 
-  // Generate a random color if we've used all the default colors
-  const getRandomColor = () => {
-    const letters = '0123456789ABCDEF';
-    let color = '#';
-    for (let i = 0; i < 6; i++) {
-      color += letters[Math.floor(Math.random() * 16)];
-    }
-    return color;
-  };
+
+  const newId = generateId(); // Use the robust generateId
+  const newName = `Voice ${voiceLayers.value.length + 1}`;
 
   voiceLayers.value.push({
     id: newId,
     name: newName,
     color: getDefaultVoiceColor(newId) || getRandomColor(),
     visible: true,
-    active: false,
+    active: false, // New voices are not active by default, user can switch
     selected: true,
     volume: 0,
-    notes: []
+    notes: [],
+    staffId: activeStaffId.value || staves.value[0].id // Assign to active or first staff
   });
+  // Optionally, make the new voice active:
+  // switchActiveVoice(newId);
 };
 
 // End of your script section with watches
@@ -3619,62 +3722,74 @@ const LYRIC_LINE_HEIGHT = 20;  // Estimated height per lyric line (adjust as nee
 
 // Computed property to get an ordered list of visible voice IDs that have lyrics
 const orderedVisibleVoicesWithLyrics = computed(() => {
-  const voiceIdSet = new Set<string>();
-  // allVisibleNotes already contains only notes from voices that are currently visible
+  const voiceIdSetByStaff: Record<string, Set<string>> = {};
+
   allVisibleNotes.value.forEach(note => {
-    if (note.lyric && note.voiceId) {
-      voiceIdSet.add(note.voiceId);
+    if (note.lyric && note.voiceId && note.staffId) {
+      if (!voiceIdSetByStaff[note.staffId]) {
+        voiceIdSetByStaff[note.staffId] = new Set<string>();
+      }
+      voiceIdSetByStaff[note.staffId].add(note.voiceId);
     }
   });
-  // Convert set to array and sort to maintain a consistent order (e.g., voice1, voice2, etc.)
-  return Array.from(voiceIdSet).sort((a, b) => {
-    const numA = parseInt(a.replace('voice', ''), 10);
-    const numB = parseInt(b.replace('voice', ''), 10);
-    return numA - numB;
-  });
+
+  const result: Record<string, string[]> = {};
+  for (const staffId in voiceIdSetByStaff) {
+    result[staffId] = Array.from(voiceIdSetByStaff[staffId]).sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, ''), 10) || 0; // Extract numbers for sorting
+      const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+      return numA - numB;
+    });
+  }
+  return result;
 });
 
-// Helper function to get vertical offset for lyrics based on its display index among visible voices with lyrics
-const getLyricVerticalOffset = (voiceId: string): string => {
-  const displayIndex = orderedVisibleVoicesWithLyrics.value.indexOf(voiceId);
+// Helper function to get vertical offset for lyrics based on its display index among visible voices with lyrics ON A SPECIFIC STAFF
+const getLyricVerticalOffset = (voiceId: string, staffId: string): string => {
+  const voicesWithLyricsOnThisStaff = orderedVisibleVoicesWithLyrics.value[staffId] || [];
+  const displayIndex = voicesWithLyricsOnThisStaff.indexOf(voiceId);
 
   if (displayIndex === -1) {
+    // Default position if this voice doesn't have lyrics or isn't found (should not happen if called correctly)
     return `${LYRIC_BASE_OFFSET}px`;
   }
-
   return `${LYRIC_BASE_OFFSET + displayIndex * LYRIC_LINE_HEIGHT}px`;
 };
 
 // Computed property for the dynamic height of the staff container
 const staffContainerMinHeight = computed(() => {
-  const staffBaseHeight = 250; // Minimum height for the staff itself (e.g., to show staff lines)
-  const lyricLinesCount = orderedVisibleVoicesWithLyrics.value.length;
-
-  if (lyricLinesCount === 0) {
-    return `${staffBaseHeight}px`; // Just the staff height if no lyrics
+  // This is now for a single staff. The outer container will grow.
+  // Calculate max lyric lines for any single staff to determine individual staff height.
+  let maxLyricLinesOnAnyStaff = 0;
+  if (staves.value.length > 0) {
+      for (const staff of staves.value) {
+          const lyricLinesForThisStaff = (orderedVisibleVoicesWithLyrics.value[staff.id] || []).length;
+          if (lyricLinesForThisStaff > maxLyricLinesOnAnyStaff) {
+              maxLyricLinesOnAnyStaff = lyricLinesForThisStaff;
+          }
+      }
   }
 
-  // Y-coordinate of the top of the first lyric line
+  const staffBaseHeight = 250;
+  if (maxLyricLinesOnAnyStaff === 0) {
+    return `${staffBaseHeight}px`;
+  }
   const topOfFirstLyric = LYRIC_BASE_OFFSET;
-
-  // Calculate the Y-coordinate of the bottom edge of the last lyric line
-  // If LYRIC_LINE_HEIGHT is the height of one line, and lyricLinesCount is the number of lines,
-  // the block of lyrics occupies lyricLinesCount * LYRIC_LINE_HEIGHT.
-  // The bottom edge will be topOfFirstLyric + (height of all lyric lines).
-  const bottomEdgeOfLastLyric = topOfFirstLyric + (lyricLinesCount * LYRIC_LINE_HEIGHT);
-
-  // Define how much padding you want below the last lyric line
-  const PADDING_BELOW_LYRICS = LYRIC_LINE_HEIGHT; // Increased from LYRIC_LINE_HEIGHT / 2
-
-  // The total required height is the bottom edge of the last lyric plus padding
+  const bottomEdgeOfLastLyric = topOfFirstLyric + (maxLyricLinesOnAnyStaff * LYRIC_LINE_HEIGHT);
+  const PADDING_BELOW_LYRICS = LYRIC_LINE_HEIGHT;
   const requiredHeightForLyrics = bottomEdgeOfLastLyric + PADDING_BELOW_LYRICS;
-
-  // The container should be at least as tall as the staffBaseHeight, or tall enough for lyrics.
   return `${Math.max(staffBaseHeight, requiredHeightForLyrics)}px`;
 });
 
-// Add this ref for voice playback selection
-// existing code...
+// Computed property to get notes for a specific staff
+const notesForStaff = (staffId: string): NoteWithVoiceInfo[] => {
+  return allVisibleNotes.value.filter(note => note.staffId === staffId);
+};
+
+// Computed property to get notes with lyrics for a specific staff
+const notesForStaffWithLyrics = (staffId: string): NoteWithVoiceInfo[] => {
+  return allVisibleNotes.value.filter(note => note.staffId === staffId && note.lyric);
+};
 
 // Add these functions to save and load compositions from localStorage
 
@@ -3778,183 +3893,145 @@ const {
   testAllNotes, // Get the method from the composable
   // notesForDebug will be the 'notes' computed property from NotationEditorView
   // lastClickY and selectedOctave are passed through for DebugPanel
-} = useDebug(notes as ComputedRef<ImportedNote[]>, selectedClef, lastClickY, selectedOctave); // Pass aliased type
+} = useDebug(
+    notes as ComputedRef<ImportedNote[]>,
+    computed(() => staves.value.find(s => s.id === activeStaffId.value)?.clef || (staves.value.length > 0 ? staves.value[0].clef : 'treble')), // Pass active staff's clef
+    lastClickY,
+    selectedOctave
+);
 
 // Add this import at the top of your script section
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 // Add this function near other composition-related functions (around line 2060)
-const combineCompositions = (compositionIds, newName) => {
-  try {
-    // Get the compositions that were selected for combining
+const combineCompositions = (compositionIds: string[], newName: string) => {
+  if (compositionIds.length < 2) {
+    alert('Please select at least two compositions to combine.');
+    return;
+  }
+
   const compositionsToMerge = savedCompositions.value.filter(comp =>
     compositionIds.includes(comp.id)
   );
 
   if (compositionsToMerge.length < 2) {
-      alert("Please select at least 2 compositions to combine.");
+    alert('Some selected compositions could not be found.');
     return;
   }
 
-    // Start with a new composition structure
-    const combinedComposition = {
-      id: crypto.randomUUID(),
+  try {
+    console.log('Starting composition merge with:', compositionsToMerge.map(c => c.name));
+
+    const baseComposition = compositionsToMerge[0];
+    const newCompositionId = generateId();
+
+    const newComposition: CompositionData = {
+      id: newCompositionId,
       name: newName,
       dateCreated: Date.now(),
-      dateModified: Date.now(),
-      notes: [],
-      voiceLayers: [],
-      staves: [],
-      timeSignature: compositionsToMerge[0].timeSignature || '4/4',
-      keySignature: compositionsToMerge[0].keySignature || 'C',
-      tempo: compositionsToMerge[0].tempo || 120,
-      chordSymbols: [],
-      sections: [],
-      staffSettings: {
-        width: 960,
-        scrollPosition: 0
-      }
+      staves: [], // Will populate this
+      voiceLayers: [], // Will populate this
+      tempo: baseComposition.tempo || 120,
+      keySignature: baseComposition.keySignature || 'C',
+      timeSignature: baseComposition.timeSignature || '4/4',
+      chordSymbols: baseComposition.chordSymbols ? JSON.parse(JSON.stringify(baseComposition.chordSymbols)) : [],
+      activeVoiceId: '',
+      staffWidth: baseComposition.staffWidth || 2000, // Consider max width or recalculate
+      selectedDuration: baseComposition.selectedDuration || 'quarter',
+      selectedNoteType: baseComposition.selectedNoteType || 'note',
+      selectedAccidental: baseComposition.selectedAccidental !== undefined ? baseComposition.selectedAccidental : null,
+      selectedOctave: baseComposition.selectedOctave || 4,
+      isDottedNote: baseComposition.isDottedNote || false,
+      sections: baseComposition.sections ? JSON.parse(JSON.stringify(baseComposition.sections)) : [],
+      sequenceItems: baseComposition.sequenceItems ? JSON.parse(JSON.stringify(baseComposition.sequenceItems)) : [],
     };
-    
-    // Track voice ID mapping to avoid conflicts
-    const voiceIdMapping = new Map();
-    
-    // Track which voices belong to which clefs (for compositions without staff data)
-    const clefToVoices = new Map();
-    
-    // First pass: process voices and create voice ID mappings
-    compositionsToMerge.forEach((comp, compIndex) => {
-      // Track if this composition has explicit staff data
-      const hasStaffData = comp.staves && Array.isArray(comp.staves) && comp.staves.length > 0;
-      
-      // Process voice layers
-      if (comp.voiceLayers && Array.isArray(comp.voiceLayers)) {
-        comp.voiceLayers.forEach(originalVoice => {
-          const newVoiceId = `voice_${compIndex}_${originalVoice.id}`;
-          voiceIdMapping.set(originalVoice.id, newVoiceId);
-          
-          // Create a copy of the voice with the new ID
-          const newVoice = {
-            ...originalVoice,
-            id: newVoiceId,
-            name: `${comp.name}: ${originalVoice.name}`,
-            notes: []
-          };
-          
-          // Add notes to this voice
-          if (comp.notes && Array.isArray(comp.notes)) {
-            const voiceNotes = comp.notes.filter(note => note.voiceId === originalVoice.id);
-            newVoice.notes = voiceNotes.map(note => ({
-              ...note,
-              voiceId: newVoiceId
-            }));
-          }
-          
-          // Add the voice to the combined composition
-          combinedComposition.voiceLayers.push(newVoice);
-          
-          // For compositions without staff data, track voice by clef
-          if (!hasStaffData) {
-            const clef = comp.clef || 'treble';
-            if (!clefToVoices.has(clef)) {
-              clefToVoices.set(clef, []);
-            }
-            clefToVoices.get(clef).push(newVoiceId);
-          }
-        });
-      }
-      
-      // Process chords and merge them
-      if (comp.chordSymbols && Array.isArray(comp.chordSymbols)) {
-        combinedComposition.chordSymbols.push(...comp.chordSymbols);
-      }
-      
-      // Process sections (we don't combine these, but could be extended)
-      if (comp.sections && Array.isArray(comp.sections)) {
-        // Optional: merge sections (would need additional logic to handle measure numbers)
-      }
-    });
-    
-    // Second pass: process staves and assign voices
-    compositionsToMerge.forEach((comp, compIndex) => {
-      // Check if the composition has explicit staff data
-      if (comp.staves && Array.isArray(comp.staves) && comp.staves.length > 0) {
-        // This composition has staff data, so add each staff
-        comp.staves.forEach((staff, staffIndex) => {
-          // Create a new staff with a unique ID
-          const newStaff = {
-            id: `staff_${compIndex}_${staffIndex}`,
-            name: `${comp.name}: ${staff.name}`,
-            clef: staff.clef || 'treble',
-            voiceLayerIds: []
-          };
-          
-          // Map old voice IDs to new voice IDs for this staff
-          if (staff.voiceLayerIds && Array.isArray(staff.voiceLayerIds)) {
-            staff.voiceLayerIds.forEach(oldVoiceId => {
-              const newVoiceId = voiceIdMapping.get(oldVoiceId);
-              if (newVoiceId) {
-                newStaff.voiceLayerIds.push(newVoiceId);
-          }
-        });
-      }
 
-          // Add the staff to the combined composition
-          combinedComposition.staves.push(newStaff);
-        });
-      }
-    });
-    
-    // Handle compositions without staff data, organizing by clef
-    if (clefToVoices.size > 0) {
-      // For each unique clef, create a staff
-      let staffCounter = combinedComposition.staves.length;
-      clefToVoices.forEach((voiceIds, clef) => {
-        const newStaff = {
-          id: `staff_auto_${staffCounter++}`,
-          name: `${clef.charAt(0).toUpperCase() + clef.slice(1)} Staff`,
-          clef: clef,
-          voiceLayerIds: voiceIds
-        };
+    const mergedStaffIdMap = new Map<string, string>(); // oldStaffId -> newStaffId
+    let staffOrder = 0;
+
+    compositionsToMerge.forEach((comp, compIndex) => {
+      // Merge Staves
+      (comp.staves || [{ id: `default_staff_${compIndex}`, clef: 'treble', order: 0, name: `Staff from ${comp.name}` }]).forEach(oldStaff => {
+        const newStaffId = generateId();
+        mergedStaffIdMap.set(`${comp.id}_${oldStaff.id}`, newStaffId); // Prefix with comp.id for uniqueness if oldStaff.id isn't globally unique
         
-        // Add the staff to the combined composition
-        combinedComposition.staves.push(newStaff);
-      });
-    }
-    
-    // If we don't have any staves at all (unlikely), create a default one
-    if (combinedComposition.staves.length === 0) {
-      combinedComposition.staves.push({
-        id: 'staff1',
-        name: 'Staff 1',
-        clef: 'treble',
-        voiceLayerIds: combinedComposition.voiceLayers.map(v => v.id)
-      });
-    }
-    
-    // Collect all notes for the top-level notes array
-    combinedComposition.notes = combinedComposition.voiceLayers.flatMap(voice => 
-      voice.notes.map(note => ({
-        ...note,
-        voiceId: voice.id
-      }))
-    );
+        const newStaffName = oldStaff.name ? `${oldStaff.name} (${comp.name})` : `Staff ${staffOrder + 1} (${comp.name})`;
 
-    // Add the combined composition to saved compositions
-    savedCompositions.value.push(combinedComposition);
-    
-    // Save to localStorage
+        newComposition.staves!.push({
+          id: newStaffId,
+          clef: oldStaff.clef,
+          order: staffOrder++,
+          name: newStaffName,
+        });
+      });
+
+      // Merge Voice Layers
+      (comp.voiceLayers || []).forEach(oldVoice => { // You can also add an index here if needed: (oldVoice, voiceIndex)
+        const originalStaffKey = `${comp.id}_${oldVoice.staffId}`;
+        const newStaffIdForVoice = mergedStaffIdMap.get(originalStaffKey) || (newComposition.staves!.length > 0 ? newComposition.staves![0].id : undefined);
+
+        if (!newStaffIdForVoice) {
+            console.warn(`Could not find new staff ID for voice ${oldVoice.name} from ${comp.name}. Skipping voice.`);
+            return;
+        }
+
+        const newVoice: VoiceLayer = {
+          ...JSON.parse(JSON.stringify(oldVoice)), // Deep clone
+          id: generateId(), // New unique ID for the voice layer
+          staffId: newStaffIdForVoice,
+          name: `${oldVoice.name} (${comp.name})`, // Append original composition name
+          // This is the critical line that was fixed:
+          active: (compIndex === 0 && newComposition.voiceLayers!.length === 0), 
+        };
+        newComposition.voiceLayers!.push(newVoice);
+      });
+
+      // Merge Chord Symbols (avoid duplicates by position on first staff)
+      if (comp.chordSymbols && newComposition.staves!.length > 0) {
+        const firstNewStaffId = newComposition.staves![0].id; // Assume chords are relative to the "main" timeline
+        comp.chordSymbols.forEach(chord => {
+          if (!newComposition.chordSymbols!.some(c => c.position === chord.position)) {
+            newComposition.chordSymbols!.push({ ...JSON.parse(JSON.stringify(chord)), id: generateId() });
+          }
+        });
+      }
+      // TODO: Merge sections and sequence items intelligently if needed
+    });
+
+    if (newComposition.voiceLayers!.length > 0) {
+      newComposition.activeVoiceId = newComposition.voiceLayers![0].id;
+      const activeV = newComposition.voiceLayers!.find(v => v.id === newComposition.activeVoiceId);
+      if (activeV) activeV.active = true;
+
+    } else if (newComposition.staves!.length > 0) {
+        // Add a default voice if no voices were merged but staves exist
+        const defaultVoiceId = generateId();
+        newComposition.voiceLayers!.push({
+            id: defaultVoiceId,
+            name: "Default Merged Voice",
+            color: getRandomColor(),
+            visible: true,
+            active: true,
+            selected: true,
+            volume: 0,
+            notes: [],
+            staffId: newComposition.staves![0].id
+        });
+        newComposition.activeVoiceId = defaultVoiceId;
+    }
+
+
+    console.log('Final merged composition:', newComposition);
+    savedCompositions.value.push(newComposition);
     saveToLocalStorage();
+    alert(`Successfully combined compositions into "${newName}".`);
+    if (confirm('Would you like to load the combined composition now?')) {
+      loadComposition(newComposition.id);
+    }
 
-    // Optional: Load the new composition immediately
-    loadComposition(combinedComposition.id);
-    
-    alert(`Successfully combined ${compositionsToMerge.length} compositions into "${newName}"`);
-    return true;
   } catch (error) {
     console.error('Error combining compositions:', error);
-    alert(`Error combining compositions: ${error.message}`);
-    return false;
+    alert(`Error combining compositions: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 
@@ -4091,7 +4168,7 @@ const playCompositionWithCallback = (sectionStartMeasure = null, sectionEndMeasu
   if (isPlaying.value) return;
   
   isPlaying.value = true;
-  currentPlayingNoteIds.value = []; // Clear any previously playing notes
+  currentPlayingNoteId.value = null;
   
   // Initialize Tone.js if needed
   initializeToneJs();
@@ -4192,13 +4269,10 @@ const playCompositionWithCallback = (sectionStartMeasure = null, sectionEndMeasu
     // Function to play all notes at this position
     const playNotesWithDelay = (notesToPlay, delay) => {
       const callback = () => {
-        // Clear previous notes
-        currentPlayingNoteIds.value = [];
-        
-        // Add all currently playing notes to the array
+        // Play all notes at this position simultaneously
         notesToPlay.forEach(noteToPlay => {
-          // Add to the list of currently playing notes
-          currentPlayingNoteIds.value.push(noteToPlay.id);
+          // Set the current playing note ID
+          currentPlayingNoteId.value = noteToPlay.id;
           
           // Auto-scroll to the playing note if enabled
           if (autoScrollToPlayingNote.value) {
@@ -4206,7 +4280,7 @@ const playCompositionWithCallback = (sectionStartMeasure = null, sectionEndMeasu
           }
           
           if (noteToPlay.type === 'note' && noteToPlay.pitch) {
-            // Map durations to Tone.js format
+            // Play the note
             const toneDurationMap = {
               'whole': '1n',
               'half': '2n',
@@ -4220,7 +4294,7 @@ const playCompositionWithCallback = (sectionStartMeasure = null, sectionEndMeasu
             
             // Adjust volume based on voice settings
             const voice = voiceLayers.value.find(v => v.id === noteToPlay.voiceId);
-            const volume = voice ? voice.volume || 0 : 0; // Default to 0dB if not specified
+            const volume = voice ? voice.volume || 0 : 0;
             
             playNoteSound(
               noteToPlay.pitch, 
@@ -4247,9 +4321,21 @@ const playCompositionWithCallback = (sectionStartMeasure = null, sectionEndMeasu
     // Reset playback state variables
     isPlaying.value = false;
     isPaused.value = false;
-    currentPlayingNoteIds.value = []; // Clear any playing notes
+    currentPlayingNoteId.value = null;
     
-    // ... existing sequence handling ...
+    // Clear any remaining timeouts
+    if (window.playbackTimeouts) {
+      window.playbackTimeouts.forEach(id => clearTimeout(id));
+      window.playbackTimeouts = [];
+    }
+    
+    console.log('Playback complete');
+    
+    // If we're playing a sequence, move to the next section
+    if (isPlayingSequence.value) {
+      currentSequenceIndex.value++;
+      setTimeout(() => playNextInSequence(), 500); // Small delay between sections
+    }
   }, totalDelay * 1000 + 100);
   
   window.playbackTimeouts.push(finalTimeoutId);
@@ -4355,888 +4441,117 @@ const closeFirstTimeInstructions = () => {
 
 // ... existing code ...
 
-// Add this to the script section with other refs
-const staves = ref([
-  {
-    id: 'staff1',
-    name: 'Staff 1',
-    clef: 'treble',
-    voiceLayerIds: [] // IDs of voice layers that belong to this staff
+// Add this function to initialize a default staff and voice
+const initializeDefaultStaffAndVoice = () => {
+  console.log("Initializing default staff and voice.");
+  if (staves.value.length === 0) {
+    const defaultStaffId = generateId();
+    staves.value.push({
+      id: defaultStaffId,
+      clef: 'treble',
+      order: 0,
+      name: 'Staff 1'
+    });
+    activeStaffId.value = defaultStaffId;
+    console.log("Created default staff:", defaultStaffId);
   }
-]);
 
-// Add a function to add a new staff
-const addStaff = () => {
-  const newStaffId = `staff${staves.value.length + 1}`;
-  staves.value.push({
-    id: newStaffId,
-    name: `Staff ${staves.value.length + 1}`,
-    clef: 'treble',
-    voiceLayerIds: []
-  });
+  if (voiceLayers.value.length === 0 && staves.value.length > 0) {
+    const staffToUse = activeStaffId.value || staves.value[0].id;
+    const defaultVoiceId = generateId();
+    voiceLayers.value.push({
+      id: defaultVoiceId,
+      name: 'Voice 1',
+      color: getRandomColor(),
+      visible: true,
+      active: true,
+      selected: true,
+      volume: 0,
+      notes: [],
+      staffId: staffToUse
+    });
+    activeVoiceId.value = defaultVoiceId;
+    console.log("Created default voice:", defaultVoiceId, "on staff:", staffToUse);
+  }
+  // Ensure activeStaffId is set if staves exist
+  if (!activeStaffId.value && staves.value.length > 0) {
+      activeStaffId.value = staves.value[0].id;
+  }
+  // Ensure activeVoiceId is set if voices exist
+  if (!activeVoiceId.value && voiceLayers.value.length > 0) {
+      activeVoiceId.value = voiceLayers.value[0].id;
+      // also update active state for the voice
+      const activeV = voiceLayers.value.find(v => v.id === activeVoiceId.value);
+      if (activeV) activeV.active = true;
+  }
 };
 
-// Add a function to remove a staff
-const removeStaff = (staffId) => {
+// Function to add a new staff
+const addNewStaff = () => {
+  const newStaffId = generateId();
+  const newStaffOrder = staves.value.length;
+  staves.value.push({
+    id: newStaffId,
+    clef: 'treble', // Default to treble
+    order: newStaffOrder,
+    name: `Staff ${newStaffOrder + 1}`
+  });
+  activeStaffId.value = newStaffId; // Make the new staff active
+
+  // Add a default voice to the new staff
+  const newVoiceId = generateId();
+  voiceLayers.value.push({
+    id: newVoiceId,
+    name: `Voice ${voiceLayers.value.length + 1}`,
+    color: getRandomColor(),
+    visible: true,
+    active: true, // Make this new voice active
+    selected: true,
+    volume: 0,
+    notes: [],
+    staffId: newStaffId
+  });
+  switchActiveVoice(newVoiceId); // This will also set activeStaffId correctly
+  console.log(`Added new staff ${newStaffId} and voice ${newVoiceId}`);
+};
+
+// Function to remove a staff
+const removeStaff = (staffIdToRemove: string) => {
   if (staves.value.length <= 1) {
     alert("Cannot remove the last staff.");
     return;
   }
-  
-  const staffIndex = staves.value.findIndex(s => s.id === staffId);
-  if (staffIndex !== -1) {
-    if (confirm(`Are you sure you want to remove ${staves.value[staffIndex].name}?`)) {
-      staves.value.splice(staffIndex, 1);
+  if (confirm("Are you sure you want to remove this staff and all its voices/notes? This cannot be undone.")) {
+    // Remove voices associated with this staff
+    voiceLayers.value = voiceLayers.value.filter(vl => vl.staffId !== staffIdToRemove);
+    // Remove the staff
+    staves.value = staves.value.filter(s => s.id !== staffIdToRemove);
+
+    // Re-order remaining staves
+    staves.value.forEach((s, index) => s.order = index);
+
+    // Update active staff and voice if the removed one was active
+    if (activeStaffId.value === staffIdToRemove) {
+      activeStaffId.value = staves.value.length > 0 ? staves.value[0].id : null;
     }
-  }
-};
-
-// Add a function to change staff clef
-const changeStaffClef = (staffId, newClef) => {
-  const staff = staves.value.find(s => s.id === staffId);
-  if (staff) {
-    staff.clef = newClef;
-  }
-};
-
-// Add a function to assign a voice layer to a staff
-const assignVoiceToStaff = (voiceId, staffId) => {
-  // Check if already assigned
-  const targetStaff = staves.value.find(s => s.id === staffId);
-  if (targetStaff && targetStaff.voiceLayerIds.includes(voiceId)) {
-    return; // Already assigned
-  }
-  
-  // Remove from other staves first
-  staves.value.forEach(staff => {
-    const index = staff.voiceLayerIds.indexOf(voiceId);
-    if (index !== -1) {
-      staff.voiceLayerIds.splice(index, 1);
-    }
-  });
-  
-  // Add to target staff
-  if (targetStaff) {
-    targetStaff.voiceLayerIds.push(voiceId);
-    
-    // Ensure the voice exists
-    if (!voiceLayers.value.some(v => v.id === voiceId)) {
-      // Create a new voice if needed
-      voiceLayers.value.push({
-        id: voiceId,
-        name: `Voice for ${targetStaff.name}`,
-        color: getRandomColor(),
-        visible: true,
-        active: voiceLayers.value.length === 0, // Only active if it's the first one
-        selected: true,
-        volume: 0,
-        notes: []
-      });
-    }
-  }
-};
-
-// Create a helper function to ensure each staff has at least one voice
-const ensureStaffHasVoice = () => {
-  staves.value.forEach(staff => {
-    if (staff.voiceLayerIds.length === 0) {
-      // Create a voice ID specific to this staff
-      const voiceId = `voice_${staff.id}_${Date.now()}`;
-      
-      // Create the voice
-      const newVoice = {
-        id: voiceId,
-        name: `Voice for ${staff.name}`,
-        color: getRandomColor(),
-        visible: true,
-        active: false,
-        selected: true,
-        volume: 0,
-        notes: []
-      };
-      
-      // Add to voice layers
-      voiceLayers.value.push(newVoice);
-      
-      // Assign to staff
-      staff.voiceLayerIds.push(voiceId);
-    }
-  });
-};
-
-// Modify/add a method to get notes for a specific staff
-const getNotesForStaff = (staffId) => {
-  const staff = staves.value.find(s => s.id === staffId);
-  if (!staff) return [];
-  
-  // Get all voice IDs assigned to this staff
-  const voiceIds = staff.voiceLayerIds || [];
-  
-  // Get all voices that belong to this staff and are visible
-  const staffVoices = voiceLayers.value.filter(voice => 
-    voiceIds.includes(voice.id) && voice.visible
-  );
-  
-  // Log for debugging
-  console.log(`Staff ${staffId} has ${voiceIds.length} voice IDs and ${staffVoices.length} visible voices`);
-  
-  // Map all notes from these voices to include voice ID and color
-  const notes = staffVoices.flatMap(voice => 
-    voice.notes.map(note => ({
-      ...note,
-      voiceId: voice.id,
-      voiceColor: voice.color
-    }))
-  );
-  
-  console.log(`Retrieved ${notes.length} notes for staff ${staffId}`);
-  
-  return notes;
-};
-
-// Add function to determine if a chord symbol belongs to a staff
-const isChordInStaffRange = (chord, staffId) => {
-  // For now, simply assign all chord symbols to the first staff
-  // In a more sophisticated implementation, you might assign chords
-  // based on position or have staff-specific chord symbols
-  return staves.value.indexOf(staves.value.find(s => s.id === staffId)) === 0;
-};
-
-// Add this computed to get the staff for a voice
-const getStaffForVoice = (voiceId) => {
-  const staff = staves.value.find(s => s.voiceLayerIds.includes(voiceId));
-  return staff ? staff.id : null;
-};
-
-// Make staffWidth and scrollPosition staff-specific
-const staffSettings = ref(new Map());
-
-// Initialize staff settings with default values
-const initializeStaffSettings = (staffId) => {
-  if (!staffSettings.value.has(staffId)) {
-    staffSettings.value.set(staffId, {
-      scrollPosition: 0,
-      width: staffWidth.value // Use the global default initially
-    });
-  }
-  return staffSettings.value.get(staffId);
-};
-
-// Update the scrollStaff function to be staff-specific
-const scrollStaff = (direction, staffId) => {
-  const settings = initializeStaffSettings(staffId);
-  const scrollAmount = 200; // Amount to scroll in pixels
-
-  if (direction === 'left') {
-    // Scroll left (decrease position)
-    settings.scrollPosition = Math.max(0, settings.scrollPosition - scrollAmount);
-  } else {
-    // Scroll right (increase position)
-    settings.scrollPosition = Math.min(
-      calculateMaxScrollPosition(settings.width), 
-      settings.scrollPosition + scrollAmount
-    );
-  }
-
-  // Apply the scroll position to the specific staff element
-  const staffElement = document.querySelector(`.staff[data-staff-id="${staffId}"]`);
-  if (staffElement) {
-    (staffElement as HTMLElement).style.transform = `translateX(-${settings.scrollPosition}px)`;
-  }
-
-  console.log(`Scrolled ${direction} for staff ${staffId}: position=${settings.scrollPosition}`);
-};
-
-// Calculate max scroll position for a specific staff
-const calculateMaxScrollPosition = (staffWidth) => {
-  return Math.max(0, staffWidth - visibleStaffWidth.value);
-};
-
-// Update the extendStaff function to be staff-specific
-const extendStaff = (staffId) => {
-  const settings = initializeStaffSettings(staffId);
-  
-  // Increase width by enough space for 4 more measures
-  settings.width += measureWidthByTimeSignature.value * 4;
-
-  // Log for debugging
-  console.log(`Extended staff ${staffId}: width=${settings.width}px`);
-
-  // Force a re-render of the staff lines
-  nextTick(() => {
-    const staffElement = document.querySelector(`.staff[data-staff-id="${staffId}"]`);
-    if (staffElement) {
-      (staffElement as HTMLElement).style.width = `${settings.width}px`;
-
-      // Make sure staff lines extend across the full width
-      const staffLines = staffElement.querySelectorAll('.staff-line');
-      staffLines.forEach(line => {
-        (line as HTMLElement).style.width = `${settings.width}px`;
-      });
-    }
-  });
-};
-
-// Helper functions to get staff-specific settings
-// const getStaffWidth = (staffId) => {
-//   return initializeStaffSettings(staffId).width;
-// };
-
-// const getStaffScrollPosition = (staffId) => {
-//   return initializeStaffSettings(staffId).scrollPosition;
-// };
-
-// Initialize settings for all staves
-onMounted(() => {
-  // Other initialization code...
-  
-  // Initialize global staff settings
-  globalStaffSettings.value.width = calculateMaxRequiredWidth();
-  globalStaffSettings.value.scrollPosition = 0;
-  
-  // Initialize settings for all staves
-  staves.value.forEach(staff => {
-    // Initialize any staff-specific settings
-  });
-  
-  // Ensure each staff has at least one voice
-  ensureStaffHasVoice();
-  
-  // Apply the initial width to all staves
-  nextTick(() => {
-    staves.value.forEach(staff => {
-      const staffElement = document.querySelector(`.staff[data-staff-id="${staff.id}"]`);
-      if (staffElement) {
-        staffElement.style.width = `${globalStaffSettings.value.width}px`;
-        
-        // Update staff lines width
-        const staffLines = staffElement.querySelectorAll('.staff-line');
-        staffLines.forEach(line => {
-          line.style.width = `${globalStaffSettings.value.width}px`;
-        });
-      }
-    });
-  });
-});
-
-// Watch for staves changes to initialize settings for new staves
-watch(staves, (newStaves) => {
-  newStaves.forEach(staff => {
-    initializeStaffSettings(staff.id);
-  });
-  
-  // Ensure all staves have at least one voice
-  ensureStaffHasVoice();
-}, { deep: true });
-
-// Fix the staffSettings implementation
-// const staffSettings = ref(new Map());
-
-// Initialize staff settings with a better implementation that doesn't conflict
-// const getStaffSettings = (staffId) => {
-//   if (!staffSettings.value.has(staffId)) {
-//     // Initialize with a copy of the global settings
-//     staffSettings.value.set(staffId, {
-//       scrollPosition: 0,
-//       width: staffWidth.value || 960
-//     });
-//   }
-//   return staffSettings.value.get(staffId);
-// };
-
-// Helper functions for staff-specific settings that don't override global functions
-const getStaffWidth = (staffId) => {
-  return getStaffSettings(staffId).width;
-};
-
-const getStaffScrollPosition = (staffId) => {
-  return getStaffSettings(staffId).scrollPosition;
-};
-
-// Create staff-specific scroll function with a different name to avoid conflicts
-const scrollStaffById = (direction, staffId) => {
-  const scrollAmount = 200; // Amount to scroll in pixels
-
-  if (direction === 'left') {
-    globalStaffSettings.value.scrollPosition = Math.max(0, globalStaffSettings.value.scrollPosition - scrollAmount);
-  } else {
-    const maxScroll = Math.max(0, globalStaffSettings.value.width - visibleStaffWidth.value);
-    globalStaffSettings.value.scrollPosition = Math.min(maxScroll, globalStaffSettings.value.scrollPosition + scrollAmount);
-  }
-
-  // Update all staves to the new scroll position
-  updateAllStaffsPosition();
-};
-
-// Function to update all staff positions
-const updateAllStaffsPosition = () => {
-  staves.value.forEach(staff => {
-    const staffElement = document.querySelector(`.staff[data-staff-id="${staff.id}"]`);
-    if (staffElement) {
-      staffElement.style.transform = `translateX(-${globalStaffSettings.value.scrollPosition}px)`;
-    }
-  });
-};
-
-// Modify the updateStaffPosition to use the global scroll
-const updateStaffPosition = (staffId) => {
-  const staffElement = document.querySelector(`.staff[data-staff-id="${staffId}"]`);
-  if (staffElement) {
-    staffElement.style.transform = `translateX(-${globalStaffSettings.value.scrollPosition}px)`;
-  }
-};
-
-// Update extendStaffById to extend all staves
-const extendStaffById = (staffId) => {
-  // Increase width by enough space for 4 more measures
-  globalStaffSettings.value.width += measureWidthByTimeSignature.value * 4;
-  
-  // Update all staves to the new width
-  updateAllStaffsWidth();
-};
-
-// Function to update all staff widths
-const updateAllStaffsWidth = () => {
-  staves.value.forEach(staff => {
-    const staffElement = document.querySelector(`.staff[data-staff-id="${staff.id}"]`);
-    if (staffElement) {
-      staffElement.style.width = `${globalStaffSettings.value.width}px`;
-      
-      // Update staff lines width
-      const staffLines = staffElement.querySelectorAll('.staff-line');
-      staffLines.forEach(line => {
-        line.style.width = `${globalStaffSettings.value.width}px`;
-      });
-    }
-  });
-};
-
-// Fix the drag handling to work with staff-specific settings
-const startDrag = (event, staffId) => {
-  // Skip if clicking on a note or chord
-  if (event.target.closest('.note') || event.target.closest('.chord-symbol')) {
-    return;
-  }
-
-  const startX = event.touches ? event.touches[0].clientX : event.clientX;
-  const startY = event.touches ? event.touches[0].clientY : event.clientY;
-  const startTime = Date.now();
-  
-  // Get current global scroll position
-  const startScrollPosition = globalStaffSettings.value.scrollPosition;
-  
-  // Prevent default
-  event.preventDefault();
-  
-  // Record drag start position
-  dragStartX.value = startX;
-  dragStartScrollPosition.value = startScrollPosition;
-  
-  let hasDragged = false;
-
-  const moveHandler = (moveEvent) => {
-    const currentX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX;
-    const currentY = moveEvent.touches ? moveEvent.touches[0].clientY : moveEvent.clientY;
-    
-    const distanceX = Math.abs(currentX - startX);
-    const distanceY = Math.abs(currentY - startY);
-    const totalDistance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
-    
-    if (totalDistance > 15) {
-      if (!hasDragged) {
-        hasDragged = true;
-        isDragging.value = true;
-      }
-      
-      moveEvent.preventDefault();
-      
-      // Calculate delta
-      const deltaX = dragStartX.value - currentX;
-      
-      // Update global scroll position
-      const maxScroll = Math.max(0, globalStaffSettings.value.width - visibleStaffWidth.value);
-      globalStaffSettings.value.scrollPosition = Math.max(0, Math.min(maxScroll, startScrollPosition + deltaX));
-      
-      // Apply the scroll to all staves
-      updateAllStaffsPosition();
-    }
-  };
-
-  const endHandler = (endEvent) => {
-    const endTime = Date.now();
-    const timeElapsed = endTime - startTime;
-    
-    if (timeElapsed < 300 && !hasDragged) {
-      isDragging.value = false;
-      
-      // For touch, create a synthetic click
-      if (endEvent.type === 'touchend') {
-        const clickEvent = new MouseEvent('click', {
-          clientX: startX,
-          clientY: startY,
-          bubbles: true,
-          cancelable: true,
-          view: window
-        });
-        endEvent.target.dispatchEvent(clickEvent);
-      }
-    } else if (hasDragged) {
-      setTimeout(() => {
-        isDragging.value = false;
-      }, 50);
-    } else {
-      isDragging.value = false;
-    }
-    
-    // Remove listeners
-    document.removeEventListener('mousemove', moveHandler);
-    document.removeEventListener('mouseup', endHandler);
-    document.removeEventListener('touchmove', moveHandler);
-    document.removeEventListener('touchend', endHandler);
-  };
-
-  // Add listeners based on event type
-  if (event.type === 'mousedown') {
-    document.addEventListener('mousemove', moveHandler);
-    document.addEventListener('mouseup', endHandler);
-  } else if (event.type === 'touchstart') {
-    document.addEventListener('touchmove', moveHandler, { passive: false });
-    document.addEventListener('touchend', endHandler);
-  }
-};
-
-// Add a helper function to check if a note is currently playing
-const isNotePlaying = (noteId: string) => {
-  return currentPlayingNoteIds.value.includes(noteId);
-};
-
-// Update autoScrollToNote to scroll all staves together
-const autoScrollToNote = (note) => {
-  if (!note) return;
-  
-  // Get the note's horizontal position in pixels
-  const notePositionPx = note.position * 50;
-  
-  // Calculate if we need to scroll (if note is off-screen)
-  const noteVisibleLeft = notePositionPx - globalStaffSettings.value.scrollPosition;
-  const noteVisibleRight = noteVisibleLeft + 50; // assuming note width is 50px
-  const visibleWidth = visibleStaffWidth.value;
-  
-  // If note is not fully visible, scroll to make it visible
-  if (noteVisibleLeft < 100 || noteVisibleRight > visibleWidth - 100) {
-    // Center the note in the staff
-    const newScrollPosition = Math.max(0, notePositionPx - (visibleWidth / 2));
-    
-    // Update global scroll position
-    globalStaffSettings.value.scrollPosition = newScrollPosition;
-    
-    // Apply the scrolling to all staves
-    updateAllStaffsPosition();
-  }
-};
-
-// Add a global setting for all staves
-const globalStaffSettings = ref({
-  scrollPosition: 0,
-  width: 960 // Default width
-});
-
-// Update getStaffSettings to use global settings for scrolling and width
-const getStaffSettings = (staffId) => {
-  if (!staffSettings.value.has(staffId)) {
-    staffSettings.value.set(staffId, {
-      // Other staff-specific settings can remain here
-      // But scroll position and width will be shared
-      scrollPosition: 0,
-      width: staffWidth.value || 960
-    });
-  }
-  return {
-    ...staffSettings.value.get(staffId),
-    // Use global settings for shared properties
-    scrollPosition: globalStaffSettings.value.scrollPosition,
-    width: globalStaffSettings.value.width
-  };
-};
-
-// Function to get the maximum width needed based on all notes
-const calculateMaxRequiredWidth = () => {
-  let maxPosition = 0;
-  
-  // Check all notes across all staves
-  staves.value.forEach(staff => {
-    const notes = getNotesForStaff(staff.id);
-    if (notes.length > 0) {
-      const furthestNote = Math.max(...notes.map(note => note.position));
-      maxPosition = Math.max(maxPosition, furthestNote);
-    }
-  });
-  
-  // Add some margin to the end
-  return Math.max(960, (maxPosition + 10) * 50);
-};
-
-// Update importComposition to handle staves
-const importComposition = async (file) => {
-  try {
-    // Read the file as text
-    const fileContent = await file.text();
-    const importedData = JSON.parse(fileContent);
-    
-    // Reset current state
-    resetComposition();
-    
-    // Process the same way as loadComposition but with some validation
-    if (!importedData.id) {
-      importedData.id = crypto.randomUUID();
-    }
-    
-    if (!importedData.dateCreated) {
-      importedData.dateCreated = Date.now();
-    }
-    
-    // Load the imported data as a composition
-    currentCompositionId.value = importedData.id;
-    compositionName.value = importedData.name || 'Imported Composition';
-    currentCompositionDateCreated.value = importedData.dateCreated;
-    
-    // Load time signature, key signature, tempo with defaults
-    timeSignature.value = importedData.timeSignature || '4/4';
-    keySignature.value = importedData.keySignature || 'C';
-    tempo.value = importedData.tempo || 120;
-    
-    // Load chord symbols if available
-    chordSymbols.value = importedData.chordSymbols || [];
-    
-    // Load sections and sequence items if available
-    sections.value = importedData.sections || [];
-    sequenceItems.value = importedData.sequenceItems || [];
-    
-    // Load voice layers
-    if (importedData.voiceLayers && Array.isArray(importedData.voiceLayers)) {
-      voiceLayers.value = importedData.voiceLayers;
-    } else {
-      // Create default voice layer if none exist
-      voiceLayers.value = [{
-        id: 'voice1',
-        name: 'Voice 1',
-        color: '#333333',
-        visible: true,
-        active: true,
-        selected: true,
-        volume: 0,
-        notes: []
-      }];
-    }
-    
-    // Load staves if available
-    if (importedData.staves && Array.isArray(importedData.staves)) {
-      staves.value = importedData.staves;
-    } else {
-      // Create default staff if none exist
-      staves.value = [{
-        id: 'staff1',
-        name: 'Staff 1',
-        clef: 'treble',
-        voiceLayerIds: voiceLayers.value.map(voice => voice.id) // Assign all voices to this staff
-      }];
-    }
-    
-    // Apply global staff settings if available
-    if (importedData.staffSettings) {
-      globalStaffSettings.value.width = importedData.staffSettings.width || calculateMaxRequiredWidth();
-    } else {
-      // Calculate appropriate width based on note positions
-      globalStaffSettings.value.width = calculateMaxRequiredWidth();
-    }
-    
-    // Reset scroll position to start
-    globalStaffSettings.value.scrollPosition = 0;
-    
-    // Load notes into their respective voices
-    if (importedData.notes && Array.isArray(importedData.notes)) {
-      // First, make sure any voice referenced by notes exists
-      const voiceIds = new Set(voiceLayers.value.map(v => v.id));
-      
-      importedData.notes.forEach(note => {
-        if (note.voiceId && !voiceIds.has(note.voiceId)) {
-          // Create missing voice
-          const newVoice = {
-            id: note.voiceId,
-            name: `Voice ${voiceLayers.value.length + 1}`,
-            color: getRandomColor(),
-            visible: true,
-            active: false,
-            selected: true,
-            volume: 0,
-            notes: []
-          };
-          voiceLayers.value.push(newVoice);
-          voiceIds.add(note.voiceId);
-          
-          // Assign to first staff if not assigned elsewhere
-          if (staves.value.length > 0 && !staves.value.some(s => s.voiceLayerIds.includes(note.voiceId))) {
-            staves.value[0].voiceLayerIds.push(note.voiceId);
-          }
+    if (activeStaffId.value && !voiceLayers.value.some(vl => vl.staffId === activeStaffId.value && vl.active)) {
+        const firstVoiceOnNewActiveStaff = voiceLayers.value.find(vl => vl.staffId === activeStaffId.value);
+        if (firstVoiceOnNewActiveStaff) {
+            switchActiveVoice(firstVoiceOnNewActiveStaff.id);
+        } else if (voiceLayers.value.length > 0) {
+            switchActiveVoice(voiceLayers.value[0].id);
+        } else {
+            activeVoiceId.value = ''; // No voices left
         }
-      });
-      
-      // Now distribute notes to their voices
-      voiceLayers.value.forEach(voice => {
-        voice.notes = importedData.notes.filter(note => note.voiceId === voice.id);
-      });
+    } else if (voiceLayers.value.length === 0) {
+        activeVoiceId.value = '';
     }
-    
-    // Ensure every voice is assigned to a staff
-    ensureVoiceAssignment();
-    
-    // Save imported composition
-    saveToLocalStorage();
-    
-    // Update staff widths and positions
-    nextTick(() => {
-      updateAllStaffsPosition();
-      updateAllStaffsWidth();
-    });
-    
-    console.log(`Imported composition: ${compositionName.value}`);
-    return true;
-  } catch (error) {
-    console.error('Error importing composition:', error);
-    alert(`Error importing composition: ${error.message}`);
-    return false;
+    console.log(`Removed staff ${staffIdToRemove}`);
   }
 };
 
-// Update resetComposition to handle staves
-const resetComposition = () => {
-  // Reset all composition data
-  currentCompositionId.value = crypto.randomUUID();
-  compositionName.value = 'New Composition';
-  currentCompositionDateCreated.value = Date.now();
-  
-  // Reset voice layers
-  voiceLayers.value = [{
-    id: 'voice1',
-    name: 'Voice 1',
-    color: '#333333',
-    visible: true,
-    active: true,
-    selected: true,
-    volume: 0,
-    notes: []
-  }];
-  
-  // Reset staves
-  staves.value = [{
-    id: 'staff1',
-    name: 'Staff 1',
-    clef: 'treble',
-    voiceLayerIds: ['voice1']
-  }];
-  
-  // Reset other properties
-  chordSymbols.value = [];
-  sections.value = [];
-  sequenceItems.value = [];
-  
-  // Reset playback state
-  isPlaying.value = false;
-  isPaused.value = false;
-  currentPlayingNoteIds.value = [];
-  
-  // Reset global staff settings
-  globalStaffSettings.value.width = 960; // Default width
-  globalStaffSettings.value.scrollPosition = 0;
-  
-  // Reset selection state
-  selectedNoteId.value = null;
-  
-  // Update UI if needed
-  nextTick(() => {
-    updateAllStaffsPosition();
-    updateAllStaffsWidth();
-  });
-  
-  console.log('Composition reset');
-};
 
-// Add the missing currentCompositionDateCreated ref near the top of the script section
-// Add it near where currentCompositionId is defined
-
-// Find where you have something like:
-// const currentCompositionId = ref('');
-// And add this right after it:
-const currentCompositionDateCreated = ref<number | null>(null);
-
-// Add these functions to handle barlines and beat positions
-// const updateBarlines = () => {
-//   // Calculate measure width based on time signature
-//   const measureWidth = measureWidthByTimeSignature.value;
-//   const initialPosition = 70 + (currentKeySignatureAccidentals.value.length * 10) + 20;
-  
-//   // Clear existing barlines
-//   barlines.value = [];
-  
-//   // Get width of visible area to determine how many barlines to show
-//   const staffWidthValue = globalStaffSettings.value.width;
-//   const numMeasures = Math.ceil(staffWidthValue / measureWidth) + 1; // Add 1 for safety
-  
-//   // Add initial barline
-//   barlines.value.push({
-//     position: initialPosition,
-//     type: 'single',
-//     measureNumber: 1
-//   });
-  
-//   // Add subsequent barlines
-//   for (let i = 1; i < numMeasures; i++) {
-//     const position = initialPosition + (i * measureWidth);
-    
-//     // Regular barline between measures
-//     barlines.value.push({
-//       position,
-//       type: 'single',
-//       measureNumber: i + 1
-//     });
-//   }
-  
-//   console.log(`Generated ${barlines.value.length} barlines`);
-// };
-
-// Update beat positions based on time signature
-// const updateBeatPositions = () => {
-//   // Clear existing beat markers
-//   beatPositions.value = [];
-  
-//   // Parse time signature
-//   const [beatsPerMeasure, beatValue] = timeSignature.value.split('/').map(Number);
-  
-//   // Calculate measure width and get initial position (same as barlines)
-//   const measureWidth = measureWidthByTimeSignature.value;
-//   const initialPosition = 70 + (currentKeySignatureAccidentals.value.length * 10) + 20;
-  
-//   // Calculate beat width
-//   const beatWidth = measureWidth / beatsPerMeasure;
-  
-//   // Get width of visible area to determine how many beat markers to show
-//   const staffWidthValue = globalStaffSettings.value.width;
-//   const numMeasures = Math.ceil(staffWidthValue / measureWidth) + 1; // Add 1 for safety
-  
-//   // Add beat markers for each measure
-//   for (let measure = 0; measure < numMeasures; measure++) {
-//     const measureStart = initialPosition + (measure * measureWidth);
-    
-//     // Add beat markers within each measure (skip first beat as it's the barline)
-//     for (let beat = 1; beat < beatsPerMeasure; beat++) {
-//       const position = measureStart + (beat * beatWidth);
-      
-//       beatPositions.value.push({
-//         position,
-//         measureNumber: measure + 1,
-//         beatNumber: beat + 1
-//       });
-//     }
-//   }
-  
-//   console.log(`Generated ${beatPositions.value.length} beat markers`);
-// };
-
-// Add computed property to calculate measure width based on time signature
-// const measureWidthByTimeSignature = computed(() => {
-//   // Base width
-//   let width = 200; // Default for 4/4
-  
-//   // Adjust based on time signature
-//   const [numerator, denominator] = timeSignature.value.split('/').map(Number);
-  
-//   // Wider for more beats per measure
-//   if (numerator > 4) {
-//     width = 250;
-//   } else if (numerator < 4) {
-//     width = 150;
-//   }
-  
-//   return width;
-// });
-
-// Create writable refs for barlines and beatPositions
-// Add these near your other ref declarations
-const barlinesList = ref([]);
-const beatPositionsList = ref([]);
-
-// Update the barlines function to use the writable ref
-const updateBarlines = () => {
-  // Calculate measure width based on time signature
-  const measureWidth = measureWidthByTimeSignature.value;
-  const initialPosition = 70 + (currentKeySignatureAccidentals.value.length * 10) + 20;
-  
-  // Clear existing barlines
-  barlinesList.value = []; // Use the writable ref
-  
-  // Get width of visible area to determine how many barlines to show
-  const staffWidthValue = globalStaffSettings.value.width;
-  const numMeasures = Math.ceil(staffWidthValue / measureWidth) + 1; // Add 1 for safety
-  
-  // Add initial barline
-  barlinesList.value.push({
-    position: initialPosition,
-    type: 'single',
-    measureNumber: 1
-  });
-  
-  // Add subsequent barlines
-  for (let i = 1; i < numMeasures; i++) {
-    const position = initialPosition + (i * measureWidth);
-    
-    // Regular barline between measures
-    barlinesList.value.push({
-      position,
-      type: 'single',
-      measureNumber: i + 1
-    });
-  }
-  
-  console.log(`Generated ${barlinesList.value.length} barlines`);
-};
-
-// Update beat positions based on time signature
-const updateBeatPositions = () => {
-  // Clear existing beat markers
-  beatPositionsList.value = []; // Use the writable ref
-  
-  // Parse time signature
-  const [beatsPerMeasure, beatValue] = timeSignature.value.split('/').map(Number);
-  
-  // Calculate measure width and get initial position (same as barlines)
-  const measureWidth = measureWidthByTimeSignature.value;
-  const initialPosition = 70 + (currentKeySignatureAccidentals.value.length * 10) + 20;
-  
-  // Calculate beat width
-  const beatWidth = measureWidth / beatsPerMeasure;
-  
-  // Get width of visible area to determine how many beat markers to show
-  const staffWidthValue = globalStaffSettings.value.width;
-  const numMeasures = Math.ceil(staffWidthValue / measureWidth) + 1; // Add 1 for safety
-  
-  // Add beat markers for each measure
-  for (let measure = 0; measure < numMeasures; measure++) {
-    const measureStart = initialPosition + (measure * measureWidth);
-    
-    // Add beat markers within each measure (skip first beat as it's the barline)
-    for (let beat = 1; beat < beatsPerMeasure; beat++) {
-      const position = measureStart + (beat * beatWidth);
-      
-      beatPositionsList.value.push({
-        position,
-        measureNumber: measure + 1,
-        beatNumber: beat + 1
-      });
-    }
-  }
-  
-  console.log(`Generated ${beatPositionsList.value.length} beat markers`);
-};
+// existing code...
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
@@ -5381,53 +4696,4 @@ const updateBeatPositions = () => {
   z-index: 5; /* Above staff lines but below notes */
 }
 
-/* Make playing notes and lyrics more prominent */
-.note.playing {
-  /* Remove the scale transform entirely and use a glow effect instead */
-  filter: brightness(1.2) drop-shadow(0 0 1px rgba(255, 255, 255, 0.8));
-  /* Don't use any transform that could shift the note */
-  z-index: 10;
-  transition: all 0.1s ease;
-}
-
-/* For whole and half notes (hollow noteheads) */
-.note.playing .notehead.whole,
-.note.playing .notehead.half {
-  filter: brightness(1.2);
-  box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
-}
-
-/* For quarter, eighth, etc. (filled noteheads) */
-.note.playing .notehead.quarter,
-.note.playing .notehead.eighth,
-.note.playing .notehead.sixteenth {
-  filter: brightness(1.2);
-}
-
-/* Improve the lyric highlight without moving it */
-.lyric.playing {
-  font-weight: bold;
-  filter: brightness(1.2);
-  /* Remove any transform that could cause movement */
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
-  z-index: 10;
-  transition: all 0.1s ease;
-}
-
-/* Better highlighting for stems and flags */
-.note.playing .stem,
-.note.playing .flag {
-  filter: brightness(1.2);
-}
-
-/* Add a subtle pulse animation for currently playing notes */
-@keyframes subtle-pulse {
-  0% { opacity: 0.9; }
-  50% { opacity: 1; }
-  100% { opacity: 0.9; }
-}
-
-.note.playing {
-  animation: subtle-pulse 0.5s infinite alternate;
-}
 </style>

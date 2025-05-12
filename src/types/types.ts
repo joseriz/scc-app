@@ -9,8 +9,6 @@ export interface Note {
   verticalPosition: number;
   dotted?: boolean;
   lyric?: string;
-  voiceId?: string;
-  voiceColor?: string;
   explicitNatural?: boolean;
 }
 
@@ -19,6 +17,13 @@ export interface ChordSymbol {
   position: number;
   chordName: string;
   top: number;
+}
+
+export interface Stave {
+  id: string;
+  clef: 'treble' | 'bass';
+  order: number;
+  name: string;
 }
 
 export interface VoiceLayer {
@@ -30,6 +35,7 @@ export interface VoiceLayer {
   selected: boolean;
   volume: number;
   notes: Note[];
+  staffId: string;
 }
 
 export interface Section {
@@ -48,26 +54,27 @@ export interface CompositionData {
   id: string;
   name: string;
   dateCreated: number;
-  notes: Note[]; // For a flattened list of all notes from all voices
+  staves?: Stave[];
   voiceLayers?: VoiceLayer[];
+  notes?: Note[];
   tempo: number;
-  clef: string;
   keySignature: string;
   timeSignature?: string;
   chordSymbols?: ChordSymbol[];
   activeVoiceId?: string;
   staffWidth?: number;
-  // UI state saved with the composition
-  selectedDuration: string;
-  selectedNoteType: string;
-  selectedAccidental?: string;
-  selectedOctave: number;
-  isDottedNote: boolean;
+  selectedDuration?: string;
+  selectedNoteType?: string;
+  selectedAccidental?: string | null;
+  selectedOctave?: number;
+  isDottedNote?: boolean;
   sections?: Section[];
   sequenceItems?: SequenceItem[];
 }
 
 export interface NoteWithVoiceInfo extends Note {
-  voiceId: string; // Non-optional here
-  voiceColor: string; // Non-optional here
+  voiceId: string;
+  voiceColor: string;
+  staffId: string;
+  staffClef: 'treble' | 'bass';
 } 

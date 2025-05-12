@@ -979,13 +979,12 @@
   .staff-container {
     border: 1px solid #ddd;
     background: white;
-    margin: 10px 0;
+    /* margin: 10px 0; */ /* Removed margin, handled by staff-outer-container */
     display: flex;
-    height: 300px;
+    /* height: 300px; */ /* Height is now dynamic via minHeight style binding */
     position: relative;
-    overflow: hidden;
-    margin-bottom: 30px;
-    padding-bottom: 20px;
+    overflow: hidden; /* This hides scrollbars if content overflows, which is good for individual staff */
+    /* padding-bottom: 20px; */ /* Padding might interfere with precise layout */
   }
   
   /* Restore tab button active styles */
@@ -2571,6 +2570,7 @@
   padding: 8px;
   border-radius: 8px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  z-index: 50; /* Ensure it's above staff content if overlapping */
 }
 
 /* Responsive adjustments */
@@ -2991,4 +2991,121 @@
   border-top: 3px solid #000;
   border-bottom: 3px solid #000;
   z-index: 9;
+}
+
+/* Add these styles for multi-staff layout */
+.staves-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 20px; /* Space between staves */
+  margin: 10px 0;
+  width: 100%;
+}
+
+.staff-outer-container {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 10px;
+  background-color: #fdfdfd;
+}
+
+.staff-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.staff-header-controls .staff-name {
+  font-weight: bold;
+  flex-grow: 1;
+}
+
+.staff-header-controls select {
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.remove-staff-btn {
+  padding: 5px 10px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.remove-staff-btn:hover {
+  background-color: #d32f2f;
+}
+
+.add-staff-controls {
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.add-staff-btn {
+  padding: 10px 20px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1em;
+}
+.add-staff-btn:hover {
+  background-color: #45a049;
+}
+
+/* Global scroll controls should be positioned relative to the viewport or a main wrapper */
+.staff-scroll-controls-global {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px;
+  background-color: rgba(240, 240, 240, 0.9);
+  border-radius: 8px;
+  position: sticky; /* Make them sticky at the bottom */
+  bottom: 10px;
+  z-index: 100; /* Ensure they are above other content */
+}
+
+.staff-scroll-controls-global .scroll-btn,
+.staff-scroll-controls-global .extend-btn {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.staff-scroll-controls-global .extend-btn {
+  background-color: #4CAF50;
+}
+.staff-scroll-controls-global .scroll-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+
+/* Ensure .staff-scroll-container takes full width within its parent */
+.staff-scroll-container {
+  flex: 1;
+  position: relative;
+  overflow-x: hidden; /* Changed from auto/scroll to hidden, parent .staff handles scroll */
+  /* width: calc(100% - 60px); */ /* This might need adjustment if clef width changes or is part of scroll */
+  width: 100%; /* Let it take full width of its flex parent */
+}
+
+/* The .staff div is the one that actually scrolls */
+.staff {
+  position: relative; /* Was absolute, relative might be better for content flow */
+  /* height: 100%; */ /* Let height be determined by content */
+  padding-top: 0; /* Removed padding-top, clef/key-sig/time-sig are part of this block now */
+  transition: transform 0.1s ease-out; /* Smoother scroll */
+  min-width: 100%; /* Ensure it's at least as wide as its container */
+  cursor: grab;
+  display: block; /* Ensure it behaves as a block for width */
 }
