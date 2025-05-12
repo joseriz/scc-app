@@ -25,14 +25,25 @@
         </div>
 
         <div class="voice-controls">
-          <button @click="emitSwitchActiveVoice(voice.id)" :disabled="voice.active" title="Make active">
-            {{ voice.active ? 'Active' : 'Set Active' }}
+          <button 
+            @click="emitSwitchActiveVoice(voice.id)" 
+            :disabled="voice.active" 
+            :title="voice.active ? 'This voice is active' : 'Set as active voice'"
+            class="control-btn icon-btn"
+            :class="{ 'is-active-btn': voice.active }">
+            {{ voice.active ? '★' : '☆' }}
           </button>
-          <button @click="emitToggleVoiceVisibility(voice.id)" :title="voice.visible ? 'Hide' : 'Show'">
-            {{ voice.visible ? 'Visible' : 'Hidden' }}
+          <button 
+            @click="emitToggleVoiceVisibility(voice.id)" 
+            :title="voice.visible ? 'Visible | Click to Hide' : 'Hidden | Click to Show'"
+            class="control-btn icon-btn">
+            {{ voice.visible ? '👁️' : '🙈' }}
           </button>
-          <button @click="emitUpdateVoiceSelection(voice.id)" :title="voice.selected ? 'Deselect for Playback' : 'Select for Playback'">
-            {{ voice.selected ? 'Playing' : 'Not Playing' }}
+          <button 
+            @click="emitUpdateVoiceSelection(voice.id)" 
+            :title="voice.selected ? 'Selected for Playback | Click to Exclude' : 'Not Selected for Playback | Click to Include'"
+            class="control-btn icon-btn">
+            {{ voice.selected ? '🔊' : '🔇' }}
           </button>
         </div>
 
@@ -69,7 +80,7 @@
         </div>
 
         <div class="voice-actions">
-          <button @click="emitConfirmDeleteVoice(voice.id)" class="delete-voice-btn" title="Delete voice">
+          <button @click="emitConfirmDeleteVoice(voice.id)" class="control-btn icon-btn delete-voice-btn" title="Delete voice">
             🗑️
           </button>
         </div>
@@ -320,29 +331,44 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
 
 .voice-controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-wrap: nowrap; /* Keep icons in a row */
+  gap: 5px; /* Space between icon buttons */
   align-items: center;
   grid-column: 2 / 3; 
-  justify-self: start;
+  justify-self: start; /* Align to the start of the grid cell */
 }
 
-.voice-controls button {
-  padding: 5px 10px;
-  font-size: 12px;
-  border: 1px solid #ccc;
+/* New styles for icon buttons */
+.control-btn.icon-btn {
   background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  color: #333;
+  padding: 6px 8px; /* Adjust for compactness */
+  font-size: 1.1em; /* Adjust icon size */
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, border-color 0.2s;
+  line-height: 1; /* Ensure icon is centered vertically */
+  min-width: 36px; /* Ensure buttons have a decent tap target */
+  text-align: center;
 }
-.voice-controls button:hover {
+
+.control-btn.icon-btn:hover {
   background-color: #e0e0e0;
+  border-color: #bbb;
 }
-.voice-controls button:disabled {
+
+.control-btn.icon-btn:disabled {
   background-color: #e9e9e9;
   color: #999;
   cursor: not-allowed;
+  border-color: #ddd;
+}
+
+.control-btn.icon-btn.is-active-btn:disabled { /* Style for the active voice star button */
+  color: #FFC107; /* Gold color for active star */
+  background-color: #f0f0f0; /* Keep background consistent or slightly different */
+  border-color: #FFC107;
 }
 
 .voice-staff-assignment {
@@ -400,18 +426,19 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
 .voice-actions {
   grid-column: 3 / 4; 
   justify-self: end;
+  align-self: center; /* Vertically align delete button with voice-info */
 }
 
 .delete-voice-btn {
-  background: none;
+  background: none; /* Make delete button transparent */
   border: none;
   color: #f44336;
-  font-size: 18px;
-  cursor: pointer;
+  font-size: 1.3em; /* Slightly larger delete icon */
   padding: 5px;
 }
 .delete-voice-btn:hover {
   color: #c62828;
+  background-color: #f0f0f0; /* Slight background on hover */
 }
 
 .no-voices-message {

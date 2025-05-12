@@ -87,8 +87,8 @@
           </div>
 
           <!-- Add this right after the staff-lines div and before the notes container -->
-              <!-- Render section markers only on the first staff to avoid duplication -->
-              <div v-if="staveIndex === 0" class="section-markers-container">
+              <!-- Render section markers on all staves -->
+              <div class="section-markers-container">
             <div v-for="section in sections" 
                  :key="`section-${section.id}`" 
                  class="section-markers"
