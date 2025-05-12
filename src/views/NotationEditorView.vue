@@ -21,7 +21,24 @@
     <div class="staves-wrapper">
       <div v-for="(stave, staveIndex) in staves" :key="stave.id" class="staff-outer-container">
         <div class="staff-header-controls">
-          <span class="staff-name">{{ stave.name || `Staff ${staveIndex + 1}` }}</span>
+          <span 
+            v-if="editingStaffNameId !== stave.id" 
+            class="staff-name" 
+            @click="editStaffName(stave)" 
+            title="Click to rename staff"
+          >
+            {{ stave.name || `Staff ${staveIndex + 1}` }}
+          </span>
+          <input 
+            v-else 
+            type="text"
+            :value="stave.name || `Staff ${staveIndex + 1}`"
+            @blur="saveStaffName(stave, $event)"
+            @keyup.enter="saveStaffName(stave, $event)"
+            @keyup.esc="cancelEditStaffName(stave, $event)"
+            ref="staffNameInput"
+            class="staff-name-input"
+          />
           <select v-model="stave.clef" @change="handleStaffClefChange(stave)">
             <option value="treble">Treble</option>
             <option value="bass">Bass</option>
@@ -339,10 +356,20 @@
 
     <HelpGuide :is-visible="showHelp" @close="showHelp = false" />
 
-    <VoiceLayersPanel :voiceLayers="voiceLayers" v-model:playSelectedVoicesOnly="playSelectedVoicesOnly"
-      @renameVoice="renameVoice" @changeVoiceColor="changeVoiceColor" @switchActiveVoice="switchActiveVoice"
-      @toggleVoiceVisibility="toggleVoiceVisibility" @updateVoiceSelection="updateVoiceLayerSelection"
-      @confirmDeleteVoice="confirmDeleteVoice" @addVoiceLayer="addVoiceLayer" />
+    <VoiceLayersPanel 
+      :voiceLayers="voiceLayers" 
+      :staves="staves"
+      :activeStaffId="activeStaffId"
+      v-model:playSelectedVoicesOnly="playSelectedVoicesOnly"
+      @renameVoice="renameVoice" 
+      @changeVoiceColor="changeVoiceColor" 
+      @switchActiveVoice="switchActiveVoice"
+      @toggleVoiceVisibility="toggleVoiceVisibility" 
+      @updateVoiceSelection="updateVoiceLayerSelection"
+      @confirmDeleteVoice="confirmDeleteVoice" 
+      @addVoiceLayer="addVoiceLayer"
+      @assignVoiceToStaff="assignVoiceToStaff"
+    />
     
     <!-- Add the FirstTimeInstructionModal component -->
     <FirstTimeInstructionModal 
@@ -407,6 +434,11 @@ const exportOnlySelectedVoices = ref(false); // New ref for export option
 // --- Stave Management ---
 const staves = ref<Stave[]>([]);
 const activeStaffId = ref<string | null>(null); // ID of the staff currently active for input
+
+// Ref for staff name editing
+const editingStaffNameId = ref<string | null>(null);
+// const staffNameInput = ref<HTMLInputElement | null>(null); // Old type
+const staffNameInput = ref<HTMLInputElement[]>([]); // Correct type: array of input elements
 
 // Helper function to generate a random hex color
 const getRandomColor = (): string => {
@@ -832,7 +864,7 @@ const getKeySignaturePosition = (accidental: string, clef: 'treble' | 'bass') =>
   let positions: Record<string, number> = {};
 
   if (clef === 'treble') {
-    // Standard order for sharps: F, C, G, D, A, E, B
+     // Standard order for sharps: F, C, G, D, A, E, B
     const sharpPositionsTreble: Record<string, number> = { 'F': 100, 'C': 122.5, 'G': 92.5, 'D': 115, 'A': 137.5, 'E': 85, 'B': 107.5 };
     // Standard order for flats: B, E, A, D, G, C, F
     const flatPositionsTreble: Record<string, number> = { 'B': 130, 'E': 107.5, 'A': 137.5, 'D': 115, 'G': 145, 'C': 122.5, 'F': 152.5 };
@@ -1537,32 +1569,33 @@ const getAccidentalSymbol = (note: ImportedNote) => {
 };
 
 // Add this new function to handle clef change
-const handleStaffClefChange = (staveToUpdate: Stave) => {
-  const staffIndex = staves.value.findIndex(s => s.id === staveToUpdate.id);
-  if (staffIndex === -1) return;
+const handleStaffClefChange = (stave: Stave) => {
+  // The v-model on the select already updates stave.clef.
+  // Now, we need to update the vertical position of all notes on this staff.
 
-  // Confirm if notes exist on this staff
-  const notesOnStaff = voiceLayers.value.some(vl => vl.staffId === staveToUpdate.id && vl.notes.length > 0);
+  console.log(`Clef for staff ${stave.name || stave.id} (ID: ${stave.id}) changed to ${stave.clef}. Updating note positions.`);
 
-  if (notesOnStaff) {
-    if (confirm(`Changing clef for "${staveToUpdate.name || `Staff ${staffIndex + 1}`}" might misplace existing notes. Continue?`)) {
-      // Update vertical positions of notes on this staff
+  let notesUpdatedCount = 0;
       voiceLayers.value.forEach(voice => {
-        if (voice.staffId === staveToUpdate.id) {
+    if (voice.staffId === stave.id) {
           voice.notes.forEach(note => {
-            if (note.pitch) {
-              note.verticalPosition = getPitchPosition(note.pitch, staveToUpdate.clef);
+        if (note.pitch) { // Only notes with a pitch have a vertical position dependent on clef
+          const oldPosition = note.verticalPosition;
+          note.verticalPosition = getPitchPosition(note.pitch, stave.clef);
+          if (oldPosition !== note.verticalPosition) {
+            notesUpdatedCount++;
+            // console.log(`Note ${note.id} (${note.pitch}) on staff ${stave.id} moved from ${oldPosition} to ${note.verticalPosition}`);
+          }
             }
           });
         }
       });
-    } else {
-      // Revert clef change if user cancels
-      staves.value[staffIndex].clef = staves.value[staffIndex].clef === 'treble' ? 'bass' : 'treble';
-      return;
-    }
+
+  if (notesUpdatedCount > 0) {
+    console.log(`Updated vertical positions for ${notesUpdatedCount} notes on staff ${stave.id} due to clef change.`);
   }
-  console.log(`Clef for staff ${staveToUpdate.id} changed to ${staveToUpdate.clef}`);
+  
+  saveToLocalStorage(); // Save changes after updating note positions
 };
 
 // Add a new ref for the active tab
@@ -3673,31 +3706,61 @@ const deleteVoice = (voiceIdToDelete: string) => {
 };
 
 // Add a function to add a new voice layer
-const addVoiceLayer = () => {
-  if (!activeStaffId.value && staves.value.length > 0) {
-    activeStaffId.value = staves.value[0].id; // Default to first staff if none active
-  } else if (staves.value.length === 0) {
-    alert("Please add a staff before adding a voice layer.");
+const addVoiceLayer = (staffIdToAddVoiceTo?: string) => {
+  let targetStaffId = staffIdToAddVoiceTo || activeStaffId.value;
+
+  if (!targetStaffId && staves.value.length > 0) {
+    targetStaffId = staves.value[0].id; // Default to the first staff if no active one
+  } else if (!targetStaffId && staves.value.length === 0) {
+    // If no staves exist, create one first
+    const newStaffId = generateId();
+    staves.value.push({ id: newStaffId, clef: 'treble', order: 0, name: 'Staff 1' });
+    activeStaffId.value = newStaffId;
+    targetStaffId = newStaffId;
+    console.log("No staves found when adding voice, created a default staff:", newStaffId);
+  }
+  
+  if (!targetStaffId) {
+    alert("Cannot add voice layer: No staff available or selected.");
+    console.error("Failed to add voice layer: No targetStaffId determined.");
     return;
   }
 
-
-  const newId = generateId(); // Use the robust generateId
-  const newName = `Voice ${voiceLayers.value.length + 1}`;
-
-  voiceLayers.value.push({
-    id: newId,
-    name: newName,
-    color: getDefaultVoiceColor(newId) || getRandomColor(),
+  const newVoiceId = generateId();
+  const newVoice: VoiceLayer = {
+    id: newVoiceId,
+    name: `Voice ${voiceLayers.value.length + 1}`,
+    color: getRandomColor(),
     visible: true,
-    active: false, // New voices are not active by default, user can switch
-    selected: true,
+    active: false, // New voices are not active by default, user switches to them
+    selected: true, // Selected for playback by default
     volume: 0,
     notes: [],
-    staffId: activeStaffId.value || staves.value[0].id // Assign to active or first staff
-  });
-  // Optionally, make the new voice active:
-  // switchActiveVoice(newId);
+    staffId: targetStaffId,
+  };
+  voiceLayers.value.push(newVoice);
+  switchActiveVoice(newVoiceId); // Make the new voice active
+  console.log(`Added new voice layer ${newVoiceId} to staff ${targetStaffId}`);
+  saveToLocalStorage();
+};
+
+// Function to assign a voice to a different staff
+const assignVoiceToStaff = (voiceId: string, newStaffId: string) => {
+  const voice = voiceLayers.value.find(v => v.id === voiceId);
+  const staffExists = staves.value.some(s => s.id === newStaffId);
+
+  if (voice && staffExists) {
+    voice.staffId = newStaffId;
+    console.log(`Voice ${voice.name} assigned to staff ${newStaffId}`);
+    // If this voice was active, ensure the activeStaffId is also updated
+    if (voice.active) {
+      activeStaffId.value = newStaffId;
+    }
+    saveToLocalStorage();
+  } else {
+    console.error(`Failed to assign voice ${voiceId} to staff ${newStaffId}. Voice or staff not found.`);
+    alert("Error assigning voice to staff. Please try again.");
+  }
 };
 
 // End of your script section with watches
@@ -3900,222 +3963,208 @@ const {
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 // Add this function near other composition-related functions (around line 2060)
-const combineCompositions = (compositionIds: string[], newName: string) => {
-  console.log('[[COMBINE COMPOSITIONS CALLED]] - Timestamp:', Date.now());
-  console.log('[[COMBINE COMPOSITIONS]] - Received IDs:', compositionIds, 'New Name:', newName);
-
-  if (compositionIds.length < 1) { // Changed from < 2 to < 1, can "combine" one to rename/restructure
-    alert('Please select at least one composition to combine/process.');
+const combineCompositions = (compositionIds: string[], newName: string, preserveStaves: boolean) => {
+  const compositionsToCombine = savedCompositions.value.filter(comp => compositionIds.includes(comp.id));
+  if (compositionsToCombine.length < 2) {
+    alert("Please select at least two compositions to combine.");
     return;
   }
 
-  const compositionsToMerge = savedCompositions.value.filter(comp =>
-    compositionIds.includes(comp.id)
-  );
+  console.log(`Combining ${compositionsToCombine.length} compositions. Preserve staves: ${preserveStaves}`);
 
-  if (compositionsToMerge.length !== compositionIds.length) {
-    alert('Some selected compositions could not be found. Please refresh and try again.');
-    return;
-  }
+  stopPlayback(); // Stop any current playback
 
-  try {
-    console.log('Starting composition merge with:', compositionsToMerge.map(c => c.name));
-
-    const baseCompositionForSettings = compositionsToMerge[0]; // Use first for global settings
-    const newCompositionId = generateId();
-
+  // Create a new base composition structure
     const newComposition: CompositionData = {
-      id: newCompositionId,
-      name: newName,
+    id: generateId(),
+    name: newName || "Combined Composition",
       dateCreated: Date.now(),
       staves: [],
       voiceLayers: [],
-      tempo: baseCompositionForSettings.tempo || 120,
-      keySignature: baseCompositionForSettings.keySignature || 'C',
-      timeSignature: baseCompositionForSettings.timeSignature || '4/4',
-      chordSymbols: baseCompositionForSettings.chordSymbols ? JSON.parse(JSON.stringify(baseCompositionForSettings.chordSymbols)) : [],
-      activeVoiceId: '',
-      staffWidth: baseCompositionForSettings.staffWidth || 2000,
-      selectedDuration: baseCompositionForSettings.selectedDuration || 'quarter',
-      selectedNoteType: baseCompositionForSettings.selectedNoteType || 'note',
-      selectedAccidental: baseCompositionForSettings.selectedAccidental !== undefined ? baseCompositionForSettings.selectedAccidental : null,
-      selectedOctave: baseCompositionForSettings.selectedOctave || 4,
-      isDottedNote: baseCompositionForSettings.isDottedNote || false,
-      sections: baseCompositionForSettings.sections ? JSON.parse(JSON.stringify(baseCompositionForSettings.sections)) : [],
-      sequenceItems: baseCompositionForSettings.sequenceItems ? JSON.parse(JSON.stringify(baseCompositionForSettings.sequenceItems)) : [],
-    };
+    keySignature: compositionsToCombine[0].keySignature || 'C', // Take from first composition
+    timeSignature: compositionsToCombine[0].timeSignature || '4/4', // Take from first composition
+    tempo: compositionsToCombine[0].tempo || 120,
+    staffWidth: compositionsToCombine[0].staffWidth || 2000,
+    // notes: [], // Notes will be part of voice layers
+    sections: [], // Sections could be complex to merge, starting fresh or taking from first
+    sequenceItems: [], // Same for sequence items
+    // Other metadata from the first composition or averaged/defaulted
+    selectedDuration: compositionsToCombine[0].selectedDuration || 'quarter',
+    selectedOctave: compositionsToCombine[0].selectedOctave || 4,
+    isDottedNote: compositionsToCombine[0].isDottedNote || false,
+  };
 
-    const mergedStaffIdMap = new Map<string, string>(); // oldCompId_oldStaffId -> newStaffId
-    let staffOrder = 0;
+  const staffIdMap: Record<string, string> = {}; // Maps old staff IDs to new staff IDs
+  const voiceIdMap: Record<string, string> = {}; // Maps old voice IDs to new voice IDs
 
-    compositionsToMerge.forEach((comp, compIndex) => {
-      console.log(`[[COMBINE COMPOSITIONS]] - Processing comp ${compIndex}: ${comp.name}`);
-      const compSpecificNewStaffIds: string[] = [];
+  compositionsToCombine.forEach((comp, compIndex) => {
+    console.log(`Processing composition: ${comp.name}`, comp);
+    const compStaves = comp.staves || [];
+    const compVoiceLayers = comp.voiceLayers || [];
 
-      // 1. Merge Staves from current 'comp'
-      if (comp.staves && comp.staves.length > 0) {
-        comp.staves.forEach(oldStaff => {
+    if (preserveStaves) {
+      compStaves.forEach((oldStaff: Stave) => {
           const newStaffId = generateId();
-          mergedStaffIdMap.set(`${comp.id}_${oldStaff.id}`, newStaffId);
-          compSpecificNewStaffIds.push(newStaffId);
-          newComposition.staves!.push({
+        staffIdMap[oldStaff.id] = newStaffId;
+        const newStaff: Stave = {
             id: newStaffId,
-            clef: oldStaff.clef,
-            order: staffOrder++,
-            name: oldStaff.name ? `${oldStaff.name} (from ${comp.name})` : `Staff ${staffOrder} (from ${comp.name})`,
-          });
-        });
-      } else {
-        // No staves in 'comp', create one default new staff for this 'comp'
-        const newDefaultStaffId = generateId();
-        mergedStaffIdMap.set(`${comp.id}_default_staff`, newDefaultStaffId); // For mapping flat notes if any
-        compSpecificNewStaffIds.push(newDefaultStaffId);
-        newComposition.staves!.push({
-          id: newDefaultStaffId,
-          clef: 'treble', // Default clef
-          order: staffOrder++,
-          name: `Staff ${staffOrder} (from ${comp.name})`,
-        });
-      }
+          name: `${oldStaff.name || `Staff ${compIndex + 1}-${newComposition.staves!.length + 1}`} (from ${comp.name})`,
+          clef: oldStaff.clef || 'treble', // *** Preserve original clef ***
+          order: newComposition.staves!.length
+        };
+        newComposition.staves!.push(newStaff);
+        console.log(`Created new staff ${newStaff.id} with clef ${newStaff.clef} from old staff ${oldStaff.id}`);
+      });
 
-      // 2. Merge Voice Layers from current 'comp'
-      if (comp.voiceLayers && comp.voiceLayers.length > 0) {
-        comp.voiceLayers.forEach(oldVoice => {
-          const originalStaffKey = `${comp.id}_${oldVoice.staffId}`;
-          let newStaffIdForVoice = mergedStaffIdMap.get(originalStaffKey);
+      compVoiceLayers.forEach(oldVoice => {
+        const newVoiceId = generateId();
+        voiceIdMap[oldVoice.id] = newVoiceId;
+        const newStaffIdForVoice = oldVoice.staffId ? staffIdMap[oldVoice.staffId] : undefined;
 
-          if (!newStaffIdForVoice) {
-            // If old voice's staffId wasn't in comp.staves or couldn't be mapped,
-            // assign to the first new staff created for *this specific comp*.
-            newStaffIdForVoice = compSpecificNewStaffIds[0];
-            console.warn(`Could not map old staff ID for voice ${oldVoice.name}. Assigning to first new staff from ${comp.name}: ${newStaffIdForVoice}`);
-          }
+        if (!newStaffIdForVoice && newComposition.staves!.length > 0) {
+          console.warn(`Voice ${oldVoice.name} had no staff or unmapped staff. Assigning to first new staff.`);
+           // Attempt to find a staff from the same original composition if possible
+          const originalCompStaff = newComposition.staves!.find(s => s.name?.includes(`(from ${comp.name})`));
+          const targetStaff = originalCompStaff || newComposition.staves![0];
           
           const newVoice: VoiceLayer = {
-            ...JSON.parse(JSON.stringify(oldVoice)),
-            id: generateId(),
-            staffId: newStaffIdForVoice!,
+            ...oldVoice,
+            id: newVoiceId,
+            staffId: targetStaff.id, // Assign to a valid new staff
             name: `${oldVoice.name} (from ${comp.name})`,
-            active: (compIndex === 0 && newComposition.voiceLayers!.length === 0), // First voice of first comp is active
-            notes: (oldVoice.notes || []).map(n => { // Ensure notes are cleaned
-                const { voiceId, voiceColor, ...rest } = n; return rest;
-            })
+            notes: (oldVoice.notes || []).map(n => ({ ...n, id: generateId() })), // New IDs for notes
+            active: false, // Deactivate by default
+            selected: oldVoice.selected !== undefined ? oldVoice.selected : true,
+          };
+          newComposition.voiceLayers!.push(newVoice);
+          console.log(`Added voice ${newVoice.id} to staff ${newVoice.staffId}`);
+        } else if (newStaffIdForVoice) {
+           const newVoice: VoiceLayer = {
+            ...oldVoice,
+            id: newVoiceId,
+            staffId: newStaffIdForVoice,
+            name: `${oldVoice.name} (from ${comp.name})`,
+            notes: (oldVoice.notes || []).map(n => ({ ...n, id: generateId() })),
+            active: false,
+            selected: oldVoice.selected !== undefined ? oldVoice.selected : true,
+          };
+          newComposition.voiceLayers!.push(newVoice);
+          console.log(`Added voice ${newVoice.id} to staff ${newVoice.staffId}`);
+      } else {
+            console.error(`Could not find a staff for voice ${oldVoice.name} from ${comp.name}. Skipping voice.`);
+        }
+      });
+
+    } else { // Not preserving staves - create one new staff per old composition
+      const compSpecificNewStaffIds: string[] = [];
+      if (compStaves.length > 0) {
+        // Create one new staff for this composition, taking clef from its first original staff
+        const newStaffId = generateId();
+        const firstOldStaffClef = compStaves[0].clef || 'treble';
+        const newStaffForComp: Stave = {
+          id: newStaffId,
+          name: `${comp.name} - Merged Staff ${newComposition.staves!.length + 1}`,
+          clef: firstOldStaffClef, // *** Use clef from first original staff ***
+          order: newComposition.staves!.length
+        };
+        newComposition.staves!.push(newStaffForComp);
+        compSpecificNewStaffIds.push(newStaffId);
+        staffIdMap[`${comp.id}_defaultStaff`] = newStaffId; // Generic mapping for this comp's voices
+        console.log(`Created merged staff ${newStaffId} with clef ${firstOldStaffClef} for composition ${comp.name}`);
+      } else {
+        // If the old composition had no staves defined, create a default treble staff for its voices
+        const newStaffId = generateId();
+        const newStaffForComp: Stave = {
+          id: newStaffId,
+          name: `${comp.name} - Default Staff ${newComposition.staves!.length + 1}`,
+          clef: 'treble', // Default if no original staves
+          order: newComposition.staves!.length
+        };
+        newComposition.staves!.push(newStaffForComp);
+        compSpecificNewStaffIds.push(newStaffId);
+        staffIdMap[`${comp.id}_defaultStaff`] = newStaffId;
+        console.log(`Created default staff ${newStaffId} with clef treble for composition ${comp.name} (had no staves)`);
+      }
+      
+      const targetStaffIdForCompVoices = compSpecificNewStaffIds[0] || (newComposition.staves!.length > 0 ? newComposition.staves![0].id : undefined);
+
+      if (!targetStaffIdForCompVoices) {
+        console.error(`Cannot add voices for ${comp.name} as no target staff could be determined or created.`);
+        return; // Skip voices for this comp if no staff
+      }
+
+      compVoiceLayers.forEach(oldVoice => {
+        const newVoiceId = generateId();
+        voiceIdMap[oldVoice.id] = newVoiceId;
+          const newVoice: VoiceLayer = {
+          ...oldVoice,
+          id: newVoiceId,
+          staffId: targetStaffIdForCompVoices, // All voices from this comp go to its new single staff
+            name: `${oldVoice.name} (from ${comp.name})`,
+          notes: (oldVoice.notes || []).map(n => ({ ...n, id: generateId() })),
+          active: false,
+          selected: oldVoice.selected !== undefined ? oldVoice.selected : true,
           };
           newComposition.voiceLayers!.push(newVoice);
         });
-      } else {
-        // No explicit voiceLayers in 'comp'.
-        // Create default voice(s) based on staves or flat notes.
-        if (comp.staves && comp.staves.length > 0) {
-          // Create one default voice for each new staff derived from this 'comp'
-          compSpecificNewStaffIds.forEach((newStaffId, staffIdxInComp) => {
+
+      // Handle 'flat notes' if they exist on the old composition (legacy)
+      // These notes need to be assigned to a voice on the new staff for this composition.
+      if ((comp as any).notes && (comp as any).notes.length > 0) {
+        console.log(`Migrating ${comp.notes.length} flat notes from ${comp.name}`);
+        let defaultVoiceForFlatNotes = newComposition.voiceLayers!.find(
+          vl => vl.staffId === targetStaffIdForCompVoices && vl.name?.includes('(from ${comp.name})')
+        );
+        if (!defaultVoiceForFlatNotes) {
             const newDefaultVoiceId = generateId();
-            const defaultVoiceForStaff: VoiceLayer = {
+          defaultVoiceForFlatNotes = {
               id: newDefaultVoiceId,
-              name: `Default Voice ${newComposition.voiceLayers!.length + 1} (Staff ${staffOrder - compSpecificNewStaffIds.length + staffIdxInComp +1}, from ${comp.name})`,
+            name: `Default Voice (from ${comp.name} flat notes)`,
               color: getRandomColor(),
               visible: true,
-              active: (compIndex === 0 && newComposition.voiceLayers!.length === 0 && staffIdxInComp === 0),
+            active: false,
               selected: true,
               volume: 0,
               notes: [],
-              staffId: newStaffId,
-            };
-            // If this is the first staff from 'comp' and 'comp' has flat notes, assign them here
-            if (staffIdxInComp === 0 && comp.notes && comp.notes.length > 0) {
-              console.log(`Assigning flat notes from ${comp.name} to default voice on its first new staff.`);
-              defaultVoiceForStaff.notes = comp.notes.map(n => {
-                const { voiceId, voiceColor, ...rest } = n; return rest;
-              });
-            }
-            newComposition.voiceLayers!.push(defaultVoiceForStaff);
+            staffId: targetStaffIdForCompVoices,
+          };
+          newComposition.voiceLayers!.push(defaultVoiceForFlatNotes);
+          console.log(`Created default voice ${defaultVoiceForFlatNotes.id} for flat notes from ${comp.name} on staff ${targetStaffIdForCompVoices}`);
+        }
+        (comp as any).notes.forEach((note: any) => {
+          const { voiceId, voiceColor, ...restOfNote } = note;
+          defaultVoiceForFlatNotes!.notes.push({
+            ...restOfNote,
+            id: generateId(),
           });
-        } else if (comp.notes && comp.notes.length > 0) {
-          // No staves in 'comp', but has flat notes. Assign to the one default staff created for 'comp'.
-          const newDefaultVoiceId = generateId();
-          newComposition.voiceLayers!.push({
-            id: newDefaultVoiceId,
-            name: `Default Voice ${newComposition.voiceLayers!.length + 1} (from ${comp.name} flat notes)`,
-          color: getRandomColor(),
-          visible: true,
-            active: (compIndex === 0 && newComposition.voiceLayers!.length === 0),
-          selected: true,
-          volume: 0,
-            notes: comp.notes.map(n => {
-                const { voiceId, voiceColor, ...rest } = n; return rest;
-            }),
-            staffId: compSpecificNewStaffIds[0], // The one default staff for this comp
-          });
-      } else {
-          // No staves, no voiceLayers, no flat notes in 'comp'. Create one default voice on its default staff.
-          const newDefaultVoiceId = generateId();
-          newComposition.voiceLayers!.push({
-            id: newDefaultVoiceId,
-            name: `Default Voice ${newComposition.voiceLayers!.length + 1} (Empty ${comp.name})`,
-            color: getRandomColor(),
-            visible: true,
-            active: (compIndex === 0 && newComposition.voiceLayers!.length === 0),
-            selected: true,
-            volume: 0,
-            notes: [],
-            staffId: compSpecificNewStaffIds[0], // The one default staff for this comp
           });
         }
       }
+  });
 
-      // Merge Chord Symbols (from baseCompositionForSettings, avoid duplicates by position)
-      // This part might need refinement if chords should be merged from all comps
-      if (compIndex === 0 && comp.chordSymbols) { // Only take chords from the first composition for now
-        comp.chordSymbols.forEach(chord => {
-           if (!newComposition.chordSymbols!.some(c => c.position === chord.position)) {
-             newComposition.chordSymbols!.push({ ...JSON.parse(JSON.stringify(chord)), id: generateId() });
-          }
-        });
-      }
-    });
-
-    // Ensure at least one voice is active if any voices exist
-    if (newComposition.voiceLayers!.length > 0 && !newComposition.voiceLayers!.some(v => v.active)) {
-      newComposition.voiceLayers![0].active = true;
-      newComposition.activeVoiceId = newComposition.voiceLayers![0].id;
-    } else if (newComposition.voiceLayers!.some(v => v.active)) {
-        newComposition.activeVoiceId = newComposition.voiceLayers!.find(v => v.active)!.id;
-    }
-
-
-    // If no staves or voices were created at all (e.g., combining truly empty selections)
+  // Final cleanup and loading
     if (newComposition.staves!.length === 0) {
-        const defaultStaffId = generateId();
-        newComposition.staves!.push({ id: defaultStaffId, clef: 'treble', order: 0, name: 'Default Staff'});
+    console.warn("Combined composition resulted in no staves. Adding a default staff.");
+    newComposition.staves!.push({ id: generateId(), name: "Default Combined Staff", clef: 'treble', order: 0 });
     }
-    if (newComposition.voiceLayers!.length === 0) {
-        const defaultVoiceId = generateId();
+  if (newComposition.voiceLayers!.length === 0 && newComposition.staves!.length > 0) {
+     console.warn("Combined composition resulted in no voice layers. Adding a default voice.");
         newComposition.voiceLayers!.push({
-            id: defaultVoiceId, name: "Default Merged Voice", color: getRandomColor(),
-            visible: true, active: true, selected: true, volume: 0, notes: [],
-            staffId: newComposition.staves![0].id
+        id: generateId(), name: "Default Combined Voice", color: getRandomColor(), staffId: newComposition.staves![0].id,
+        visible: true, active: true, selected: true, volume: 0, notes:[]
         });
-        newComposition.activeVoiceId = defaultVoiceId;
     }
 
 
-    console.log('Final merged composition:', JSON.parse(JSON.stringify(newComposition)));
+  // Add the new combined composition to savedCompositions
     savedCompositions.value.push(newComposition);
-    saveToLocalStorage();
-    alert(`Successfully combined compositions into "${newName}".`);
-    if (confirm('Would you like to load the combined composition now?')) {
+  // Load the new combined composition
       loadComposition(newComposition.id);
-    }
-
-  } catch (error) {
-    console.error('Error combining compositions:', error);
-    if (error instanceof Error) {
-        console.error("Error name:", error.name);
-        console.error("Error message:", error.message);
-        console.error("Error stack:", error.stack);
-    }
-    alert(`Error combining compositions: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
+  compositionName.value = newComposition.name; // Update current composition name input
+  currentCompositionId.value = newComposition.id; // Set as current
+  activeTab.value = 'notes'; // Switch to notes tab
+  alert(`Compositions combined into "${newComposition.name}".`);
+  saveToLocalStorage(); // Save all changes
 };
 
 // Add this around line 119 where other refs are defined
@@ -4639,6 +4688,61 @@ const removeStaff = (staffIdToRemove: string) => {
   }
 };
 
+// Function to initiate staff name editing
+const editStaffName = (stave: Stave) => {
+  editingStaffNameId.value = stave.id;
+  nextTick(() => {
+    // staffNameInput.value is an array because the ref is inside a v-for.
+    // We expect only one input to be rendered with this ref at a time due to v-if/v-else.
+    if (staffNameInput.value && staffNameInput.value.length > 0) {
+      const inputElement = staffNameInput.value[0]; // Access the first (and only expected) element
+      if (inputElement && typeof inputElement.focus === 'function') {
+        inputElement.focus();
+        if (typeof inputElement.select === 'function') {
+          inputElement.select();
+        }
+      } else {
+        console.error('Failed to focus/select staff name input: The referenced element is not a valid input or is not focusable.', staffNameInput.value);
+      }
+    } else {
+      console.error('Failed to focus/select staff name input: The ref array is empty or undefined.', staffNameInput.value);
+    }
+  });
+};
+
+// Function to save staff name
+const saveStaffName = (stave: Stave, event: Event) => {
+  const inputElement = event.target as HTMLInputElement;
+  const newName = inputElement.value.trim();
+
+  if (!newName) {
+    alert("Staff name cannot be empty.");
+    inputElement.value = stave.name || ''; // Revert to old name
+    editingStaffNameId.value = null;
+    return;
+  }
+
+  const isNameTaken = staves.value.some(s => s.id !== stave.id && s.name === newName);
+  if (isNameTaken) {
+    alert(`The name "${newName}" is already used by another staff. Please choose a unique name.`);
+    inputElement.value = stave.name || ''; // Revert to old name
+    editingStaffNameId.value = null;
+    return;
+  }
+
+  stave.name = newName;
+  editingStaffNameId.value = null;
+  console.log(`Staff ${stave.id} renamed to ${stave.name}`);
+  saveToLocalStorage();
+};
+
+// Function to cancel staff name editing
+const cancelEditStaffName = (stave: Stave, event: Event) => {
+  const inputElement = event.target as HTMLInputElement;
+  inputElement.value = stave.name || ''; // Revert to old name
+  editingStaffNameId.value = null;
+};
+
 
 // existing code...
 </script>
@@ -4783,6 +4887,20 @@ const removeStaff = (staffIdToRemove: string) => {
   height: 100%;
   pointer-events: none; /* Allow clicks to pass through to the staff */
   z-index: 5; /* Above staff lines but below notes */
+}
+
+.staff-name-input {
+  font-weight: bold;
+  flex-grow: 1;
+  padding: 2px 5px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: inherit; /* Inherit font size from parent */
+}
+
+.staff-name[title="Click to rename staff"] {
+  cursor: pointer;
+  border-bottom: 1px dashed #ccc; /* Indicate it's clickable */
 }
 
 </style>

@@ -1,219 +1,277 @@
 <template>
-  <div class="voice-layers-container">
-    <h3>Voice Layers</h3>
-    <div class="voice-layers-options">
-      <label>
-        <input
-          type="checkbox"
-          :checked="playSelectedVoicesOnly"
-          @change="$emit('update:playSelectedVoicesOnly', ($event.target as HTMLInputElement).checked)"
-        />
-        Play selected voices only
-      </label>
-    </div>
-    <div class="voice-layers">
-      <div
-        v-for="voice in voiceLayers"
-        :key="voice.id"
-        class="voice-layer"
-        :class="{ active: voice.active }"
-        :style="{ borderColor: voice.color }"
-      >
-        <div class="voice-header">
-          <div class="voice-controls">
-            <button
-              @click="$emit('switchActiveVoice', voice.id)"
-              :title="voice.active ? 'This voice is active' : 'Set this voice active'"
-              class="voice-action-btn"
-              :class="{ 'active-voice-btn': voice.active }"
-            >
-              <span v-if="voice.active">Active</span>
-              <span v-else>Set Active</span>
-            </button>
-            <button
-              @click="$emit('toggleVoiceVisibility', voice.id)"
-              class="voice-action-btn voice-visibility-btn"
-              :class="{ visible: voice.visible }"
-              :title="voice.visible ? 'Hide Voice' : 'Show Voice'"
-            >
-              <span v-if="voice.visible">Visible</span>
-              <span v-else>Hidden</span>
-            </button>
-            <label class="voice-select-label" :title="voice.selected ? 'Deselect voice for multi-voice playback/export' : 'Select voice for multi-voice playback/export'">
-              <input
-                type="checkbox"
-                :checked="voice.selected"
-                @change="$emit('updateVoiceSelection', voice.id, ($event.target as HTMLInputElement).checked)"
-                class="voice-select-checkbox"
-              />
-              <span>Select</span>
-            </label>
-          </div>
-          <input
-            type="text"
-            :value="voice.name"
-            @change="$emit('renameVoice', voice.id, ($event.target as HTMLInputElement).value)"
+  <div class="voice-layers-panel-container">
+    <h4>Voice Layers</h4>
+    <div class="voice-layers-list">
+      <div v-for="voice in voiceLayers" :key="voice.id" 
+           class="voice-layer-item" 
+           :class="{ 'active-voice': voice.active, 'selected-for-playback': voice.selected }"
+           :style="{ borderLeftColor: voice.color }">
+        
+        <div class="voice-info">
+          <input 
+            type="text" 
+            :value="voice.name" 
+            @change="emitRenameVoice(voice.id, $event)" 
             class="voice-name-input"
-            :title="`Rename ${voice.name}`"
+            title="Edit voice name" 
           />
-          <input
-            type="color"
-            :value="voice.color"
-            @input="$emit('changeVoiceColor', voice.id, ($event.target as HTMLInputElement).value)"
+          <input 
+            type="color" 
+            :value="voice.color" 
+            @input="emitChangeVoiceColor(voice.id, $event)" 
             class="voice-color-picker"
-            :title="`Change color for ${voice.name}`"
+            title="Change voice color"
           />
         </div>
-        <div class="voice-footer">
-          <span class="voice-note-count">{{ voice.notes.length }} notes</span>
-          <button @click="$emit('confirmDeleteVoice', voice.id)" class="delete-voice-btn" title="Delete Voice">Delete</button>
+
+        <div class="voice-controls">
+          <button @click="emitSwitchActiveVoice(voice.id)" :disabled="voice.active" title="Make active">
+            {{ voice.active ? 'Active' : 'Set Active' }}
+          </button>
+          <button @click="emitToggleVoiceVisibility(voice.id)" :title="voice.visible ? 'Hide' : 'Show'">
+            {{ voice.visible ? 'Visible' : 'Hidden' }}
+          </button>
+          <button @click="emitUpdateVoiceSelection(voice.id)" :title="voice.selected ? 'Deselect for Playback' : 'Select for Playback'">
+            {{ voice.selected ? 'Playing' : 'Not Playing' }}
+          </button>
+        </div>
+
+        <div class="voice-staff-assignment">
+          <label :for="`voice-staff-select-${voice.id}`" class="staff-assignment-label">Staff:</label>
+          <select
+            :id="`voice-staff-select-${voice.id}`"
+            :value="voice.staffId"
+            @change="handleStaffAssignmentChange(voice.id, $event)"
+            class="staff-select"
+            title="Assign voice to a different staff"
+          >
+            <option v-if="!staves || staves.length === 0" disabled value="">No staves available</option>
+            <option v-for="(stave, index) in staves" :key="stave.id" :value="stave.id">
+              {{ stave.name || `Staff ${index + 1}` }}
+            </option>
+          </select>
+        </div>
+        
+        <div class="voice-actions">
+          <button @click="emitConfirmDeleteVoice(voice.id)" class="delete-voice-btn" title="Delete voice">
+            🗑️
+          </button>
         </div>
       </div>
+      <div v-if="!voiceLayers || voiceLayers.length === 0" class="no-voices-message">
+        No voice layers yet. Add one below.
+      </div>
     </div>
-    <div class="add-voice-container">
-      <button @click="$emit('addVoiceLayer')" class="add-voice-btn">Add Voice</button>
+
+    <div class="add-voice-section">
+      <h5>Add New Voice</h5>
+      <div class="add-voice-controls">
+        <select v-model="selectedStaffForNewVoice" class="staff-select-for-new-voice" title="Select staff for new voice">
+           <option disabled value="">Select staff</option>
+           <option v-for="(stave, index) in staves" :key="stave.id" :value="stave.id">
+             {{ stave.name || `Staff ${index + 1}` }}
+           </option>
+        </select>
+        <button @click="triggerAddVoiceLayer" class="add-voice-btn-main" :disabled="!selectedStaffForNewVoice && staves.length > 0">
+          Add Voice Layer
+        </button>
+         <p v-if="staves.length === 0" class="no-staves-warning">
+            Please add a staff in the main editor before adding a voice.
+        </p>
+      </div>
+    </div>
+
+    <div class="playback-options-voices">
+        <label>
+            <input type="checkbox" :checked="playSelectedVoicesOnly" @change="togglePlaySelectedVoicesOnly" />
+            Play only selected voices
+        </label>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits } from 'vue';
-// Assuming VoiceLayer is imported from a shared types file or NotationEditorView
-// For example: import type { VoiceLayer } from '@/types/notation';
-// Or: import type { VoiceLayer } from '@/views/NotationEditorView.vue';
+import { ref, watch, type PropType, onMounted } from 'vue';
+import type { VoiceLayer, Stave } from '@/types/types'; // Adjust path as needed
 
-interface VoiceLayer { // Local definition for now if not imported
-  id: string;
-  name: string;
-  color: string;
-  visible: boolean;
-  active: boolean;
-  selected: boolean;
-  notes: Array<{ id: string; /* other note props */ }>; // Simplified note type for count
-}
+const props = defineProps({
+  voiceLayers: {
+    type: Array as PropType<VoiceLayer[]>,
+    required: true,
+  },
+  staves: {
+    type: Array as PropType<Stave[]>,
+    required: true,
+  },
+  activeStaffId: {
+    type: String,
+    default: null,
+  },
+  playSelectedVoicesOnly: {
+    type: Boolean,
+    default: false,
+  }
+});
 
-defineProps<{
-  voiceLayers: VoiceLayer[];
-  playSelectedVoicesOnly: boolean;
-}>();
+const emit = defineEmits([
+  'renameVoice',
+  'changeVoiceColor',
+  'switchActiveVoice',
+  'toggleVoiceVisibility',
+  'updateVoiceSelection',
+  'confirmDeleteVoice',
+  'addVoiceLayer',
+  'assignVoiceToStaff',
+  'update:playSelectedVoicesOnly'
+]);
 
-defineEmits<{
-  (e: 'renameVoice', voiceId: string, newName: string): void;
-  (e: 'changeVoiceColor', voiceId: string, newColor: string): void;
-  (e: 'switchActiveVoice', voiceId: string): void;
-  (e: 'toggleVoiceVisibility', voiceId: string): void;
-  (e: 'updateVoiceSelection', voiceId: string, selected: boolean): void;
-  (e: 'confirmDeleteVoice', voiceId: string): void;
-  (e: 'addVoiceLayer'): void;
-  (e: 'update:playSelectedVoicesOnly', value: boolean): void;
-}>();
+const selectedStaffForNewVoice = ref('');
+
+// Initialize selectedStaffForNewVoice based on activeStaffId or first available staff
+const initializeSelectedStaff = () => {
+  if (props.activeStaffId && props.staves.some(s => s.id === props.activeStaffId)) {
+    selectedStaffForNewVoice.value = props.activeStaffId;
+  } else if (props.staves.length > 0) {
+    selectedStaffForNewVoice.value = props.staves[0].id;
+  } else {
+    selectedStaffForNewVoice.value = '';
+  }
+};
+
+onMounted(() => {
+  initializeSelectedStaff();
+});
+
+watch(() => [props.staves, props.activeStaffId], () => {
+  // If the current selection is no longer valid or if it's empty and staves are available
+  if (!props.staves.some(s => s.id === selectedStaffForNewVoice.value) || 
+      (selectedStaffForNewVoice.value === '' && props.staves.length > 0)) {
+    initializeSelectedStaff();
+  }
+}, { deep: true, immediate: true });
+
+
+const emitRenameVoice = (voiceId: string, event: Event) => {
+  const newName = (event.target as HTMLInputElement).value;
+  emit('renameVoice', voiceId, newName);
+};
+
+const emitChangeVoiceColor = (voiceId: string, event: Event) => {
+  const newColor = (event.target as HTMLInputElement).value;
+  emit('changeVoiceColor', voiceId, newColor);
+};
+
+const emitSwitchActiveVoice = (voiceId: string) => {
+  emit('switchActiveVoice', voiceId);
+};
+
+const emitToggleVoiceVisibility = (voiceId: string) => {
+  emit('toggleVoiceVisibility', voiceId);
+};
+
+const emitUpdateVoiceSelection = (voiceId: string) => {
+  // Find the voice and emit its current 'selected' state toggled
+  const voice = props.voiceLayers.find(v => v.id === voiceId);
+  if (voice) {
+    emit('updateVoiceSelection', voiceId, !voice.selected);
+  }
+};
+
+const emitConfirmDeleteVoice = (voiceId: string) => {
+  emit('confirmDeleteVoice', voiceId);
+};
+
+const triggerAddVoiceLayer = () => {
+  if (!selectedStaffForNewVoice.value && props.staves.length > 0) {
+    alert("Please select a staff for the new voice.");
+    return;
+  }
+  if (props.staves.length === 0) {
+    alert("Please add a staff in the main editor first.");
+    return;
+  }
+  emit('addVoiceLayer', selectedStaffForNewVoice.value);
+  // Optionally reset selection or set to active staff after adding
+   if (props.activeStaffId && props.staves.some(s => s.id === props.activeStaffId)) {
+    selectedStaffForNewVoice.value = props.activeStaffId;
+  } else if (props.staves.length > 0) {
+    selectedStaffForNewVoice.value = props.staves[0].id;
+  }
+
+};
+
+const handleStaffAssignmentChange = (voiceId: string, event: Event) => {
+  const newStaffId = (event.target as HTMLSelectElement).value;
+  if (newStaffId) {
+    emit('assignVoiceToStaff', voiceId, newStaffId);
+  }
+};
+
+const togglePlaySelectedVoicesOnly = (event: Event) => {
+  emit('update:playSelectedVoicesOnly', (event.target as HTMLInputElement).checked);
+};
+
 </script>
 
 <style scoped>
-/* Copied from NotationEditorView.vue and global.css, then adjusted */
-.voice-layers-container {
-  margin: 20px auto;
-  padding: 15px; /* Was 20px */
-  background-color: #f7f9fc;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  max-width: 700px;
+.voice-layers-panel-container {
+  background-color: #f9f9f9;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.voice-layers-container h3 {
+.voice-layers-panel-container h4 {
   margin-top: 0;
-  margin-bottom: 15px; /* Was 20px */
+  margin-bottom: 10px;
   color: #333;
   text-align: center;
-  font-size: 1.3em; /* Was 1.5em */
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
 }
 
-.voice-layers-options {
-  margin-bottom: 10px;
-  text-align: center;
-}
-.voice-layers-options label {
-  font-size: 0.9em;
-  cursor: pointer;
-}
-
-.voice-layers {
+.voice-layers-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-bottom: 15px;
 }
 
-.voice-layer {
-  background-color: white;
+.voice-layer-item {
+  background-color: #fff;
   border-radius: 6px;
   padding: 10px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border-left: 5px solid; /* Color will be applied here */
+  border-left: 5px solid transparent; /* Color will be set by :style */
+  display: grid;
+  grid-template-columns: auto 1fr auto; /* Info, Controls, Actions */
+  /* Updated grid-template-areas for better layout control if needed, or stick to columns */
+  /* grid-template-areas: 
+    "info controls actions"
+    "staff-assignment staff-assignment staff-assignment"; */
+  gap: 10px;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   transition: box-shadow 0.2s ease;
 }
-
-.voice-layer.active {
-  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+.voice-layer-item:hover {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
-.voice-header {
+.voice-layer-item.active-voice {
+  /* background-color: #e3f2fd; */
+  box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
+}
+/* .voice-layer-item.selected-for-playback {
+  outline: 2px solid #4CAF50; 
+} */
+
+
+.voice-info {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
-}
-
-.voice-controls {
-  display: flex;
-  gap: 5px;
-  align-items: center; /* Align items in controls, including the new label */
-}
-
-.voice-action-btn, .delete-voice-btn {
-  padding: 5px 8px;
-  font-size: 0.85em;
-  border: 1px solid #ccc;
-  background-color: #f9f9f9;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-.voice-action-btn:hover, .delete-voice-btn:hover {
-  background-color: #e0e0e0;
-}
-
-.active-voice-btn {
-  background-color: #cce5ff;
-  border-color: #b8daff;
-  font-weight: bold;
-}
-
-.voice-visibility-btn.visible {
-  background-color: #e3f2fd; /* Light blue for visible */
-}
-.voice-visibility-btn:not(.visible) {
-  background-color: #ffebee; /* Light red for hidden */
-}
-
-/* Styles for the new select checkbox and its label */
-.voice-select-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.85em;
-  cursor: pointer;
-  padding: 5px 8px; /* Match button padding */
-  border: 1px solid #ccc;
-  background-color: #f9f9f9;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-.voice-select-label:hover {
-  background-color: #e0e0e0;
-}
-.voice-select-checkbox {
-  cursor: pointer;
-  margin-right: 3px; /* Small space between checkbox and "Select" text */
+  grid-column: 1 / 2; 
 }
 
 .voice-name-input {
@@ -221,10 +279,11 @@ defineEmits<{
   padding: 6px 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
-  font-size: 0.95em;
+  font-size: 14px;
 }
 .voice-name-input:focus {
   border-color: #2196F3;
+  box-shadow: 0 0 0 2px rgba(33,150,243,0.2);
   outline: none;
 }
 
@@ -234,63 +293,213 @@ defineEmits<{
   border: 1px solid #ddd;
   border-radius: 4px;
   cursor: pointer;
-  padding: 2px; /* To make the color area slightly smaller than border */
-  background-color: transparent; /* Ensure picker background doesn't obscure the color value */
-}
-/* For Webkit browsers to show the color value */
-.voice-color-picker::-webkit-color-swatch {
-  border-radius: 3px;
-  border: none;
-}
-.voice-color-picker::-moz-color-swatch {
-  border-radius: 3px;
-  border: none;
+  padding: 2px;
 }
 
-.voice-footer {
+.voice-controls {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
-  font-size: 0.8em;
-  color: #666;
-  margin-top: 5px;
+  grid-column: 2 / 3; 
+  justify-self: start;
+}
+
+.voice-controls button {
+  padding: 5px 10px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.voice-controls button:hover {
+  background-color: #e0e0e0;
+}
+.voice-controls button:disabled {
+  background-color: #e9e9e9;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.voice-staff-assignment {
+  grid-column: 1 / -1; /* Span all columns, effectively creating a new row */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+}
+.staff-assignment-label {
+  font-size: 13px;
+  color: #555;
+  white-space: nowrap;
+}
+.staff-select {
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  background-color: white;
+  flex-grow: 1;
+  min-width: 120px; /* Ensure it has some base width */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.voice-actions {
+  grid-column: 3 / 4; 
+  justify-self: end;
 }
 
 .delete-voice-btn {
-  background-color: #f44336;
-  color: white;
+  background: none;
+  border: none;
+  color: #f44336;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 5px;
 }
 .delete-voice-btn:hover {
-  background-color: #d32f2f;
+  color: #c62828;
 }
 
-.add-voice-container {
-  margin-top: 15px;
+.no-voices-message {
   text-align: center;
+  color: #777;
+  padding: 10px;
+  font-style: italic;
 }
 
-.add-voice-btn {
-  background-color: #4caf50;
+.add-voice-section {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #ddd;
+}
+.add-voice-section h5 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #333;
+}
+.add-voice-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.staff-select-for-new-voice {
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  flex-grow: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.add-voice-btn-main {
+  padding: 8px 15px;
+  font-size: 14px;
+  background-color: #4CAF50;
   color: white;
   border: none;
   border-radius: 4px;
-  padding: 8px 16px;
   cursor: pointer;
-  font-size: 0.95em;
   transition: background-color 0.2s;
 }
-
-.add-voice-btn:hover {
-  background-color: #388e3c;
+.add-voice-btn-main:hover {
+  background-color: #45a049;
+}
+.add-voice-btn-main:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+.no-staves-warning {
+    font-size: 0.9em;
+    color: #c0392b;
+    margin-top: 5px;
 }
 
+
+.playback-options-voices {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+    font-size: 14px;
+}
+.playback-options-voices label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+/* Responsive adjustments */
+@media (max-width: 700px) { /* Adjusted breakpoint for better layout */
+  .voice-layer-item {
+    grid-template-columns: 1fr auto; /* Info and controls side-by-side, actions below */
+    /* grid-template-areas: 
+      "info actions"
+      "controls controls"
+      "staff-assignment staff-assignment"; */
+     row-gap: 8px;
+  }
+  .voice-info {
+    grid-column: 1 / 2;
+  }
+  .voice-controls {
+    grid-column: 1 / 2; /* Move controls below info on smaller screens */
+    grid-row: 2 / 3;
+    justify-self: stretch; /* Make controls take full width */
+    flex-wrap: nowrap; /* Prevent wrapping to keep them in one line if possible */
+  }
+   .voice-controls button {
+    flex-grow: 1; /* Allow buttons to grow */
+    text-align: center;
+  }
+  .voice-actions {
+    grid-column: 2 / 3; /* Actions to the right of info */
+    grid-row: 1 / 2;
+    align-self: center; /* Vertically align delete button */
+  }
+  .voice-staff-assignment {
+    grid-column: 1 / -1; /* Staff assignment takes full width below */
+    grid-row: 3 / 4;
+  }
+}
+
+
 @media (max-width: 480px) {
-  .voice-layers-container { padding: 10px; margin: 10px auto; }
-  .voice-layer { padding: 10px; margin-bottom: 10px; }
-  .voice-header { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .voice-controls { width: 100%; justify-content: space-between; }
-  .voice-action-btn { flex: 1; min-width: 60px; padding: 8px 6px; font-size: 0.8em; }
-  .delete-voice-btn { width: 100%; margin-top: 8px; }
-  .add-voice-btn { width: 100%; max-width: 200px; padding: 10px 15px; font-size: 0.9em; }
+  .voice-layers-panel-container { padding: 10px; margin: 10px auto; }
+  
+  .voice-layer-item {
+    grid-template-columns: 1fr; /* Stack everything */
+    /* grid-template-areas: 
+      "info"
+      "controls"
+      "staff-assignment"
+      "actions"; */
+  }
+  .voice-info, .voice-controls, .voice-staff-assignment, .voice-actions {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+   .voice-controls {
+    flex-direction: column; /* Stack buttons in controls */
+    align-items: stretch;
+  }
+  .voice-controls button {
+    width: 100%;
+  }
+  .voice-actions {
+    text-align: center; /* Center delete button */
+    margin-top: 8px;
+  }
+  .add-voice-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style> 
