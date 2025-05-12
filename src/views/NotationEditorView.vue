@@ -1,11 +1,21 @@
 <template>
   <!-- Add responsive meta tag -->
-  <div class="notation-editor" :class="editorClassName">
+  <div class="notation-editor">
     <AppHeader v-model:keySignature="keySignature" v-model:timeSignature="timeSignature"
-    v-model:beatsPerMeasure="beatsPerMeasure"
     :readOnlyMode="readOnlyMode"
     :selectedClef="staves.length > 0 ? staves[0].clef : 'treble'" @keySignatureChange="changeKeySignatureDirectly"
       @timeSignatureChange="updateTimeSignature" />
+
+    <!-- Read-only toggle moved to the top -->
+    <div class="read-only-toggle">
+      <label class="toggle-switch">
+        <input type="checkbox" v-model="readOnlyMode">
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-label">
+        {{ readOnlyMode ? 'Read-Only Mode (Locked)' : 'Edit Mode' }}
+      </span>
+    </div>
 
     <!-- Floating Help Button -->
     <div @click="showHelp = true" class="floating-help-btn">
@@ -172,9 +182,8 @@
                 <!-- Notes -->
                 <div v-for="note in notesForStaff(stave.id)" :key="note.id" class="note" :class="{
                   'rest': note.type === 'rest',
-                  'playing': currentPlayingNoteIds.includes(note.id),
+                  'playing': currentPlayingNoteIds.includes(note.id), // Keep class for semantics or other non-background/transform styles
                   'selected': note.id === selectedNoteId,
-                  'read-only-selected': note.id === selectedNoteId && readOnlyMode,
                   'key-signature-affected': note.type === 'note' &&
                     note.pitch &&
                     !note.pitch.includes('#') &&
@@ -361,30 +370,6 @@
 
     <!-- Add the FirstTimeInstructionModal component -->
     <FirstTimeInstructionModal :is-visible="showFirstTimeInstructions" @close="closeFirstTimeInstructions" />
-
-    <!-- Add read-only toggle after the PlaybackControls component -->
-    <div class="read-only-toggle">
-      <label class="toggle-switch">
-        <input type="checkbox" v-model="readOnlyMode">
-        <span class="toggle-slider"></span>
-      </label>
-      <span class="toggle-label">
-        {{ readOnlyMode ? 'Read-Only Mode 🔒' : 'Edit Mode ✏️' }}
-      </span>
-    </div>
-
-    <!-- Add a prominently positioned read-only toggle -->
-    <!-- <div class="read-only-status-bar">
-      <div class="read-only-toggle">
-        <label class="toggle-switch">
-          <input type="checkbox" v-model="readOnlyMode">
-          <span class="toggle-slider"></span>
-        </label>
-        <span class="toggle-label">
-          {{ readOnlyMode ? 'Read-Only Mode 🔒' : 'Edit Mode ✏️' }}
-        </span>
-      </div>
-    </div> -->
   </div>
 </template>
 
@@ -3043,35 +3028,18 @@ const generateId = () => {
 // Add a new ref for the selected note
 const selectedNoteId = ref<string | null>(null);
 
-// Update the selectNote function to always work, regardless of read-only mode
-const selectNote = (note: NoteWithVoiceInfo | ImportedNote) => {
-  // Set the selected note ID regardless of read-only mode
+// Update the selectNote function to work with voice layers
+const selectNote = (note) => {
   selectedNoteId.value = note.id;
-  
-  // If we're in read-only mode, we can set the note as selected without playing it
-  if (!readOnlyMode.value && note.type === 'note' && (note as ImportedNote).pitch) {
-    // Only play the note if we're not in read-only mode
-    const durationMap = {
-      'whole': '1n',
-      'half': '2n',
-      'quarter': '4n',
-      'eighth': '8n',
-      'sixteenth': '16n'
-    };
-    
-    playNoteSound(
-      (note as ImportedNote).pitch || '',
-      durationMap[(note as ImportedNote).duration],
-      (note as ImportedNote).dotted,
-      100, // volumePercent
-      (note as ImportedNote).explicitNatural
-    );
+
+  // If the note has a voiceId and it's not the active voice, switch to that voice
+  if ((note as NoteWithVoiceInfo).voiceId && (note as NoteWithVoiceInfo).voiceId !== activeVoiceId.value) {
+    switchActiveVoice((note as NoteWithVoiceInfo).voiceId);
   }
-  
-  // If we have a current lyric and aren't in read-only mode, we can apply it
-  if (currentLyric.value && !readOnlyMode.value) {
-    setLyricForNote(note.id, currentLyric.value);
-    currentLyric.value = ''; // Clear after applying
+
+  // If there's a lyric, populate the lyric input
+  if (note.lyric) {
+    currentLyric.value = note.lyric;
   }
 };
 
@@ -5099,6 +5067,9 @@ const loadCompositionWithReadOnly = (compositionId, enableReadOnly = true) => {
   background-color: #f8f8f8;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .toggle-switch {
@@ -5459,56 +5430,5 @@ input:checked+.toggle-slider:before {
   height: 0 !important;
   width: 0 !important;
   overflow: hidden !important;
-}
-
-/* Update read-only toggle styles to fit in the header */
-.read-only-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: 15px;
-}
-
-.toggle-label {
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-/* Style for a more prominent fixed status bar */
-.read-only-status-bar {
-  background-color: #f8f8f8;
-  padding: 5px 15px;
-  border-bottom: 1px solid #ddd;
-  display: flex;
-  justify-content: flex-end; /* Position at the right */
-  align-items: center;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-/* Add this CSS rule to style selected notes in read-only mode differently */
-.note.read-only-selected {
-  /* Remove the outline styles */
-  outline: none !important;
-  box-shadow: none !important;
-  
-  /* Add a subtle background highlight instead */
-  background-color: rgba(33, 150, 243, 0.1) !important;
-}
-
-/* Ensure the regular selection outline doesn't appear in read-only mode */
-.read-only-mode .note.selected:not(.read-only-selected) {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-/* Add a more subtle indication for read-only selection */
-.read-only-mode .note.selected {
-  opacity: 0.9;
-  /* Add a very subtle dashed outline */
-  outline: 1px dashed rgba(33, 150, 243, 0.4) !important;
-  outline-offset: 2px !important;
 }
 </style>

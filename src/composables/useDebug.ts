@@ -72,21 +72,4 @@ export function useDebug(
     testAllNotes,
     // toggleDebugMonitor, // if moved
   };
-}
-
-// Update these function signatures to match what DebugPanel expects
-export const needsLedgerLines = (
-  note: DebugNote, 
-  side: "above" | "below"
-): boolean => {
-  // Implementation that works with the DebugNote type
-  // You may need to adapt this based on your actual implementation
-};
-
-export const getLedgerLines = (
-  note: DebugNote, 
-  side: "above" | "below"
-): number[] => {
-  // Implementation that works with the DebugNote type
-  // You may need to adapt this based on your actual implementation
-}; 
+} 

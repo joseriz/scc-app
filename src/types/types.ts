@@ -24,7 +24,6 @@ export interface Stave {
   clef: 'treble' | 'bass';
   order: number;
   name: string;
-  isCollapsed: boolean;
 }
 
 export interface VoiceLayer {
@@ -78,13 +77,4 @@ export interface NoteWithVoiceInfo extends Note {
   voiceColor: string;
   staffId: string;
   staffClef: 'treble' | 'bass';
-}
-
-export interface DebugNote {
-  id: string;
-  staffId: string;
-  voiceId: string;
-  isRest: boolean;
-  position: number;
-  duration: string;
 } 
