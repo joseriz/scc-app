@@ -22,6 +22,9 @@
             class="voice-color-picker"
             title="Change voice color"
           />
+          <button @click="emitConfirmDeleteVoice(voice.id)" class="control-btn icon-btn delete-in-info-btn" title="Delete voice">
+            🗑️
+          </button>
         </div>
 
         <div class="voice-controls">
@@ -45,6 +48,7 @@
             class="control-btn icon-btn">
             {{ voice.selected ? '🔊' : '🔇' }}
           </button>
+          <span class="volume-value">{{ voice.volume }} %</span>
         </div>
 
         <div class="voice-staff-assignment">
@@ -76,13 +80,6 @@
             class="volume-slider"
             title="Adjust voice volume"
           />
-          <span class="volume-value">{{ voice.volume }} %</span>
-        </div>
-
-        <div class="voice-actions">
-          <button @click="emitConfirmDeleteVoice(voice.id)" class="control-btn icon-btn delete-voice-btn" title="Delete voice">
-            🗑️
-          </button>
         </div>
       </div>
       <div v-if="!voiceLayers || voiceLayers.length === 0" class="no-voices-message">
@@ -277,11 +274,7 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
   padding: 10px;
   border-left: 5px solid transparent; /* Color will be set by :style */
   display: grid;
-  grid-template-columns: auto 1fr auto; /* Info, Controls, Actions */
-  /* Updated grid-template-areas for better layout control if needed, or stick to columns */
-  /* grid-template-areas: 
-    "info controls actions"
-    "staff-assignment staff-assignment staff-assignment"; */
+  grid-template-columns: 1fr auto; /* voice-info (now with delete), voice-controls */
   gap: 10px;
   align-items: center;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
@@ -309,7 +302,7 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
 
 .voice-name-input {
   flex-grow: 1;
-  padding: 6px 8px;
+  padding: 2px;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 14px;
@@ -350,7 +343,7 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
   transition: background-color 0.2s, border-color 0.2s;
   line-height: 1; /* Ensure icon is centered vertically */
   min-width: 36px; /* Ensure buttons have a decent tap target */
-  text-align: center;
+  text-align: right;
 }
 
 .control-btn.icon-btn:hover {
@@ -423,20 +416,19 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
   text-align: right;
 }
 
-.voice-actions {
-  grid-column: 3 / 4; 
-  justify-self: end;
-  align-self: center; /* Vertically align delete button with voice-info */
-}
-
-.delete-voice-btn {
-  background: none; /* Make delete button transparent */
+/* Style for delete button moved into voice-info */
+.delete-in-info-btn {
+  margin-left: auto; /* Pushes it to the right */
+  background: none;
   border: none;
   color: #f44336;
-  font-size: 1.3em; /* Slightly larger delete icon */
-  padding: 5px;
+  font-size: 1.1em; /* Consistent with other icons */
+  padding: 6px 8px; /* Consistent with other icons */
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
 }
-.delete-voice-btn:hover {
+.delete-in-info-btn:hover {
   color: #c62828;
   background-color: #f0f0f0; /* Slight background on hover */
 }
@@ -513,38 +505,28 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
 /* Responsive adjustments */
 @media (max-width: 700px) { /* Adjusted breakpoint for better layout */
   .voice-layer-item {
-    grid-template-columns: 1fr auto; /* Info and controls side-by-side, actions below */
-    /* grid-template-areas: 
-      "info actions"
-      "controls controls"
-      "staff-assignment staff-assignment"; */
+    grid-template-columns: 1fr; /* Simpler stacking for info and controls */
      row-gap: 8px;
   }
   .voice-info {
-    grid-column: 1 / 2;
+    grid-column: 1 / -1; /* Takes full width */
   }
   .voice-controls {
-    grid-column: 1 / 2; /* Move controls below info on smaller screens */
-    grid-row: 2 / 3;
-    justify-self: stretch; /* Make controls take full width */
-    flex-wrap: nowrap; /* Prevent wrapping to keep them in one line if possible */
+    grid-column: 1 / -1; /* Takes full width */
+    grid-row: 2 / 3;   /* Controls below info */
+    flex-wrap: wrap; 
+    justify-content: flex-start; 
   }
-   .voice-controls button {
-    flex-grow: 1; /* Allow buttons to grow */
+   .voice-controls .control-btn.icon-btn { 
     text-align: center;
   }
-  .voice-actions {
-    grid-column: 2 / 3; /* Actions to the right of info */
-    grid-row: 1 / 2;
-    align-self: center; /* Vertically align delete button */
-  }
   .voice-staff-assignment {
-    grid-column: 1 / -1; /* Staff assignment takes full width below */
+    grid-column: 1 / -1; 
     grid-row: 3 / 4;
   }
   .voice-volume-control {
     grid-column: 1 / -1;
-    grid-row: 4 / 5; /* Volume control below staff assignment */
+    grid-row: 4 / 5; 
   }
 }
 
@@ -554,26 +536,17 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
   
   .voice-layer-item {
     grid-template-columns: 1fr; /* Stack everything */
-    /* grid-template-areas: 
-      "info"
-      "controls"
-      "staff-assignment"
-      "actions"; */
   }
-  .voice-info, .voice-controls, .voice-staff-assignment, .voice-actions, .voice-volume-control {
+  .voice-info, .voice-controls, .voice-staff-assignment, .voice-volume-control { /* .voice-actions removed */
     grid-column: 1 / -1;
     justify-self: stretch;
   }
    .voice-controls {
-    flex-direction: column; /* Stack buttons in controls */
-    align-items: stretch;
+    flex-wrap: wrap; 
+    justify-content: center; 
   }
-  .voice-controls button {
-    width: 100%;
-  }
-  .voice-actions {
-    text-align: center; /* Center delete button */
-    margin-top: 8px;
+  .voice-controls .control-btn.icon-btn { 
+    /* Buttons will take their natural width based on padding and min-width */
   }
   .add-voice-controls {
     flex-direction: column;
