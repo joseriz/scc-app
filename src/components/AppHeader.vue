@@ -4,7 +4,7 @@
 
     <!-- Musical settings in a compact row -->
     <div class="musical-settings">
-      <div class="setting-item">
+      <!-- <div class="setting-item">
         <label for="clef-select">Clef:</label>
         <div class="custom-select compact">
           <select id="clef-select" :value="selectedClef" @change="onClefChange">
@@ -13,7 +13,7 @@
           </select>
           <div class="select-icon">▼</div>
         </div>
-      </div>
+      </div> -->
 
       <div class="setting-item">
         <label for="key-signature">Key:</label>
