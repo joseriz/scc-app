@@ -59,7 +59,9 @@
             <div class="help-section">
               <h3>Creating Your First Notes</h3>
               <ol>
-                <li>Select "Note" in the Type section</li>
+                <li>Ensure a staff exists. If not, click "Add New Staff".</li>
+                <li>Select a voice layer (a default one is usually created with a new staff).</li>
+                <li>Select "Note" in the Type section.</li>
                 <li>Choose a duration (quarter notes are a good start)</li>
                 <li>Select an octave (4 is middle range)</li>
                 <li>Click on the staff to place your note</li>
@@ -67,6 +69,40 @@
               </ol>
               <div class="help-tip">
                 <strong>Tip:</strong> Start with a simple melody using just quarter notes before exploring more complex features.
+              </div>
+            </div>
+          </div>
+          
+          <!-- Staves & Layout Tab (New/Renamed) -->
+          <div v-if="activeTab === 'staves'" class="tab-pane">
+            <h2>Staves & Layout</h2>
+            <p>Manage multiple staves for more complex scores, like piano music or small ensembles.</p>
+
+            <div class="help-section">
+              <h3>Adding and Removing Staves</h3>
+              <ul>
+                <li><strong>Add New Staff:</strong> Click the "Add New Staff" button. A new staff with a default voice layer will be added below existing staves.</li>
+                <li><strong>Remove Staff:</strong> Click the "Remove Staff" button (often an 'X' or "Remove") next to a staff's controls. You'll be asked for confirmation. The last staff cannot usually be removed. Removing a staff also removes all its associated voice layers and notes.</li>
+              </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>Staff Controls</h3>
+              <ul>
+                <li><strong>Rename Staff:</strong> Click on the staff's name (e.g., "Staff 1"). An input field will appear. Type the new name and press Enter or click away to save.</li>
+                <li><strong>Change Clef:</strong> Each staff has its own clef (Treble or Bass). Use the clef selector next to the staff's name to change it. Notes on that staff will adjust their vertical positions accordingly.</li>
+                <li><strong>Collapse/Expand Staff:</strong> Click the "Collapse" or "Expand" button next to a staff's controls to hide or show its musical content. This is useful for focusing on specific parts of a large score. The staff's header controls remain visible.</li>
+              </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>Staff Navigation</h3>
+              <ul>
+                <li><strong>Scrolling:</strong> If the music is wider than the screen, use the global scroll controls (◀ and ▶ buttons) or drag the staff area horizontally to view different parts of the score.</li>
+                <li><strong>Extend Staff:</strong> Click the "Extend Staff" button (often found with scroll controls) to add more measures to the right, increasing the total width for all staves.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> Use multiple staves for instruments with wide ranges (like piano) or for different instrumental/vocal parts in an ensemble.
               </div>
             </div>
           </div>
@@ -80,7 +116,13 @@
               <ol>
                 <li><strong>Select Note Type:</strong> Choose between "Note" or "Rest" from the input controls.</li>
                 <li><strong>Select Duration:</strong> Choose whole, half, quarter, eighth, or sixteenth.</li>
-                <li><strong>Select Accidental (for notes):</strong> Choose natural, sharp, or flat.</li>
+                <li><strong>Select Accidental (for notes):</strong> Choose natural, sharp, or flat.
+                  <ul>
+                    <li>A <strong>natural</strong> (♮) explicitly cancels any sharp or flat that would otherwise apply from the key signature or a previous accidental in the same measure.</li>
+                    <li>A <strong>sharp</strong> (♯) raises the pitch by a semitone.</li>
+                    <li>A <strong>flat</strong> (♭) lowers the pitch by a semitone.</li>
+                  </ul>
+                </li>
                 <li><strong>Select Octave (for notes):</strong> Choose the desired octave.</li>
                 <li><strong>Dotted Notes:</strong> Toggle the "Dotted" option to make the selected duration dotted (extends duration by half).</li>
                 <li><strong>Add to Staff:</strong> Click/tap on the staff at the desired vertical position within the currently active voice layer.</li>
@@ -113,6 +155,15 @@
                 <strong>Tip:</strong> Lyrics are tied to specific notes within voice layers and will share the voice's color.
               </div>
             </div>
+
+            <div class="help-section">
+              <h3>Key Signatures and Accidentals</h3>
+              <ul>
+                <li>Notes will automatically reflect the current key signature. For example, in G Major, all F's will sound and appear as F-sharps unless an explicit natural or flat is applied.</li>
+                <li>If you place an explicit natural (♮) on a note that is sharpened or flattened by the key signature, it will be displayed with a natural sign and play as a natural. Its stored pitch value will be the natural pitch.</li>
+                <li>If you place an explicit sharp (♯) or flat (♭) on a note, that accidental takes precedence over the key signature for that specific note.</li>
+              </ul>
+            </div>
           </div>
           
           <!-- Voice Layers Tab -->
@@ -124,8 +175,9 @@
               <h3>Managing Voices</h3>
               <ul>
                 <li><strong>Active Voice:</strong> Only one voice can be active for note input at a time. Notes you add will be placed in the currently active voice. The active voice is usually indicated in the Voice Layers panel.</li>
-                <li><strong>Switch Active Voice:</strong> Click the "Switch" or "Activate" button next to a voice in the Voice Layers panel.</li>
-                <li><strong>Add New Voice:</strong> Click the "Add Voice Layer" button. New voices get a default name and a unique color.</li>
+                <li><strong>Switch Active Voice:</strong> Click the "Switch" or "Activate" button next to a voice in the Voice Layers panel. This will also make the staff that voice is assigned to the active staff.</li>
+                <li><strong>Add New Voice:</strong> Click the "Add Voice Layer" button. New voices get a default name and a unique color. You may be prompted to assign it to a staff, or it might default to the currently active staff.</li>
+                <li><strong>Assign Voice to Staff:</strong> In the Voice Layers panel, there's usually an option (e.g., a dropdown menu) next to each voice to select which staff it belongs to. This allows you to move a voice from one staff to another.</li>
                 <li><strong>Rename Voice:</strong> Click the "Rename" button for a voice, enter the new name, and confirm.</li>
                 <li><strong>Change Voice Color:</strong> Click the color swatch next to a voice to open a color picker or cycle through predefined colors.</li>
                 <li><strong>Toggle Visibility:</strong> Use the eye icon or checkbox to show/hide a voice layer on the staff. Hidden voices are not included in playback unless specified.</li>
@@ -138,7 +190,7 @@
               <ul>
                 <li><strong>Playback All Visible:</strong> By default, all visible voices might play.</li>
                 <li><strong>Play Selected Voices Only:</strong> Some playback settings might allow you to choose to play only the voices that are marked as "selected" in the Voice Layers panel.</li>
-                <li><strong>Volume:</strong> Each voice layer might have its own volume control.</li>
+                <li><strong>Volume:</strong> Each voice layer typically has its own volume control (e.g., a slider from 0-100%) in the Voice Layers panel, allowing you to balance the different parts.</li>
               </ul>
             </div>
 
@@ -158,10 +210,10 @@
             <h2>Musical Elements</h2>
             
             <div class="help-section">
-              <h3>Clef Selection</h3>
+              <h3>Clef Selection (Global/Default)</h3>
               <ul>
-                <li>Choose between Treble (𝄞) and Bass (𝄢) clefs using the dropdown</li>
-                <li>Note: Changing clef will clear the current score</li>
+                <li>A global clef setting might apply to newly created staves or if only one staff is used.</li>
+                <li>However, each staff typically has its own independent clef control (see "Staves & Layout" tab).</li>
               </ul>
             </div>
             
@@ -205,6 +257,49 @@
             </div>
           </div>
           
+          <!-- Sections & Sequence Tab (New) -->
+          <div v-if="activeTab === 'sections'" class="tab-pane">
+            <h2>Sections & Sequencing</h2>
+            <p>Organize your composition into named sections (e.g., Verse, Chorus, Bridge) and arrange them for playback.</p>
+
+            <div class="help-section">
+              <h3>Defining Sections</h3>
+              <ul>
+                <li><strong>Access:</strong> Open the "Sections" panel (usually via a tab or button).</li>
+                <li><strong>Add Section:</strong>
+                  <ol>
+                    <li>Enter a name for your section (e.g., "Intro", "Verse 1").</li>
+                    <li>Specify the "Start Measure" and "End Measure" for the section.</li>
+                    <li>Click "Add Section".</li>
+                  </ol>
+                </li>
+                <li><strong>Section Markers:</strong> Named sections will appear as markers above the staves, indicating their span.</li>
+                <li><strong>Delete Section:</strong> Click the "Delete" button next to a section in the list.</li>
+              </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>Interacting with Sections</h3>
+              <ul>
+                <li><strong>Play Section:</strong> Click the "Play" button next to a section in the list to play only that section.</li>
+                <li><strong>Jump to Section:</strong> Click the "Jump" button (or the section name) to scroll the staff view to the beginning of that section.</li>
+              </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>Creating a Playback Sequence</h3>
+              <ul>
+                <li><strong>Add to Sequence:</strong> In the Sections panel, find the "Playback Sequence" area. Select a defined section from a dropdown or list and click an "Add to Sequence" button.</li>
+                <li><strong>Order Sections:</strong> Sections will be added to the sequence list. You can usually reorder them (e.g., by dragging or using up/down arrows).</li>
+                <li><strong>Remove from Sequence:</strong> Click a "Remove" button next to an item in the sequence list.</li>
+                <li><strong>Play Sequence:</strong> Once your sequence is arranged, click the "Play Sequence" button. The application will play through the sections in the order you've defined.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> Use sections to easily navigate and manage different parts of your song. The sequence player is great for testing song structure.
+              </div>
+            </div>
+          </div>
+          
           <!-- Playback Tab -->
           <div v-if="activeTab === 'playback'" class="tab-pane">
             <h2>Playback Features</h2>
@@ -221,8 +316,9 @@
             <div class="help-section">
               <h3>Playback Range</h3>
               <ul>
-                <li>Set "From" and "To" measure numbers to play specific sections</li>
-                <li>Enter 0 in the "To" field to play until the end</li>
+                <li>Set "From" and "To" measure numbers to play specific sections. This applies when using the main Play button.</li>
+                <li>Enter 0 in the "To" field to play until the end.</li>
+                <li>Playing individual sections or a sequence (from the "Sections" panel) will override these global settings for that specific playback.</li>
               </ul>
               <div class="help-tip">
                 <strong>Tip:</strong> Use the playback range to practice specific sections of your composition.
@@ -241,6 +337,7 @@
               <h3>Voice Playback</h3>
               <ul>
                 <li>You may have options to play all visible voices or only specifically "selected" voices from the Voice Layers panel. Check your Playback Settings or Voice Layers panel for these controls.</li>
+                <li>Each voice layer also has its own volume control, affecting its loudness during playback.</li>
               </ul>
             </div>
           </div>
@@ -279,14 +376,20 @@
             <div class="help-section">
               <h3>Combining Compositions</h3>
               <ol>
-                <li>In the "Saved Compositions" panel, activate "Combine Mode" (or similar).</li>
-                <li>Select two or more compositions from your saved list by checking their checkboxes.</li>
-                <li>Click the "Combine Selected Compositions" button.</li>
+                <li>In the "Saved Compositions" panel, look for a "Combine Mode" or similar option.</li>
+                <li>Select two or more compositions from your saved list (e.g., by checking checkboxes next to them).</li>
+                <li>Click the "Combine Selected Compositions" (or similar) button.</li>
                 <li>You'll be prompted to enter a name for the new, combined composition.</li>
-                <li>A new composition will be created, containing all voice layers from the selected compositions. Voice names might be adjusted to indicate their original composition.</li>
+                <li>You might be asked if you want to preserve the original staves from each composition or merge voices onto fewer staves.
+                  <ul>
+                    <li><strong>Preserve Staves:</strong> Each original staff and its voices will be maintained as distinct entities in the new composition.</li>
+                    <li><strong>Merge Staves:</strong> Voices from each old composition might be grouped onto one new staff created for that original composition's content.</li>
+                  </ul>
+                </li>
+                <li>A new composition will be created. Voice and staff names might be adjusted to indicate their origin.</li>
               </ol>
               <div class="help-tip">
-                <strong>Tip:</strong> Combining compositions is useful for merging different musical ideas or sections into a larger piece.
+                <strong>Tip:</strong> Combining compositions is useful for merging different musical ideas or sections into a larger piece. Pay attention to the staff merging options to get the desired layout.
               </div>
             </div>
             
@@ -379,13 +482,15 @@
             <div class="help-section">
               <h3>Debug Panel</h3>
               <ul>
-                <li>A Debug Panel might be available (often toggled via a "Debug Mode" switch).</li>
+                <li>A Debug Panel might be available (often toggled via a "Debug Mode" switch in a general settings area or sometimes persistently visible during development).</li>
                 <li>This panel can display internal information like:
                   <ul>
-                    <li>Coordinates of the last staff click (<code>lastClickY</code>).</li>
-                    <li>Currently selected octave for input.</li>
-                    <li>A list of notes in the active voice (<code>notesForDebug</code>) with their properties.</li>
-                    <li>Information about ledger lines.</li>
+                    <li><strong>Last Click Y:</strong> The vertical (Y) coordinate of the last click on the staff area.</li>
+                    <li><strong>Selected Octave:</strong> The currently selected octave for note input.</li>
+                    <li><strong>Notes for Debug:</strong> A list of notes belonging to the currently active voice layer, often showing their properties (ID, pitch, duration, position).</li>
+                    <li><strong>Needs Ledger Lines:</strong> A function or indicator showing if a given note requires ledger lines above or below the staff.</li>
+                    <li><strong>Get Ledger Lines:</strong> A function or data showing the calculated positions for ledger lines for a given note.</li>
+                    <li>Other internal state variables relevant for development.</li>
                   </ul>
                 </li>
                 <li>It may also offer functions like "Test All Notes" to help developers diagnose issues.</li>
@@ -440,9 +545,11 @@ const activeTab = ref('basics');
 
 const tabs = [
   { id: 'basics', label: 'Basic Usage' },
+  { id: 'staves', label: 'Staves & Layout' },
   { id: 'notes', label: 'Notes & Editing' },
   { id: 'voices', label: 'Voice Layers' },
   { id: 'elements', label: 'Musical Elements' },
+  { id: 'sections', label: 'Sections & Sequence' },
   { id: 'playback', label: 'Playback' },
   { id: 'saving', label: 'Saving & Loading' },
   { id: 'mobile', label: 'Mobile Tips' },

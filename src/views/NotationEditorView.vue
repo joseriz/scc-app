@@ -485,10 +485,10 @@ const activeVoice = computed<VoiceLayer>(() => { // Explicitly type activeVoice
     } else if (!staffIdForDefaultVoice && staves.value.length === 0) {
         // Emergency: if no staves exist, create one.
         const newDefaultStaffId = generateId();
-        staves.value.push({ id: newDefaultStaffId, clef: 'treble', order: 0, name: 'Emergency Staff'});
+        staves.value.push({ id: newDefaultStaffId, clef: 'treble', order: 0, name: 'Default Staff'});
         staffIdForDefaultVoice = newDefaultStaffId;
         activeStaffId.value = newDefaultStaffId; // Make it active
-        console.warn("activeVoice computed created an emergency staff.");
+        console.warn("activeVoice computed created an default staff.");
     }
 
     const defaultVoice: VoiceLayer = {
@@ -2084,7 +2084,7 @@ const loadComposition = (compositionId: string) => {
             staffIdForVoice = activeStaffId.value || (staves.value.length > 0 ? staves.value[0].id : null);
             if (!staffIdForVoice) { // Should be very rare: no staves exist at all
                 const newEmergencyStaffId = generateId();
-                staves.value.push({ id: newEmergencyStaffId, clef: 'treble', order: staves.value.length, name: `Emergency Staff for ${vl.name}`});
+                staves.value.push({ id: newEmergencyStaffId, clef: 'treble', order: staves.value.length, name: `Default Staff for ${vl.name}`});
                 staffIdForVoice = newEmergencyStaffId;
                 if (!activeStaffId.value) activeStaffId.value = newEmergencyStaffId;
             }
