@@ -1,34 +1,55 @@
 <template>
   <div class="voice-layers-panel-container">
     <h4>Voice Layers</h4>
+    <div v-if="readOnlyMode" class="read-only-banner">
+      <div class="read-only-message">
+        <i class="lock-icon">🔒</i> Voice editing is locked in read-only mode.
+        <div class="read-only-detail">You can only adjust which voices are visible and selected for playback.</div>
+      </div>
+    </div>
+    
     <div class="voice-layers-list">
       <div v-for="voice in voiceLayers" :key="voice.id" 
            class="voice-layer-item" 
-           :class="{ 'active-voice': voice.active, 'selected-for-playback': voice.selected }"
+           :class="{ 'active-voice': voice.active, 'selected-for-playback': voice.selected, 'read-only': readOnlyMode }"
            :style="{ borderLeftColor: voice.color }">
         
+        <!-- Voice info section - conditional elements based on readOnlyMode -->
         <div class="voice-info">
-          <input 
+          <!-- In read-only mode, just show name as text, not editable -->
+          <span v-if="readOnlyMode" class="voice-name-display">{{ voice.name }}</span>
+          
+          <!-- In edit mode, show editable inputs -->
+          <input v-else
             type="text" 
             :value="voice.name" 
             @change="emitRenameVoice(voice.id, $event)" 
             class="voice-name-input"
             title="Edit voice name" 
           />
-          <input 
+          
+          <!-- Color picker - hidden in read-only -->
+          <input v-if="!readOnlyMode"
             type="color" 
             :value="voice.color" 
             @input="emitChangeVoiceColor(voice.id, $event)" 
             class="voice-color-picker"
             title="Change voice color"
           />
-          <button @click="emitConfirmDeleteVoice(voice.id)" class="control-btn icon-btn delete-in-info-btn" title="Delete voice">
+          
+          <!-- Delete button - hidden in read-only -->
+          <button v-if="!readOnlyMode" 
+            @click="emitConfirmDeleteVoice(voice.id)" 
+            class="control-btn icon-btn delete-in-info-btn" 
+            title="Delete voice">
             🗑️
           </button>
         </div>
 
+        <!-- Voice controls - only show visibility and selection controls in read-only -->
         <div class="voice-controls">
-          <button 
+          <!-- Active voice toggle - hidden in read-only -->
+          <button v-if="!readOnlyMode"
             @click="emitSwitchActiveVoice(voice.id)" 
             :disabled="voice.active" 
             :title="voice.active ? 'This voice is active' : 'Set as active voice'"
@@ -36,22 +57,29 @@
             :class="{ 'is-active-btn': voice.active }">
             {{ voice.active ? '★' : '☆' }}
           </button>
+          
+          <!-- Visibility toggle - always visible -->
           <button 
             @click="emitToggleVoiceVisibility(voice.id)" 
             :title="voice.visible ? 'Visible | Click to Hide' : 'Hidden | Click to Show'"
             class="control-btn icon-btn">
             {{ voice.visible ? '👁️' : '🙈' }}
           </button>
+          
+          <!-- Selection for playback toggle - always visible -->
           <button 
             @click="emitUpdateVoiceSelection(voice.id)" 
             :title="voice.selected ? 'Selected for Playback | Click to Exclude' : 'Not Selected for Playback | Click to Include'"
             class="control-btn icon-btn">
             {{ voice.selected ? '🔊' : '🔇' }}
           </button>
+          
+          <!-- Volume display is always visible -->
           <span class="volume-value">{{ voice.volume }} %</span>
         </div>
 
-        <div class="voice-staff-assignment">
+        <!-- Staff assignment - hidden in read-only -->
+        <div v-if="!readOnlyMode" class="voice-staff-assignment">
           <label :for="`voice-staff-select-${voice.id}`" class="staff-assignment-label">Staff:</label>
           <select
             :id="`voice-staff-select-${voice.id}`"
@@ -67,6 +95,15 @@
           </select>
         </div>
         
+        <!-- Staff display in read-only -->
+        <div v-if="readOnlyMode" class="voice-staff-display">
+          <span class="staff-label">Staff:</span>
+          <span class="staff-name">
+            {{ getStaffNameById(voice.staffId) }}
+          </span>
+        </div>
+        
+        <!-- Volume slider - always visible -->
         <div class="voice-volume-control">
           <label :for="`voice-volume-${voice.id}`" class="volume-label">Volume:</label>
           <input
@@ -82,12 +119,14 @@
           />
         </div>
       </div>
+      
       <div v-if="!voiceLayers || voiceLayers.length === 0" class="no-voices-message">
         No voice layers yet. Add one below.
       </div>
     </div>
 
-    <div class="add-voice-section">
+    <!-- Add Voice section - hidden in read-only -->
+    <div v-if="!readOnlyMode" class="add-voice-section">
       <h5>Add New Voice</h5>
       <div class="add-voice-controls">
         <select v-model="selectedStaffForNewVoice" class="staff-select-for-new-voice" title="Select staff for new voice">
@@ -99,17 +138,17 @@
         <button @click="triggerAddVoiceLayer" class="add-voice-btn-main" :disabled="!selectedStaffForNewVoice && staves.length > 0">
           Add Voice Layer
         </button>
-         <p v-if="staves.length === 0" class="no-staves-warning">
-            Please add a staff in the main editor before adding a voice.
+        <p v-if="staves.length === 0" class="no-staves-warning">
+          Please add a staff in the main editor before adding a voice.
         </p>
       </div>
     </div>
 
     <div class="playback-options-voices">
-        <label>
-            <input type="checkbox" :checked="playSelectedVoicesOnly" @change="togglePlaySelectedVoicesOnly" />
-            Play only selected voices
-        </label>
+      <label>
+        <input type="checkbox" :checked="playSelectedVoicesOnly" @change="togglePlaySelectedVoicesOnly" />
+        Play only selected voices
+      </label>
     </div>
   </div>
 </template>
@@ -134,6 +173,10 @@ const props = defineProps({
   playSelectedVoicesOnly: {
     type: Boolean,
     default: false,
+  },
+  readOnlyMode: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -239,6 +282,13 @@ const handleStaffAssignmentChange = (voiceId: string, event: Event) => {
 
 const togglePlaySelectedVoicesOnly = (event: Event) => {
   emit('update:playSelectedVoicesOnly', (event.target as HTMLInputElement).checked);
+};
+
+// Add a helper method to get staff name by ID
+const getStaffNameById = (staffId: string | null): string => {
+  if (!staffId) return "No staff assigned";
+  const staff = props.staves.find(s => s.id === staffId);
+  return staff ? staff.name || `Staff ${staff.order + 1}` : "Unknown staff";
 };
 
 </script>
@@ -552,5 +602,64 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* Add these styles */
+.read-only-banner {
+  background-color: rgba(244, 67, 54, 0.1);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.read-only-message {
+  color: #d32f2f;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.lock-icon {
+  margin-right: 6px;
+  font-size: 16px;
+}
+
+.read-only-detail {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+/* Add these styles for read-only mode */
+.voice-layer-item.read-only {
+  background-color: #f9f9f9;
+}
+
+.voice-name-display {
+  font-weight: bold;
+  padding: 5px 0;
+  font-size: 14px;
+}
+
+.voice-staff-display {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+  font-size: 13px;
+  color: #666;
+}
+
+.staff-label {
+  font-weight: 500;
+}
+
+.staff-name {
+  font-style: italic;
 }
 </style> 

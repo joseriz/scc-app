@@ -1,8 +1,15 @@
 <template>
   <div class="sections-panel">
+    <div v-if="readOnlyMode" class="read-only-banner">
+      <div class="read-only-message">
+        <i class="lock-icon">🔒</i> Section editing is locked in read-only mode.
+        <div class="read-only-detail">You can still play sections and sequences, but can't modify them.</div>
+      </div>
+    </div>
+    
     <h4>Music Sections</h4>
     
-    <div class="section-form">
+    <div v-if="!readOnlyMode" class="section-form">
       <input 
         type="text" 
         v-model="sectionName" 
@@ -39,15 +46,17 @@
           <button @click="$emit('jumpToSection', section)" class="jump-section-btn" title="Jump to this section">
             ↪
           </button>
-          <button 
-            @click="addToSequence(section)"
-            class="add-to-sequence-btn" 
-            title="Add to playback sequence">
-            +
-          </button>
-          <button @click="$emit('deleteSection', section.id)" class="delete-section-btn" title="Delete this section">
-            ✕
-          </button>
+          <template v-if="!readOnlyMode">
+            <button 
+              @click="addToSequence(section)"
+              class="add-to-sequence-btn" 
+              title="Add to playback sequence">
+              +
+            </button>
+            <button @click="$emit('deleteSection', section.id)" class="delete-section-btn" title="Delete this section">
+              ✕
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -65,7 +74,7 @@
         <div v-for="(item, index) in playbackSequence" :key="`seq-${index}`" class="sequence-item">
           <div class="sequence-number">{{ index + 1 }}.</div>
           <div class="sequence-section-name">{{ getSectionName(item.sectionId) }}</div>
-          <button @click="removeFromSequence(index)" class="remove-from-sequence-btn" title="Remove from sequence">
+          <button v-if="!readOnlyMode" @click="removeFromSequence(index)" class="remove-from-sequence-btn" title="Remove from sequence">
             ✕
           </button>
         </div>
@@ -74,7 +83,7 @@
           <button @click="$emit('playSequence', playbackSequence)" class="play-sequence-btn" title="Play entire sequence">
             ▶ Play Sequence
           </button>
-          <button @click="clearSequence" class="clear-sequence-btn" title="Clear sequence">
+          <button v-if="!readOnlyMode" @click="clearSequence" class="clear-sequence-btn" title="Clear sequence">
             Clear
           </button>
         </div>
@@ -104,6 +113,7 @@ const props = defineProps<{
   sections: Section[];
   maxMeasures: number;
   sequenceItems: SequenceItem[];
+  readOnlyMode: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -455,5 +465,32 @@ h4 {
   padding: 8px 15px;
   cursor: pointer;
   margin-top: 10px;
+}
+
+.read-only-banner {
+  background-color: rgba(244, 67, 54, 0.1);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.read-only-message {
+  color: #d32f2f;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.lock-icon {
+  margin-right: 6px;
+  font-size: 16px;
+}
+
+.read-only-detail {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
 }
 </style> 

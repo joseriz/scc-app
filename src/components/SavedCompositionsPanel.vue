@@ -48,7 +48,7 @@
             </template>
           </div>
           <div class="composition-actions">
-            <button @click="$emit('loadComposition', comp.id)" class="load-btn">Load</button>
+            <button @click="handleLoadClick(comp.id)" class="load-btn">Load</button>
             <button
               v-if="currentCompositionId === comp.id"
               @click="$emit('updateComposition', comp.id)"
@@ -125,7 +125,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:compositionName', value: string): void;
   (e: 'saveComposition'): void;
-  (e: 'loadComposition', id: string): void;
+  (e: 'loadComposition', id: string, readOnly: boolean): void;
   (e: 'updateComposition', id: string): void;
   (e: 'saveRename', id: string, newName: string): void;
   (e: 'deleteComposition', id: string): void;
@@ -227,6 +227,12 @@ watch(() => props.savedCompositions, () => {
     id => props.savedCompositions.some(comp => comp.id === id)
   );
 }, { deep: true });
+
+// Add this method to handle the load click with read-only mode
+const handleLoadClick = (compositionId) => {
+  // Emit load composition event with a flag to enable read-only mode
+  emit('loadComposition', compositionId, true); // true = enable read-only mode
+};
 
 </script>
 

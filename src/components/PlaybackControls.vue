@@ -19,7 +19,7 @@
         <span class="button-label">Stop</span>
       </button>
 
-      <button @click="$emit('clearOrRestart')"
+      <button @click="$emit('clearOrRestart')" :disabled="readOnlyMode && !isPlaying && !isPaused"
         class="action-button" :class="{
           'clear-button': !isPlaying && !isPaused,
           'restart-button': isPlaying || isPaused
@@ -40,6 +40,7 @@ import { defineProps, defineEmits } from 'vue';
 defineProps<{
   isPlaying: boolean;
   isPaused: boolean;
+  readOnlyMode: boolean;
 }>();
 
 defineEmits<{

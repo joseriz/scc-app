@@ -340,6 +340,26 @@
                 <li>Each voice layer also has its own volume control, affecting its loudness during playback.</li>
               </ul>
             </div>
+
+            <div class="help-section">
+              <h3>Read-Only Mode</h3>
+              <ul>
+                <li>Use the "Read-Only Mode" toggle to protect your composition from accidental changes while reviewing or during playback.</li>
+                <li>When read-only mode is active, all editing functions are disabled, including:
+                  <ul>
+                    <li>Adding or editing notes</li>
+                    <li>Adding or removing staves and voices</li>
+                    <li>Editing lyrics</li>
+                    <li>Changing staff layout</li>
+                  </ul>
+                </li>
+                <li>Playback automatically enables read-only mode to prevent accidental edits while music is playing.</li>
+                <li>A visual indicator (red border) appears around the staff area when in read-only mode.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> Enable read-only mode when sharing your device with others to let them play your compositions without risk of changes.
+              </div>
+            </div>
           </div>
           
           <!-- Saving Tab -->

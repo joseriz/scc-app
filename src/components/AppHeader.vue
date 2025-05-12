@@ -18,7 +18,7 @@
       <div class="setting-item">
         <label for="key-signature">Key:</label>
         <div class="custom-select compact">
-          <select id="key-signature" :value="keySignature" @change="onKeySignatureChange">
+          <select :disabled="readOnlyMode" id="key-signature" :value="keySignature" @change="onKeySignatureChange">
             <option value="C">C Maj (0)</option>
             <option value="G">G Maj (1♯)</option>
             <option value="D">D Maj (2♯)</option>
@@ -42,7 +42,7 @@
       <div class="setting-item">
         <label for="time-signature">Time:</label>
         <div class="custom-select compact">
-          <select id="time-signature" :value="timeSignature" @change="onTimeSignatureChange">
+          <select :disabled="readOnlyMode" id="time-signature" :value="timeSignature" @change="onTimeSignatureChange">
             <option value="4/4">4/4</option>
             <option value="3/4">3/4</option>
             <option value="2/4">2/4</option>
@@ -61,6 +61,7 @@
 import { defineProps, defineEmits } from 'vue';
 
 defineProps<{
+  readOnlyMode: boolean;
   selectedClef: string;
   keySignature: string;
   timeSignature: string;
