@@ -3137,11 +3137,12 @@
 
   .clef {
     width: 45px; /* Reduced from 60px */
+    margin-top: 67px;
   }
 
   .clef img {
     height: 110px; /* Reduced from 150px */
-    margin-top: 15px; /* Shifted down. Original was -10px. Adjust as needed. */
+    margin-top: 30px; /* Increased from 15px to push clef further down */
     margin-left: 3px; /* Slightly adjusted from 5px */
   }
 }

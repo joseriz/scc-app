@@ -3,6 +3,7 @@
   <div class="notation-editor">
     <AppHeader v-model:keySignature="keySignature"
       v-model:timeSignature="timeSignature"
+      :selectedClef="staves.length > 0 ? staves[0].clef : 'treble'"
       @keySignatureChange="changeKeySignatureDirectly" @timeSignatureChange="updateTimeSignature" />
 
     <!-- Floating Help Button -->
@@ -43,11 +44,14 @@
             <option value="treble">Treble</option>
             <option value="bass">Bass</option>
           </select>
+          <button @click="toggleStaffCollapse(stave)" class="collapse-staff-btn">
+            {{ stave.isCollapsed ? 'Expand' : 'Collapse' }}
+          </button>
           <button v-if="staves.length > 1" @click="removeStaff(stave.id)" class="remove-staff-btn">Remove Staff</button>
         </div>
 
-    <!-- Staff container with improved mobile layout -->
-    <div class="staff-container" :style="{ minHeight: staffContainerMinHeight }">
+    <!-- Staff container with improved mobile layout - conditionally render based on isCollapsed -->
+    <div v-if="!stave.isCollapsed" class="staff-container" :style="{ minHeight: staffContainerMinHeight }">
       <div class="clef">
             <img v-if="stave.clef === 'treble'" src="@/assets/treble-clef.svg" alt="Treble Clef" />
             <img v-else-if="stave.clef === 'bass'" src="@/assets/bass-clef.svg" alt="Bass Clef" />
@@ -326,8 +330,8 @@
 
     <DebugPanel :debugMode="debugMode" :showNotePositions="showNotePositions" :lastClickY="lastClickY"
       :selectedOctave="selectedOctave" :notesForDebug="notes" 
-      :needsLedgerLines="needsLedgerLinesForDebug"
-      :getLedgerLines="getLedgerLinesForDebug" 
+      :needsLedgerLines="needsLedgerLines"
+      :getLedgerLines="getLedgerLines" 
       @toggleShowNotePositions="showNotePositions = !showNotePositions"
       @testAllNotes="testAllNotes" />
 
@@ -369,6 +373,7 @@
       @confirmDeleteVoice="confirmDeleteVoice" 
       @addVoiceLayer="addVoiceLayer"
       @assignVoiceToStaff="assignVoiceToStaff"
+      @changeVolume="handleChangeVoiceVolume"
     />
     
     <!-- Add the FirstTimeInstructionModal component -->
@@ -493,7 +498,7 @@ const activeVoice = computed<VoiceLayer>(() => { // Explicitly type activeVoice
       visible: true,
       active: true,
       selected: true,
-      volume: 0,
+      volume: 100, // Default volume as percentage
       notes: [],
       staffId: staffIdForDefaultVoice! // Assert non-null after the logic above
     };
@@ -1010,7 +1015,7 @@ const getModifiedPitchForKeySignature = (pitch: string, isExplicitNatural = fals
 };
 
 // Refine the playNoteSound function for robustness
-const playNoteSound = async (pitch, duration = "8n", isDotted = false, volumeDb = 0, explicitNatural = false) => {
+const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, volumePercent = 100, explicitNatural = false) => {
   let pitchToPlay = pitch;
   let noteDuration = duration;
 
@@ -1021,23 +1026,17 @@ const playNoteSound = async (pitch, duration = "8n", isDotted = false, volumeDb 
     // Make sure Tone.js is started
     await Tone.start();
 
-    // Update the playNoteSound function's handling of explicitNatural
     if (explicitNatural) {
-      // The pitch *should* already be natural if explicitNatural is true.
-      // This block is more of a safeguard or for clarity.
       const noteLetter = pitch.charAt(0);
       const octave = pitch.slice(pitch.length - 1);
       pitchToPlay = `${noteLetter}${octave}`;
-      // console.log(`Playing explicitly natural note: ${pitchToPlay} (original pitch: ${pitch})`);
     } else {
-      // If not explicitly natural, apply key signature if the pitch doesn't already have an accidental
       if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
-        pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay, false); // explicitNatural is false here
+        pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay, false);
       }
     }
 
-    // Calculate the actual duration in seconds first for reliability
-    const baseDurationMap = {
+    const baseDurationMap: { [key: string]: number } = {
       "1n": 4 * (60 / tempo.value),
       "2n": 2 * (60 / tempo.value),
       "4n": 1 * (60 / tempo.value),
@@ -1046,54 +1045,38 @@ const playNoteSound = async (pitch, duration = "8n", isDotted = false, volumeDb 
     };
 
     let durationInSeconds = baseDurationMap[duration] || (60 / tempo.value);
-
     if (isDotted) {
       durationInSeconds *= 1.5;
     }
-
-    // Ensure duration is a positive number
     if (durationInSeconds <= 0) {
-      console.warn(`Calculated invalid duration (${durationInSeconds}s), defaulting to 0.5s`);
       durationInSeconds = 0.5;
     }
-
-    // Convert seconds to Tone.js compatible time string
     noteDuration = `${durationInSeconds}s`;
 
-    // Ensure pitch is valid
     if (!pitchToPlay) {
       console.warn("Invalid pitch provided, cannot play note.");
       return;
     }
 
-    // Convert volume from dB to linear gain (0dB = 1.0)
-    const volumeGain = Math.pow(10, volumeDb / 20);
+    // Convert volumePercent (0-100) to velocity (0.0-1.0)
+    // Ensure velocity is clamped between 0 and 1.
+    const velocity = Math.max(0, Math.min(1, volumePercent / 100));
 
     // Use the piano synth to play the note if available, otherwise use basic synth
     if (pianoSynth && pianoSynth.loaded) {
-      // Set volume for this note
-      pianoSynth.volume.value = volumeDb;
-      pianoSynth.triggerAttackRelease(pitchToPlay, noteDuration);
+      pianoSynth.triggerAttackRelease(pitchToPlay, noteDuration, undefined, velocity);
     } else if (noteSynth) {
-      // Set volume for this note
-      noteSynth.volume.value = volumeDb;
-      noteSynth.triggerAttackRelease(pitchToPlay, noteDuration);
+      noteSynth.triggerAttackRelease(pitchToPlay, noteDuration, undefined, velocity);
     } else {
-      console.warn("No synthesizer available to play notes");
+      console.warn('No synth available to play note.');
+      // Fallback to a very basic Tone.Synth if nothing else is initialized
+      const fallbackSynth = createFallbackPianoSynth(); // Ensure this function exists or use new Tone.Synth()
+      fallbackSynth.triggerAttackRelease(pitchToPlay, noteDuration, undefined, velocity);
+      // Dispose of the fallback synth after a short delay to prevent memory leaks if used frequently
+      setTimeout(() => fallbackSynth.dispose(), durationInSeconds * 1000 + 500);
     }
   } catch (error) {
-    console.error(`Error playing note (${pitchToPlay}, ${noteDuration}):`, error);
-    // Try fallback to basic synth
-    if (noteSynth) {
-      try {
-        const safePitch = pitchToPlay || 'C4';
-        const safeDuration = noteDuration || '0.5s';
-        noteSynth.volume.value = volumeDb;
-        noteSynth.triggerAttackRelease(safePitch, safeDuration);
-      } catch (fallbackError) {
-        console.error("Fallback synth also failed:", fallbackError);
-      }
-    }
+    console.error('Error playing note sound:', error);
   }
 };
 
@@ -1184,7 +1167,7 @@ const handleStaffClick = (event, staffId: string) => {
           updatedNote.pitch,
           durationMap[updatedNote.duration], 
           updatedNote.dotted,
-          0, // volumeDb
+          100, // volumePercent for click feedback
           updatedNote.explicitNatural
         );
       }
@@ -1214,7 +1197,7 @@ const handleStaffClick = (event, staffId: string) => {
             newNote.pitch, 
             durationMap[newNote.duration], 
             newNote.dotted, 
-            0, // volumeDb
+            100, // volumePercent for click feedback
             newNote.explicitNatural
         );
       }
@@ -1970,6 +1953,7 @@ const prepareCompositionData = (): CompositionData => {
     staves: JSON.parse(JSON.stringify(staves.value)), // Save staves
     voiceLayers: voiceLayers.value.map(voice => ({ // Save voice layers with staffId
       ...voice,
+      volume: voice.volume !== undefined ? voice.volume : 100, // Ensure volume is saved, default 100%
       notes: voice.notes.map(note => ({
         ...note,
         pitch: note.pitch, // Ensure pitch is the one stored on the note
@@ -2065,12 +2049,13 @@ const loadComposition = (compositionId: string) => {
           clef: s.clef || 'treble',
           order: s.order !== undefined ? s.order : index,
           name: s.name || `Staff ${index + 1}`,
+          isCollapsed: typeof s.isCollapsed === 'boolean' ? s.isCollapsed : false, // Load isCollapsed, default false
           // Keep voiceLayerIds temporarily if present in old data, for mapping
           voiceLayerIds: (s as any).voiceLayerIds 
       }));
     } else {
         const defaultStaffId = generateId();
-        staves.value = [{ id: defaultStaffId, clef: 'treble', order: 0, name: 'Staff 1' }];
+        staves.value = [{ id: defaultStaffId, clef: 'treble', order: 0, name: 'Staff 1', isCollapsed: false }];
       }
       activeStaffId.value = staves.value.length > 0 ? staves.value[0].id : null;
 
@@ -2112,7 +2097,8 @@ const loadComposition = (compositionId: string) => {
               const { voiceId, voiceColor, ...restOfNote } = (note as any); // Strip voiceId and voiceColor
               return restOfNote;
             }),
-            active: vl.active || false // Ensure active is boolean
+            active: vl.active || false, // Ensure active is boolean
+            volume: vl.volume !== undefined ? vl.volume : 100, // Load volume, default to 100%
       });
     });
       } else if (compositionToLoad.notes && compositionToLoad.notes.length > 0) {
@@ -2143,7 +2129,7 @@ const loadComposition = (compositionId: string) => {
                 visible: true,
                 active: index === 0, // Make first imported voice active
                 selected: true,
-                volume: 0,
+                volume: 100, // Default to 100% for imported old flat notes
                 notes: notesInVoice.map(n => { const {originalVoiceId, originalVoiceColor, ...rest} = n; return rest; }),
                 staffId: firstStaffId
             });
@@ -2202,7 +2188,7 @@ const loadComposition = (compositionId: string) => {
         const defaultVoiceId = generateId();
         voiceLayers.value.push({
           id: defaultVoiceId, name: 'Default Voice', color: getRandomColor(),
-          visible: true, active: true, selected: true, volume: 0, notes: [], staffId: staves.value[0].id
+          visible: true, active: true, selected: true, volume: 100, notes: [], staffId: staves.value[0].id
         });
         activeVoiceId.value = defaultVoiceId;
         activeStaffId.value = staves.value[0].id;
@@ -2476,8 +2462,8 @@ const exportCurrentComposition = async () => {
       selectedAccidental: selectedAccidental.value,
       selectedOctave: selectedOctave.value,
       isDottedNote: isDottedNote.value,
-      sections: baseComposition.sections ? JSON.parse(JSON.stringify(baseComposition.sections)) : [],
-      sequenceItems: baseComposition.sequenceItems ? JSON.parse(JSON.stringify(baseComposition.sequenceItems)) : [],
+      sections: sections.value ? JSON.parse(JSON.stringify(sections.value)) : [],
+      sequenceItems: sequenceItems.value ? JSON.parse(JSON.stringify(sequenceItems.value)) : [],
     };
 
     console.log('Exporting composition with sequence items:', compositionToExport.sequenceItems);
@@ -2664,7 +2650,7 @@ const importCompositions = async (event) => {
                     visible: true,
                     active: true,
                     selected: true,
-                    volume: 0,
+                    volume: 100, // Default to 100%
                     staffId: firstStaffId,
                     notes: compFromFile.notes
                 }];
@@ -3212,13 +3198,13 @@ const playScore = () => {
 
             // Adjust volume based on voice settings
             const voice = voiceLayers.value.find(v => v.id === noteToPlay.voiceId);
-            const volume = voice ? voice.volume || 0 : 0; // Default to 0dB if not specified
+            const currentVoiceVolumePercent = voice ? voice.volume : 100; // Default to 100%
 
             playNoteSound(
               noteToPlay.pitch, 
               toneDuration, 
               noteToPlay.dotted, 
-              volume,
+              currentVoiceVolumePercent, // Pass the voice's volume as percentage
               noteToPlay.explicitNatural  // Add this parameter
             );
           }
@@ -3734,7 +3720,7 @@ const addVoiceLayer = (staffIdToAddVoiceTo?: string) => {
     visible: true,
     active: false, // New voices are not active by default, user switches to them
     selected: true, // Selected for playback by default
-    volume: 0,
+    volume: 100, // Default volume as percentage
     notes: [],
     staffId: targetStaffId,
   };
@@ -4035,6 +4021,7 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
             notes: (oldVoice.notes || []).map(n => ({ ...n, id: generateId() })), // New IDs for notes
             active: false, // Deactivate by default
             selected: oldVoice.selected !== undefined ? oldVoice.selected : true,
+            volume: oldVoice.volume !== undefined ? oldVoice.volume : 100, // Convert or default volume
           };
           newComposition.voiceLayers!.push(newVoice);
           console.log(`Added voice ${newVoice.id} to staff ${newVoice.staffId}`);
@@ -4047,6 +4034,7 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
             notes: (oldVoice.notes || []).map(n => ({ ...n, id: generateId() })),
             active: false,
             selected: oldVoice.selected !== undefined ? oldVoice.selected : true,
+            volume: oldVoice.volume !== undefined ? oldVoice.volume : 100, // Convert or default volume
           };
           newComposition.voiceLayers!.push(newVoice);
           console.log(`Added voice ${newVoice.id} to staff ${newVoice.staffId}`);
@@ -4065,7 +4053,8 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
           id: newStaffId,
           name: `${comp.name} - Merged Staff ${newComposition.staves!.length + 1}`,
           clef: firstOldStaffClef, // *** Use clef from first original staff ***
-          order: newComposition.staves!.length
+          order: newComposition.staves!.length,
+          isCollapsed: false, // Default for new staves
         };
         newComposition.staves!.push(newStaffForComp);
         compSpecificNewStaffIds.push(newStaffId);
@@ -4078,7 +4067,8 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
           id: newStaffId,
           name: `${comp.name} - Default Staff ${newComposition.staves!.length + 1}`,
           clef: 'treble', // Default if no original staves
-          order: newComposition.staves!.length
+          order: newComposition.staves!.length,
+          isCollapsed: false, // Default for new staves
         };
         newComposition.staves!.push(newStaffForComp);
         compSpecificNewStaffIds.push(newStaffId);
@@ -4104,6 +4094,7 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
           notes: (oldVoice.notes || []).map(n => ({ ...n, id: generateId() })),
           active: false,
           selected: oldVoice.selected !== undefined ? oldVoice.selected : true,
+          volume: oldVoice.volume !== undefined ? oldVoice.volume : 100, // Convert or default volume
           };
           newComposition.voiceLayers!.push(newVoice);
         });
@@ -4124,7 +4115,7 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
               visible: true,
             active: false,
               selected: true,
-              volume: 0,
+              volume: 100, // Default to 100%
               notes: [],
             staffId: targetStaffIdForCompVoices,
           };
@@ -4145,13 +4136,13 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
   // Final cleanup and loading
     if (newComposition.staves!.length === 0) {
     console.warn("Combined composition resulted in no staves. Adding a default staff.");
-    newComposition.staves!.push({ id: generateId(), name: "Default Combined Staff", clef: 'treble', order: 0 });
-    }
+    newComposition.staves!.push({ id: generateId(), name: "Default Combined Staff", clef: 'treble', order: 0, isCollapsed: false });
+  }
   if (newComposition.voiceLayers!.length === 0 && newComposition.staves!.length > 0) {
      console.warn("Combined composition resulted in no voice layers. Adding a default voice.");
         newComposition.voiceLayers!.push({
         id: generateId(), name: "Default Combined Voice", color: getRandomColor(), staffId: newComposition.staves![0].id,
-        visible: true, active: true, selected: true, volume: 0, notes:[]
+        visible: true, active: true, selected: true, volume: 100, notes:[] // Default to 100%
         });
     }
 
@@ -4296,7 +4287,7 @@ const playNextInSequence = () => {
 };
 
 // Modify playCompositionWithCallback to accept optional start/end measures
-const playCompositionWithCallback = (sectionStartMeasure = null, sectionEndMeasure = null) => {
+const playCompositionWithCallback = (sectionStartMeasure: number | null = null, sectionEndMeasure: number | null = null) => {
   if (isPlaying.value) return;
   
   isPlaying.value = true;
@@ -4432,13 +4423,13 @@ const playCompositionWithCallback = (sectionStartMeasure = null, sectionEndMeasu
             
             // Adjust volume based on voice settings
             const voice = voiceLayers.value.find(v => v.id === noteToPlay.voiceId);
-            const volume = voice ? voice.volume || 0 : 0;
+            const currentVoiceVolumePercent = voice ? voice.volume : 100; // Default to 100%
             
             playNoteSound(
               noteToPlay.pitch, 
               toneDuration, 
               noteToPlay.dotted, 
-              volume,
+              currentVoiceVolumePercent, // Pass the voice's volume as percentage
               noteToPlay.explicitNatural  // Add this parameter
             );
           }
@@ -4604,7 +4595,7 @@ const initializeDefaultStaffAndVoice = () => {
       visible: true,
       active: true,
       selected: true,
-      volume: 0,
+      volume: 100, // Default volume as percentage
       notes: [],
       staffId: staffToUse
     });
@@ -4645,7 +4636,7 @@ const addNewStaff = () => {
     visible: true,
     active: true, // Make this new voice active
     selected: true,
-    volume: 0,
+    volume: 100, // Default volume as percentage
     notes: [],
     staffId: newStaffId
   });
@@ -4743,8 +4734,26 @@ const cancelEditStaffName = (stave: Stave, event: Event) => {
   editingStaffNameId.value = null;
 };
 
+const handleChangeVoiceVolume = (voiceId: string, newVolume: number) => {
+  const voice = voiceLayers.value.find(v => v.id === voiceId);
+  if (voice) {
+    voice.volume = newVolume;
+    // console.log(`Volume for voice ${voiceId} set to ${newVolume} dB`);
+    // Optionally save to localStorage if desired on every tweak, or rely on broader save mechanisms
+    // saveToLocalStorage(); 
+  }
+};
 
+// Initialize Debug Composable
+// Pass the 'notes' computed property (or the ref it depends on)
 // existing code...
+
+const toggleStaffCollapse = (stave: Stave) => {
+  stave.isCollapsed = !stave.isCollapsed;
+  saveToLocalStorage(); // Save the change
+};
+
+// ... existing code ...
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
@@ -4903,4 +4912,27 @@ const cancelEditStaffName = (stave: Stave, event: Event) => {
   border-bottom: 1px dashed #ccc; /* Indicate it's clickable */
 }
 
+.staff-header-controls select {
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.collapse-staff-btn {
+  padding: 5px 10px;
+  background-color: #607d8b; /* Blue Grey */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.collapse-staff-btn:hover {
+  background-color: #546e7a;
+}
+
+.remove-staff-btn {
+  padding: 5px 10px;
+  background-color: #f44336;
+}
 </style>

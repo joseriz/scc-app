@@ -52,6 +52,22 @@
           </select>
         </div>
         
+        <div class="voice-volume-control">
+          <label :for="`voice-volume-${voice.id}`" class="volume-label">Volume:</label>
+          <input
+            type="range"
+            :id="`voice-volume-${voice.id}`"
+            :value="voice.volume"
+            min="0"
+            max="100"
+            step="1"
+            @input="emitChangeVolume(voice.id, $event)"
+            class="volume-slider"
+            title="Adjust voice volume"
+          />
+          <span class="volume-value">{{ voice.volume }} %</span>
+        </div>
+
         <div class="voice-actions">
           <button @click="emitConfirmDeleteVoice(voice.id)" class="delete-voice-btn" title="Delete voice">
             🗑️
@@ -122,7 +138,8 @@ const emit = defineEmits([
   'confirmDeleteVoice',
   'addVoiceLayer',
   'assignVoiceToStaff',
-  'update:playSelectedVoicesOnly'
+  'update:playSelectedVoicesOnly',
+  'changeVolume'
 ]);
 
 const selectedStaffForNewVoice = ref('');
@@ -159,6 +176,11 @@ const emitRenameVoice = (voiceId: string, event: Event) => {
 const emitChangeVoiceColor = (voiceId: string, event: Event) => {
   const newColor = (event.target as HTMLInputElement).value;
   emit('changeVoiceColor', voiceId, newColor);
+};
+
+const emitChangeVolume = (voiceId: string, event: Event) => {
+  const newVolume = parseFloat((event.target as HTMLInputElement).value);
+  emit('changeVolume', voiceId, newVolume);
 };
 
 const emitSwitchActiveVoice = (voiceId: string) => {
@@ -350,6 +372,31 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
   text-overflow: ellipsis;
 }
 
+.voice-volume-control {
+  grid-column: 1 / -1; /* Span all columns */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+}
+.volume-label {
+  font-size: 13px;
+  color: #555;
+  white-space: nowrap;
+}
+.volume-slider {
+  flex-grow: 1;
+  cursor: pointer;
+}
+.volume-value {
+  font-size: 12px;
+  color: #333;
+  min-width: 40px; /* Ensure space for "xx dB" */
+  text-align: right;
+}
+
 .voice-actions {
   grid-column: 3 / 4; 
   justify-self: end;
@@ -468,6 +515,10 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
     grid-column: 1 / -1; /* Staff assignment takes full width below */
     grid-row: 3 / 4;
   }
+  .voice-volume-control {
+    grid-column: 1 / -1;
+    grid-row: 4 / 5; /* Volume control below staff assignment */
+  }
 }
 
 
@@ -482,7 +533,7 @@ const togglePlaySelectedVoicesOnly = (event: Event) => {
       "staff-assignment"
       "actions"; */
   }
-  .voice-info, .voice-controls, .voice-staff-assignment, .voice-actions {
+  .voice-info, .voice-controls, .voice-staff-assignment, .voice-actions, .voice-volume-control {
     grid-column: 1 / -1;
     justify-self: stretch;
   }
