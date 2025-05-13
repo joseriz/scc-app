@@ -339,8 +339,8 @@
       </div> -->
 
     <DebugPanel :debugMode="debugMode" :showNotePositions="showNotePositions" :lastClickY="lastClickY"
-      :selectedOctave="selectedOctave" :notesForDebug="notes" :needsLedgerLines="needsLedgerLines"
-      :getLedgerLines="getLedgerLines" @toggleShowNotePositions="showNotePositions = !showNotePositions"
+      :selectedOctave="selectedOctave" :notesForDebug="notes" :needsLedgerLines="needsLedgerLinesForDebugPanel"
+      :getLedgerLines="getLedgerLinesForDebugPanel" @toggleShowNotePositions="showNotePositions = !showNotePositions"
       @testAllNotes="testAllNotes" />
 
     <div v-if="activeTab === 'saved'">
@@ -4863,6 +4863,55 @@ const loadCompositionWithReadOnly = (compositionId, enableReadOnly = true) => {
   if (enableReadOnly) {
     readOnlyMode.value = true;
   }
+};
+
+// Wrapper functions for DebugPanel props
+// Assumes DebugNote is compatible with ImportedNote and DebugPanel uses active clef context
+
+const needsLedgerLinesForDebugPanel = (noteFromDebugPanel: ImportedNote, side: "above" | "below"): boolean => {
+  const currentActiveVoice = activeVoice.value;
+  if (!currentActiveVoice || !currentActiveVoice.staffId) {
+    console.warn("DebugPanel (needsLedgerLines): Active voice or staffId not found for note", noteFromDebugPanel.id);
+    return false;
+  }
+  const currentActiveStaff = staves.value.find(s => s.id === currentActiveVoice.staffId);
+  if (!currentActiveStaff) {
+    console.warn("DebugPanel (needsLedgerLines): Active staff not found for note", noteFromDebugPanel.id);
+    return false;
+  }
+
+  const noteWithContext: NoteWithVoiceInfo = {
+    ...noteFromDebugPanel,
+    voiceId: currentActiveVoice.id,
+    voiceColor: currentActiveVoice.color,
+    staffId: currentActiveStaff.id,
+    staffClef: currentActiveStaff.clef,
+    verticalPosition: noteFromDebugPanel.verticalPosition !== undefined ? noteFromDebugPanel.verticalPosition : getPitchPosition(noteFromDebugPanel.pitch || '', currentActiveStaff.clef)
+  };
+  return needsLedgerLines(noteWithContext, side, currentActiveStaff.clef);
+};
+
+const getLedgerLinesForDebugPanel = (noteFromDebugPanel: ImportedNote, side: "above" | "below"): number[] => {
+  const currentActiveVoice = activeVoice.value;
+  if (!currentActiveVoice || !currentActiveVoice.staffId) {
+    console.warn("DebugPanel (getLedgerLines): Active voice or staffId not found for note", noteFromDebugPanel.id);
+    return [];
+  }
+  const currentActiveStaff = staves.value.find(s => s.id === currentActiveVoice.staffId);
+  if (!currentActiveStaff) {
+    console.warn("DebugPanel (getLedgerLines): Active staff not found for note", noteFromDebugPanel.id);
+    return [];
+  }
+
+  const noteWithContext: NoteWithVoiceInfo = {
+    ...noteFromDebugPanel,
+    voiceId: currentActiveVoice.id,
+    voiceColor: currentActiveVoice.color,
+    staffId: currentActiveStaff.id,
+    staffClef: currentActiveStaff.clef,
+    verticalPosition: noteFromDebugPanel.verticalPosition !== undefined ? noteFromDebugPanel.verticalPosition : getPitchPosition(noteFromDebugPanel.pitch || '', currentActiveStaff.clef)
+  };
+  return getLedgerLines(noteWithContext, side, currentActiveStaff.clef);
 };
 
 </script>

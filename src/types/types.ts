@@ -24,6 +24,7 @@ export interface Stave {
   clef: 'treble' | 'bass';
   order: number;
   name: string;
+  isCollapsed?: boolean;
 }
 
 export interface VoiceLayer {
