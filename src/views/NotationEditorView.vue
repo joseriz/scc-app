@@ -1,9 +1,8 @@
 <template>
   <!-- Add responsive meta tag -->
   <div class="notation-editor">
-    <AppHeader v-model:keySignature="keySignature" v-model:timeSignature="timeSignature"
-    :readOnlyMode="readOnlyMode"
-    :selectedClef="staves.length > 0 ? staves[0].clef : 'treble'" @keySignatureChange="changeKeySignatureDirectly"
+    <AppHeader v-model:keySignature="keySignature" v-model:timeSignature="timeSignature" :readOnlyMode="readOnlyMode"
+      :selectedClef="staves.length > 0 ? staves[0].clef : 'treble'" @keySignatureChange="changeKeySignatureDirectly"
       @timeSignatureChange="updateTimeSignature" />
 
     <!-- Read-only toggle moved to the top -->
@@ -47,7 +46,56 @@
           <button @click="toggleStaffCollapse(stave)" class="collapse-staff-btn">
             {{ stave.isCollapsed ? 'Expand' : 'Collapse' }}
           </button>
-          <button v-if="staves.length > 1 && !readOnlyMode" @click="removeStaff(stave.id)" class="remove-staff-btn">Remove Staff</button>
+          <button v-if="staves.length > 1 && !readOnlyMode" @click="removeStaff(stave.id)"
+            class="remove-staff-btn">Remove Staff</button>
+        </div>
+
+        <!-- Update the space controls in the template -->
+        <div class="space-controls" v-if="!readOnlyMode">
+          <div class="space-insertion-controls">
+            <button
+              @click="isInsertingSpace = !isInsertingSpace; isDeletingSpace = false; isSelectingRange = false; isPasting = false"
+              :class="{ active: isInsertingSpace }" class="insert-space-btn">
+              {{ isInsertingSpace ? 'Cancel Insert' : 'Insert Space' }}
+            </button>
+            <button
+              @click="isDeletingSpace = !isDeletingSpace; isInsertingSpace = false; isSelectingRange = false; isPasting = false"
+              :class="{ active: isDeletingSpace }" class="delete-space-btn">
+              {{ isDeletingSpace ? 'Cancel Delete' : 'Delete Space' }}
+            </button>
+            <div v-if="isInsertingSpace || isDeletingSpace" class="space-width-control">
+              <label>Width:</label>
+              <input type="number" v-model.number="spaceWidth" min="1" max="10" step="1">
+            </div>
+
+            <button @click="
+              isSelectingRange
+                ? clearSelection()
+                : (isSelectingRange = true);
+            isInsertingSpace = false;
+            isDeletingSpace = false;
+            isPasting = false" :class="{ active: isSelectingRange }" class="select-range-btn">
+              {{ isSelectingRange ? 'Cancel Selection' : 'Select Range' }}
+            </button>
+            <div class="copy-controls" v-if="isSelectingRange && selectionEnd">
+              <button @click="copySelectedNotes(false)" class="copy-btn">
+                Copy Notes & Lyrics
+              </button>
+              <button @click="copySelectedNotes(true)" class="copy-lyrics-btn">
+                Copy Lyrics Only
+              </button>
+            </div>
+
+            <button v-if="isPasting" @click="cancelPaste" class="cancel-paste-btn">
+              Cancel Paste
+            </button>
+            <div v-if="isPasting" class="paste-info">
+              {{ isLyricsCopyMode
+                ? `Click to paste ${copiedLyrics.length} lyrics to existing notes`
+                : `Click to paste ${copiedNotes.length} notes`
+              }}
+            </div>
+          </div>
         </div>
 
         <!-- Staff container with improved mobile layout - conditionally render based on isCollapsed -->
@@ -77,11 +125,40 @@
 
           <!-- Scrollable staff -->
           <div class="staff-scroll-container">
-            <div class="staff" @click="handleStaffClick($event, stave.id)" @mousedown="startDrag"
-              @touchstart="startDrag" :style="{
+            <div class="staff" @click="
+              isInsertingSpace
+                ? insertSpace($event, stave.id)
+                : isDeletingSpace
+                  ? deleteSpace($event, stave.id)
+                  : isSelectingRange
+                    ? handleRangeSelection($event, stave.id)
+                    : isPasting
+                      ? pasteNotes($event, stave.id)
+                      : handleStaffClick($event, stave.id)
+              " @mousedown="startDrag" @touchstart="startDrag" :class="{
+                'inserting-space': isInsertingSpace,
+                'deleting-space': isDeletingSpace,
+                'selecting-range': isSelectingRange,
+                'pasting': isPasting
+              }" :style="{
                 width: `${staffWidth}px`,
-                transform: `translateX(-${scrollPosition}px)`
+                transform: `translateX(-${scrollPosition}px)`,
+                cursor: isInsertingSpace
+                  ? 'col-resize'
+                  : isDeletingSpace
+                    ? 'col-resize'
+                    : isSelectingRange
+                      ? 'copy'
+                      : isPasting
+                        ? 'cell'
+                        : 'default'
               }">
+              <!-- Add selection highlight -->
+              <div v-if="selectionStart && selectionEnd" class="selection-highlight" :style="{
+                left: `${Math.min(selectionStart.position, selectionEnd.position) * 50}px`,
+                width: `${Math.abs(selectionEnd.position - selectionStart.position) * 50}px`
+              }"></div>
+
               <!-- Staff lines -->
               <div class="staff-lines">
                 <div class="staff-line" v-for="i in 5" :key="`line-${stave.id}-${i}`"></div>
@@ -194,17 +271,17 @@
                   'has-lyric': note.lyric,
                   'natural-accidental': note.explicitNatural
                 }" :style="[
-              getNoteStyle(note), // Base styles from function
-              currentPlayingNoteIds.includes(note.id)
-                ? {
-                  backgroundColor: 'rgba(255, 255, 0, 0.3)',
-                  transform: 'translate(-50%, -50%) scale(1.1)'
-                }
-                : {
-                  backgroundColor: 'transparent', // Explicit default background
-                  transform: 'translate(-50%, -50%)' // Explicit default transform
-                }
-            ]" :data-duration="note.duration" :data-voice="note.voiceId" @contextmenu.prevent="removeNote(note)"
+                  getNoteStyle(note), // Base styles from function
+                  currentPlayingNoteIds.includes(note.id)
+                    ? {
+                      backgroundColor: 'rgba(255, 255, 0, 0.3)',
+                      transform: 'translate(-50%, -50%) scale(1.1)'
+                    }
+                    : {
+                      backgroundColor: 'transparent', // Explicit default background
+                      transform: 'translate(-50%, -50%)' // Explicit default transform
+                    }
+                ]" :data-duration="note.duration" :data-voice="note.voiceId" @contextmenu.prevent="removeNote(note)"
                   @touchstart="handleTouchStart(note, $event)" @touchend="handleTouchEnd" @touchmove="handleTouchMove"
                   @click.stop="selectNote(note)">
 
@@ -291,7 +368,7 @@
 
 
     <PlaybackControls :is-playing="isPlaying" :is-paused="isPaused" @toggle-playback="togglePlayback"
-      @stop-playback="stopPlayback" @clear-or-restart="handleClearOrRestart" :readOnlyMode="readOnlyMode"/>
+      @stop-playback="stopPlayback" @clear-or-restart="handleClearOrRestart" :readOnlyMode="readOnlyMode" />
 
     <PlaybackSettings v-model:playbackStartMeasure="playbackStartMeasure"
       v-model:playbackEndMeasure="playbackEndMeasure" :maxMeasures="barlines.length"
@@ -1871,7 +1948,6 @@ const toggleDottedNote = () => {
 
 // Add a function to remove a note
 const removeNote = (noteToRemove: NoteWithVoiceInfo | ImportedNote) => {
-  debugger
   if (readOnlyMode.value) {
     console.log("Read-only mode active - note deletion disabled");
     return; // Exit early if in read-only mode
@@ -4935,7 +5011,7 @@ const deleteNote = (noteToRemove: Note | NoteWithVoiceInfo) => {
 
   // Attempt to get voiceId directly from the note object if it's NoteWithVoiceInfo
   let voiceId = (noteToRemove as NoteWithVoiceInfo).voiceId;
-  
+
   // If voiceId wasn't on the note object, try the active voice
   if (!voiceId) {
     voiceId = activeVoice.value?.id;
@@ -4952,7 +5028,7 @@ const deleteNote = (noteToRemove: Note | NoteWithVoiceInfo) => {
         const updatedNotes = [...voiceLayers.value[voiceIndex].notes];
         updatedNotes.splice(noteIndex, 1);
         voiceLayers.value[voiceIndex].notes = updatedNotes;
-        
+
         noteDeleted = true;
         console.log(`Note ${noteToRemove.id} deleted from voice ${voiceId}`);
       }
@@ -4971,7 +5047,7 @@ const deleteNote = (noteToRemove: Note | NoteWithVoiceInfo) => {
         const updatedNotes = [...currentVoiceLayer.notes];
         updatedNotes.splice(noteIndexInCurrentLayer, 1);
         voiceLayers.value[i].notes = updatedNotes;
-        
+
         noteDeleted = true;
         console.log(`Note ${noteToRemove.id} deleted from voice ${currentVoiceLayer.id} (fallback search).`);
         break; // Exit loop once note is found and deleted
@@ -4984,7 +5060,7 @@ const deleteNote = (noteToRemove: Note | NoteWithVoiceInfo) => {
       selectedNoteId.value = null; // Deselect if the deleted note was selected
       currentLyric.value = ''; // Clear lyric input if the deleted note was selected
     }
-    
+
     // Force a complete redraw of the staff
     forceStaffRedraw.value = true;
     nextTick(() => {
@@ -5008,7 +5084,7 @@ const lastUIUpdateTimestamp = ref(Date.now());
 // const allNotesWithVoiceInfo = computed(() => {
 //   // Force computed property to re-evaluate when lastUIUpdateTimestamp changes
 //   const _ = lastUIUpdateTimestamp.value;
-  
+
 //   let result: NoteWithVoiceInfo[] = [];
 //   voiceLayers.value.forEach(voice => {
 //     if (voice.visible) {
@@ -5076,7 +5152,7 @@ watch([forceStaffRedraw, lastUIUpdateTimestamp], ([force, timestamp], [oldForce,
 const allNotesWithVoiceInfo = computed(() => {
   // Force computed property to re-evaluate when lastUIUpdateTimestamp changes
   const _ = lastUIUpdateTimestamp.value;
-  
+
   let result: NoteWithVoiceInfo[] = [];
   voiceLayers.value.forEach(voice => {
     if (voice.visible) {
@@ -5140,6 +5216,440 @@ watch([forceStaffRedraw, lastUIUpdateTimestamp], ([force, timestamp], [oldForce,
 });
 
 // existing code...
+
+// Add these new refs near the top of the script section
+const isInsertingSpace = ref(false);
+const insertSpaceWidth = ref(1); // Default width of 1 grid unit (50px)
+
+// Add this new function to handle space insertion
+const insertSpace = (event: MouseEvent, staffId: string) => {
+  if (readOnlyMode.value || !isInsertingSpace.value) return;
+
+  const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX - staffRect.left;
+  const insertPosition = Math.floor(x / 50) + 0.5; // Grid-aligned position
+
+  // Get all voices on this staff
+  const voicesOnStaff = voiceLayers.value.filter(v => v.staffId === staffId);
+
+  voicesOnStaff.forEach(voice => {
+    // Shift all notes that come after the insertion point
+    voice.notes = voice.notes.map(note => {
+      if (note.position >= insertPosition) {
+        return {
+          ...note,
+          position: note.position + insertSpaceWidth.value
+        };
+      }
+      return note;
+    });
+  });
+
+  // Shift chord symbols if they exist
+  if (chordSymbols.value.length > 0) {
+    chordSymbols.value = chordSymbols.value.map(chord => {
+      if (chord.position >= insertPosition) {
+        return {
+          ...chord,
+          position: chord.position + insertSpaceWidth.value
+        };
+      }
+      return chord;
+    });
+  }
+
+  // Update sections if they exist
+  sections.value = sections.value.map(section => {
+    const updatedSection = { ...section };
+    if (section.startMeasure > Math.floor(insertPosition / 4)) {
+      updatedSection.startMeasure += Math.ceil(insertSpaceWidth.value / 4);
+    }
+    if (section.endMeasure >= Math.floor(insertPosition / 4)) {
+      updatedSection.endMeasure += Math.ceil(insertSpaceWidth.value / 4);
+    }
+    return updatedSection;
+  });
+
+  // Extend staff width if needed
+  const newRequiredWidth = staffWidth.value + (insertSpaceWidth.value * 50);
+  if (newRequiredWidth > staffWidth.value) {
+    staffWidth.value = newRequiredWidth;
+  }
+
+  // Exit insert mode after insertion
+  isInsertingSpace.value = false;
+  saveToLocalStorage();
+};
+
+// Add a keyboard shortcut to toggle space insertion mode
+// const handleKeyPress = (event: KeyboardEvent) => {
+//   if (event.key === 'i' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+//     isInsertingSpace.value = !isInsertingSpace.value;
+//     if (isInsertingSpace.value) {
+//       // Optional: Show a tooltip or notification that space insertion mode is active
+//       alert('Space insertion mode activated. Click where you want to insert space. Press "i" again to cancel.');
+//     }
+//   }
+// };
+
+// Add the event listener in onMounted
+onMounted(() => {
+  // ... existing onMounted code ...
+  window.addEventListener('keydown', handleKeyPress);
+});
+
+// Clean up in onBeforeUnmount
+onBeforeUnmount(() => {
+  // ... existing onBeforeUnmount code ...
+  window.removeEventListener('keydown', handleKeyPress);
+});
+
+// Add these new refs near the other space-related refs
+const isDeletingSpace = ref(false);
+const deleteSpaceWidth = ref(1); // Default width of 1 grid unit (50px)
+
+// Add this new function to handle space deletion
+const deleteSpace = (event: MouseEvent, staffId: string) => {
+  if (readOnlyMode.value || !isDeletingSpace.value) return;
+
+  const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX - staffRect.left;
+  const deletePosition = Math.floor(x / 50) + 0.5; // Grid-aligned position
+
+  // Get all voices on this staff
+  const voicesOnStaff = voiceLayers.value.filter(v => v.staffId === staffId);
+
+  // Check if there's enough space to delete
+  const hasEnoughSpace = voicesOnStaff.every(voice => {
+    const notesAfterPosition = voice.notes.filter(note => note.position > deletePosition);
+    const minPosition = Math.min(...notesAfterPosition.map(note => note.position));
+    return minPosition - deletePosition >= deleteSpaceWidth.value || notesAfterPosition.length === 0;
+  });
+
+  if (!hasEnoughSpace) {
+    alert('Cannot delete space: notes are too close together');
+    return;
+  }
+
+  voicesOnStaff.forEach(voice => {
+    // Shift all notes that come after the deletion point
+    voice.notes = voice.notes.map(note => {
+      if (note.position > deletePosition) {
+        return {
+          ...note,
+          position: Math.max(deletePosition, note.position - deleteSpaceWidth.value)
+        };
+      }
+      return note;
+    });
+  });
+
+  // Shift chord symbols if they exist
+  if (chordSymbols.value.length > 0) {
+    chordSymbols.value = chordSymbols.value.map(chord => {
+      if (chord.position > deletePosition) {
+        return {
+          ...chord,
+          position: Math.max(deletePosition, chord.position - deleteSpaceWidth.value)
+        };
+      }
+      return chord;
+    });
+  }
+
+  // Update sections if they exist
+  sections.value = sections.value.map(section => {
+    const updatedSection = { ...section };
+    const deletePositionMeasure = Math.floor(deletePosition / 4);
+    if (section.startMeasure > deletePositionMeasure) {
+      updatedSection.startMeasure = Math.max(
+        1,
+        section.startMeasure - Math.ceil(deleteSpaceWidth.value / 4)
+      );
+    }
+    if (section.endMeasure > deletePositionMeasure) {
+      updatedSection.endMeasure = Math.max(
+        updatedSection.startMeasure,
+        section.endMeasure - Math.ceil(deleteSpaceWidth.value / 4)
+      );
+    }
+    return updatedSection;
+  });
+
+  // Reduce staff width if possible
+  const newWidth = staffWidth.value - (deleteSpaceWidth.value * 50);
+  const minWidth = Math.max(
+    ...voiceLayers.value.flatMap(v => v.notes.map(n => n.position * 50))
+  ) + 200; // Add some padding
+  staffWidth.value = Math.max(minWidth, newWidth);
+
+  // Exit delete mode after deletion
+  isDeletingSpace.value = false;
+  saveToLocalStorage();
+};
+
+// // Update the keyboard shortcut handler to include delete mode
+// const handleKeyPress = (event: KeyboardEvent) => {
+//   if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+//     if (event.key === 'i') {
+//       isInsertingSpace.value = !isInsertingSpace.value;
+//       if (isInsertingSpace.value) {
+//         isDeletingSpace.value = false; // Ensure delete mode is off
+//         alert('Space insertion mode activated. Click where you want to insert space. Press "i" again to cancel.');
+//       }
+//     } else if (event.key === 'd') {
+//       isDeletingSpace.value = !isDeletingSpace.value;
+//       if (isDeletingSpace.value) {
+//         isInsertingSpace.value = false; // Ensure insert mode is off
+//         alert('Space deletion mode activated. Click where you want to delete space. Press "d" again to cancel.');
+//       }
+//     }
+//   }
+// };
+
+// Add this computed property near other space-related refs
+const spaceWidth = computed({
+  get() {
+    return isInsertingSpace.value ? insertSpaceWidth.value : deleteSpaceWidth.value;
+  },
+  set(value: number) {
+    if (isInsertingSpace.value) {
+      insertSpaceWidth.value = value;
+    } else {
+      deleteSpaceWidth.value = value;
+    }
+  }
+});
+
+// Add these refs for copy/paste functionality
+const isSelectingRange = ref(false);
+const selectionStart = ref<{ position: number; staffId: string; } | null>(null);
+const selectionEnd = ref<{ position: number; staffId: string; } | null>(null);
+const copiedNotes = ref<NoteWithVoiceInfo[]>([]);
+
+// Add this function to handle range selection
+const handleRangeSelection = (event: MouseEvent, staffId: string) => {
+  if (!isSelectingRange.value) return;
+
+  const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX - staffRect.left;
+  const position = Math.floor(x / 50) + 0.5;
+
+  if (!selectionStart.value) {
+    selectionStart.value = { position, staffId };
+  } else {
+    selectionEnd.value = { position, staffId };
+  }
+};
+
+// Add function to get selected notes
+const getSelectedNotes = (): NoteWithVoiceInfo[] => {
+  if (!selectionStart.value || !selectionEnd.value) return [];
+
+  const startPos = Math.min(selectionStart.value.position, selectionEnd.value.position);
+  const endPos = Math.max(selectionStart.value.position, selectionEnd.value.position);
+
+  let selectedNotes: NoteWithVoiceInfo[] = [];
+  voiceLayers.value.forEach(voice => {
+    const staff = staves.value.find(s => s.id === voice.staffId);
+    if (!staff) return;
+
+    const notesInRange = voice.notes
+      .filter(note => note.position >= startPos && note.position <= endPos)
+      .map(note => ({
+        ...note,
+        voiceId: voice.id,
+        voiceColor: voice.color,
+        staffId: voice.staffId,
+        staffClef: staff.clef,
+        originalPosition: note.position, // Store original position for relative placement
+        lyric: note.lyric // Make sure to include lyrics
+      }));
+
+    selectedNotes = [...selectedNotes, ...notesInRange];
+  });
+
+  return selectedNotes;
+};
+
+// Add these refs for lyrics-only copy/paste
+const isLyricsCopyMode = ref(false);
+const copiedLyrics = ref<Array<{ position: number; lyric: string; }>>([]);
+
+// Modify the copySelectedNotes function to handle lyrics-only copying
+const copySelectedNotes = (lyricsOnly = false) => {
+  const selectedNotes = getSelectedNotes();
+  if (selectedNotes.length === 0) {
+    alert('No notes selected');
+    return;
+  }
+
+  if (lyricsOnly) {
+    // Store only the positions and lyrics
+    const minPosition = Math.min(...selectedNotes.map(n => n.position));
+    copiedLyrics.value = selectedNotes
+      .filter(note => note.lyric) // Only copy notes that have lyrics
+      .map(note => ({
+        position: note.position - minPosition, // Store relative position
+        lyric: note.lyric || ''
+      }));
+
+    // Clear selection and enable paste mode
+    selectionStart.value = null;
+    selectionEnd.value = null;
+    isSelectingRange.value = false;
+    isPasting.value = true;
+    isLyricsCopyMode.value = true;
+
+    alert(`Copied ${copiedLyrics.value.length} lyrics. Click to paste or press Escape to cancel.`);
+  } else {
+    // Original note copying logic
+    const minPosition = Math.min(...selectedNotes.map(n => n.position));
+    copiedNotes.value = selectedNotes.map(note => ({
+      ...note,
+      relativePosition: note.position - minPosition
+    }));
+
+    // Clear selection and enable paste mode
+    selectionStart.value = null;
+    selectionEnd.value = null;
+    isSelectingRange.value = false;
+    isPasting.value = true;
+    isLyricsCopyMode.value = false;
+
+    alert(`Copied ${selectedNotes.length} notes. Click to paste or press Escape to cancel.`);
+  }
+};
+
+// Modify the pasteNotes function to handle lyrics-only pasting
+const pasteNotes = (event: MouseEvent, targetStaffId: string) => {
+  if (isLyricsCopyMode.value) {
+    if (copiedLyrics.value.length === 0) {
+      alert('No lyrics copied');
+      return;
+    }
+
+    const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = event.clientX - staffRect.left;
+    const pastePosition = Math.floor(x / 50) + 0.5;
+
+    // Find the active voice layer
+    const activeVoiceLayer = voiceLayers.value.find(v => v.active);
+    if (!activeVoiceLayer) {
+      alert('No active voice layer selected');
+      return;
+    }
+
+    // Get notes in the target area
+    const targetNotes = activeVoiceLayer.notes.filter(note =>
+      note.position >= pastePosition &&
+      note.position < pastePosition + Math.max(...copiedLyrics.value.map(l => l.position)) + 1
+    );
+
+    // Apply lyrics to notes based on relative positions
+    copiedLyrics.value.forEach(lyricData => {
+      const targetNote = targetNotes.find(note =>
+        Math.abs((note.position - pastePosition) - lyricData.position) < 0.1
+      );
+      if (targetNote) {
+        targetNote.lyric = lyricData.lyric;
+      }
+    });
+
+    // Exit paste mode
+    isPasting.value = false;
+    isLyricsCopyMode.value = false;
+    copiedLyrics.value = [];
+    saveToLocalStorage();
+  } else {
+    // Original note pasting logic
+    if (copiedNotes.value.length === 0) {
+      alert('No notes copied');
+      return;
+    }
+
+    const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = event.clientX - staffRect.left;
+    const pastePosition = Math.floor(x / 50) + 0.5;
+
+    // Get target staff
+    const targetStaff = staves.value.find(s => s.id === targetStaffId);
+    if (!targetStaff) return;
+
+    // Find the active voice layer
+    const activeVoiceLayer = voiceLayers.value.find(v => v.active);
+    if (!activeVoiceLayer) {
+      alert('No active voice layer selected');
+      return;
+    }
+
+    // Add all notes to the active voice layer
+    copiedNotes.value.forEach(note => {
+      const newNote = {
+        ...note,
+        id: generateId(),
+        position: pastePosition + (note.relativePosition || 0),
+        voiceId: activeVoiceLayer.id,
+        staffId: activeVoiceLayer.staffId,
+        staffClef: targetStaff.clef,
+        verticalPosition: getPitchPosition(note.pitch || '', targetStaff.clef),
+        lyric: note.lyric // Preserve lyrics
+      };
+      activeVoiceLayer.notes.push(newNote);
+    });
+
+    // Exit paste mode
+    isPasting.value = false;
+    copiedNotes.value = [];
+    saveToLocalStorage();
+  }
+};
+
+// Update the cancelPaste function
+const cancelPaste = () => {
+  isPasting.value = false;
+  isLyricsCopyMode.value = false;
+  copiedNotes.value = [];
+  copiedLyrics.value = [];
+};
+
+// Add this with the other refs near the top of the script section
+const isPasting = ref(false);
+
+// Update keyboard shortcuts
+const handleKeyPress = (event: KeyboardEvent) => {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (event.key === 'Escape') {
+      // Cancel paste mode if active
+      if (isPasting.value) {
+        cancelPaste();
+        return;
+      }
+      // Cancel other modes and clear selection
+      isInsertingSpace.value = false;
+      isDeletingSpace.value = false;
+      clearSelection(); // Use the new function here
+    } else if (event.key === 'r') {
+      isSelectingRange.value ? clearSelection() : isSelectingRange.value = true;
+      isInsertingSpace.value = false;
+      isDeletingSpace.value = false;
+      isPasting.value = false;
+      if (isSelectingRange.value) {
+        alert('Range selection mode activated. Click to set start and end points. Press "r" again to cancel.');
+      }
+    }
+    // ... rest of the key handlers ...
+  }
+};
+
+// Add this function to clear selection
+const clearSelection = () => {
+  selectionStart.value = null;
+  selectionEnd.value = null;
+  isSelectingRange.value = false;
+};
+
+
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
@@ -5705,5 +6215,234 @@ input:checked+.toggle-slider:before {
   height: 0 !important;
   width: 0 !important;
   overflow: hidden !important;
+}
+
+/* Add these styles to the style section */
+.space-insertion-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 10px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.insert-space-btn {
+  padding: 8px 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.insert-space-btn.active {
+  background-color: #f44336;
+}
+
+.insert-space-btn:hover {
+  opacity: 0.9;
+}
+
+.space-width-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.space-width-control input {
+  width: 60px;
+  padding: 4px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.staff.inserting-space {
+  cursor: col-resize;
+}
+
+.staff.inserting-space::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #4CAF50;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+/* Add these styles to the existing space-related styles */
+.space-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.delete-space-btn {
+  padding: 8px 16px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.delete-space-btn.active {
+  background-color: #d32f2f;
+}
+
+.delete-space-btn:hover {
+  opacity: 0.9;
+}
+
+.staff.deleting-space {
+  cursor: col-resize;
+}
+
+.staff.deleting-space::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #f44336;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+/* Update the existing space controls styles for better layout */
+.space-insertion-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.select-range-btn {
+  padding: 8px 16px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.select-range-btn.active {
+  background-color: #1976D2;
+}
+
+.copy-btn {
+  padding: 8px 16px;
+  background-color: #9C27B0;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.copy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.copy-info {
+  padding: 4px 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.staff.selecting-range {
+  cursor: copy;
+}
+
+.selection-highlight {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background-color: rgba(33, 150, 243, 0.2);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Add these styles */
+.cancel-paste-btn {
+  padding: 8px 16px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.cancel-paste-btn:hover {
+  opacity: 0.9;
+}
+
+.paste-info {
+  padding: 4px 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #2196F3;
+}
+
+.staff.pasting {
+  cursor: cell;
+}
+
+.copy-lyrics-btn {
+  padding: 8px 16px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.copy-lyrics-btn:hover {
+  opacity: 0.9;
+}
+
+/* Add these styles */
+.copy-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.copy-lyrics-btn {
+  padding: 8px 16px;
+  background-color: #009688;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.copy-lyrics-btn:hover {
+  opacity: 0.9;
+}
+
+/* Update the paste info style */
+.paste-info {
+  padding: 4px 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #2196F3;
+  font-style: italic;
 }
 </style>
