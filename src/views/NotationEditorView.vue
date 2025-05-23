@@ -4017,7 +4017,6 @@ const handleClearOrRestart = () => {
 
 // Add a handler for saveRename from SavedCompositionsPanel
 const handleSaveRename = (id: string, newName: string) => {
-  // The actual logic for renaming is in NotationEditorView
   if (!newName.trim()) {
     alert('Please enter a valid name');
     return;
@@ -4028,8 +4027,15 @@ const handleSaveRename = (id: string, newName: string) => {
     return;
   }
   composition.name = newName.trim();
-  saveCompositionsToStorage(); // Corrected function call
-  // The SavedCompositionsPanel will handle its internal UI state for editing
+  saveToLocalStorage();
+  
+  // Find the SavedCompositionsPanel component and call its method to exit edit mode
+  const savedCompositionsPanel = document.querySelector('saved-compositions-panel');
+  if (savedCompositionsPanel) {
+    // Emit event to exit edit mode
+    savedCompositionsPanel.dispatchEvent(new CustomEvent('exitEditMode'));
+  }
+  
   alert('Composition renamed successfully!');
 };
 
@@ -5616,8 +5622,36 @@ const cancelPaste = () => {
 // Add this with the other refs near the top of the script section
 const isPasting = ref(false);
 
-// Update keyboard shortcuts
+// Add this ref to track if we're currently editing text
+const isEditingText = computed(() => {
+  // Check if the active element is an input or textarea
+  const activeElement = document.activeElement;
+  return (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    // Also check for specific editing states
+    editingStaffNameId.value !== null ||
+    editingComposition.value !== '' ||
+    currentLyric.value !== ''
+  );
+});
+
+// Update the keyboard shortcut handler
 const handleKeyPress = (event: KeyboardEvent) => {
+  // Check if we're editing text in any input or contenteditable element
+  const activeElement = document.activeElement;
+  const isEditingText = (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement?.hasAttribute('contenteditable') ||
+    editingStaffNameId.value !== null
+  );
+
+  // Ignore shortcuts if we're editing text
+  if (isEditingText) {
+    return;
+  }
+
   if (!event.ctrlKey && !event.metaKey && !event.altKey) {
     if (event.key === 'Escape') {
       // Cancel paste mode if active
@@ -5628,7 +5662,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
       // Cancel other modes and clear selection
       isInsertingSpace.value = false;
       isDeletingSpace.value = false;
-      clearSelection(); // Use the new function here
+      clearSelection();
     } else if (event.key === 'r') {
       isSelectingRange.value ? clearSelection() : isSelectingRange.value = true;
       isInsertingSpace.value = false;
@@ -5637,8 +5671,25 @@ const handleKeyPress = (event: KeyboardEvent) => {
       if (isSelectingRange.value) {
         alert('Range selection mode activated. Click to set start and end points. Press "r" again to cancel.');
       }
+    } else if (event.key === 'i') {
+      isInsertingSpace.value = !isInsertingSpace.value;
+      isDeletingSpace.value = false;
+      isSelectingRange.value = false;
+      isPasting.value = false;
+      if (isInsertingSpace.value) {
+        alert('Space insertion mode activated. Click where you want to insert space. Press "i" again to cancel.');
+      }
+    } else if (event.key === 'd') {
+      isDeletingSpace.value = !isDeletingSpace.value;
+      isInsertingSpace.value = false;
+      isSelectingRange.value = false;
+      isPasting.value = false;
+      if (isDeletingSpace.value) {
+        alert('Space deletion mode activated. Click where you want to delete space. Press "d" again to cancel.');
+      }
+    } else if (event.key === 'c' && isSelectingRange.value) {
+      copySelectedNotes();
     }
-    // ... rest of the key handlers ...
   }
 };
 

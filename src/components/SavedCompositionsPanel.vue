@@ -36,9 +36,9 @@
                   type="text"
                   v-model="internalEditName"
                   class="rename-input"
-                  @keyup.enter="$emit('saveRename', comp.id, internalEditName)"
+                  @keyup.enter="handleSaveRename(comp.id, internalEditName)"
                 />
-                <button @click="$emit('saveRename', comp.id, internalEditName)" class="save-rename-btn">Save</button>
+                <button @click="handleSaveRename(comp.id, internalEditName)" class="save-rename-btn">Save</button>
                 <button @click="cancelRenameLocal" class="cancel-rename-btn">Cancel</button>
               </div>
             </template>
@@ -108,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits, ref, watch } from 'vue';
+import { defineProps, defineEmits, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import type { CompositionData, Note } from '@/types/types'; // Import from types file instead of vue component
 import type { CompositionData as CompositionDataTypes } from '@/types/types';
 
@@ -232,6 +232,32 @@ watch(() => props.savedCompositions, () => {
 const handleLoadClick = (compositionId) => {
   // Emit load composition event with a flag to enable read-only mode
   emit('loadComposition', compositionId, true); // true = enable read-only mode
+};
+
+// Add method to handle exiting edit mode
+const exitEditMode = () => {
+  editingCompId.value = null;
+  internalEditName.value = '';
+};
+
+// Add event listener in onMounted
+onMounted(() => {
+  // Listen for exitEditMode event
+  document.addEventListener('exitEditMode', exitEditMode);
+});
+
+// Clean up in onBeforeUnmount
+onBeforeUnmount(() => {
+  document.removeEventListener('exitEditMode', exitEditMode);
+});
+
+// Add this new method to handle the save rename action
+const handleSaveRename = (id: string, newName: string) => {
+  // First clear the editing state
+  editingCompId.value = null;
+  internalEditName.value = '';
+  // Then emit the event
+  emit('saveRename', id, newName);
 };
 
 </script>
