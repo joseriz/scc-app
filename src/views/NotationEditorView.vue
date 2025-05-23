@@ -370,6 +370,15 @@
 
     <!-- Add the FirstTimeInstructionModal component -->
     <FirstTimeInstructionModal :is-visible="showFirstTimeInstructions" @close="closeFirstTimeInstructions" />
+
+    <!-- In your template, if needed, add this hidden element to force re-renders -->
+    <div style="display: none;">{{ lastUIUpdateTimestamp }}</div>
+
+    <!-- Find your staff container or notation display element -->
+    <div class="notation-area" :key="forceStaffRedraw ? `staff-${lastUIUpdateTimestamp.value}` : 'staff'">
+      <!-- Your existing staff rendering code -->
+      <!-- This could be a v-for loop of notes, or a custom canvas rendering, etc. -->
+    </div>
   </div>
 </template>
 
@@ -391,6 +400,7 @@ import DebugPanel from '@/components/DebugPanel.vue';
 import FirstTimeInstructionModal from '@/components/FirstTimeInstructionModal.vue'; // Import the new component
 import { useDebug } from '@/composables/useDebug';
 import SectionsPanel from '@/components/SectionsPanel.vue';
+import { generateId } from '@/utils/idGenerator'; // Make sure this import path is correct
 
 // Import types
 import type {
@@ -1187,7 +1197,7 @@ const handleStaffClick = (event, staffId: string) => {
   } else {
     if (pitch || selectedNoteType.value === 'rest') {
       const newNoteBase = {
-        id: Date.now().toString(),
+        id: generateId(),
         type: selectedNoteType.value as "note" | "rest",
         position,
         duration: selectedDuration.value,
@@ -1382,7 +1392,7 @@ const needsLedgerLines = (note: NoteWithVoiceInfo, position: 'above' | 'below', 
     // For bass clef
     if (position === 'above') {
       // Notes above the staff (higher than A3)
-      return verticalPos <= 92.5; // B3 and above
+      return verticalPos <= 85; // C4 (85px) is the first note ON a ledger line.
     } else if (position === 'below') {
       // Notes below the staff (lower than G2)
       return verticalPos >= 167.5; // F2 and below
@@ -1793,7 +1803,12 @@ const mapPositionToPitch = (verticalPosition: number, clef: 'treble' | 'bass'): 
     positions[235] = 'B2';   // Ledger line
   } else {
     // Bass clef positions (rounded to nearest 7.5px)
-    positions[85] = 'C4';    // Ledger line above staff
+    // Adding notes up to G4 (3rd ledger line above staff)
+    positions[55] = 'G4';    // 3rd Ledger line above staff
+    positions[62.5] = 'F4';  // Space above 2nd ledger
+    positions[70] = 'E4';    // 2nd Ledger line above staff
+    positions[77.5] = 'D4';  // Space above 1st ledger
+    positions[85] = 'C4';    // 1st Ledger line above staff
     positions[92.5] = 'B3';  // Space above top line
     positions[100] = 'A3';   // Top line
     positions[107.5] = 'G3'; // Space
@@ -1856,6 +1871,7 @@ const toggleDottedNote = () => {
 
 // Add a function to remove a note
 const removeNote = (noteToRemove: NoteWithVoiceInfo | ImportedNote) => {
+  debugger
   if (readOnlyMode.value) {
     console.log("Read-only mode active - note deletion disabled");
     return; // Exit early if in read-only mode
@@ -4914,6 +4930,216 @@ const getLedgerLinesForDebugPanel = (noteFromDebugPanel: ImportedNote, side: "ab
   return getLedgerLines(noteWithContext, side, currentActiveStaff.clef);
 };
 
+const deleteNote = (noteToRemove: Note | NoteWithVoiceInfo) => {
+  if (readOnlyMode.value) return;
+
+  // Attempt to get voiceId directly from the note object if it's NoteWithVoiceInfo
+  let voiceId = (noteToRemove as NoteWithVoiceInfo).voiceId;
+  
+  // If voiceId wasn't on the note object, try the active voice
+  if (!voiceId) {
+    voiceId = activeVoice.value?.id;
+  }
+
+  let noteDeleted = false;
+
+  if (voiceId) {
+    const voiceIndex = voiceLayers.value.findIndex(v => v.id === voiceId);
+    if (voiceIndex !== -1) {
+      const noteIndex = voiceLayers.value[voiceIndex].notes.findIndex(n => n.id === noteToRemove.id);
+      if (noteIndex !== -1) {
+        // Create a new array reference to ensure Vue detects the change
+        const updatedNotes = [...voiceLayers.value[voiceIndex].notes];
+        updatedNotes.splice(noteIndex, 1);
+        voiceLayers.value[voiceIndex].notes = updatedNotes;
+        
+        noteDeleted = true;
+        console.log(`Note ${noteToRemove.id} deleted from voice ${voiceId}`);
+      }
+    }
+  }
+
+  // If the note wasn't deleted (e.g., voiceId was wrong or note not in that voice)
+  // try searching in all voice layers. This is a fallback for older data.
+  if (!noteDeleted) {
+    console.warn(`Note ${noteToRemove.id} not found with initial voiceId ${voiceId}. Searching all voice layers.`);
+    for (let i = 0; i < voiceLayers.value.length; i++) {
+      const currentVoiceLayer = voiceLayers.value[i];
+      const noteIndexInCurrentLayer = currentVoiceLayer.notes.findIndex(n => n.id === noteToRemove.id);
+      if (noteIndexInCurrentLayer !== -1) {
+        // Create a new array reference to ensure Vue detects the change
+        const updatedNotes = [...currentVoiceLayer.notes];
+        updatedNotes.splice(noteIndexInCurrentLayer, 1);
+        voiceLayers.value[i].notes = updatedNotes;
+        
+        noteDeleted = true;
+        console.log(`Note ${noteToRemove.id} deleted from voice ${currentVoiceLayer.id} (fallback search).`);
+        break; // Exit loop once note is found and deleted
+      }
+    }
+  }
+
+  if (noteDeleted) {
+    if (selectedNoteId.value === noteToRemove.id) {
+      selectedNoteId.value = null; // Deselect if the deleted note was selected
+      currentLyric.value = ''; // Clear lyric input if the deleted note was selected
+    }
+    
+    // Force a complete redraw of the staff
+    forceStaffRedraw.value = true;
+    nextTick(() => {
+      lastUIUpdateTimestamp.value = Date.now();
+      // Reset the flag after a brief delay to allow the DOM to update
+      setTimeout(() => {
+        forceStaffRedraw.value = false;
+      }, 50);
+    });
+  } else {
+    console.error(`Failed to delete note ${noteToRemove.id}. Note not found in any voice layer.`);
+  }
+};
+
+// Update the function to toggle note dotting
+// existing code...
+
+// Add this with your other refs
+const lastUIUpdateTimestamp = ref(Date.now());
+
+// const allNotesWithVoiceInfo = computed(() => {
+//   // Force computed property to re-evaluate when lastUIUpdateTimestamp changes
+//   const _ = lastUIUpdateTimestamp.value;
+  
+//   let result: NoteWithVoiceInfo[] = [];
+//   voiceLayers.value.forEach(voice => {
+//     if (voice.visible) {
+//       const notesWithInfo = voice.notes.map(note => {
+//         const staff = staves.value.find(s => s.id === voice.staffId);
+//         return {
+//           ...note,
+//           voiceId: voice.id,
+//           voiceColor: voice.color,
+//           staffId: voice.staffId,
+//           staffClef: staff?.clef || 'treble'
+//         } as NoteWithVoiceInfo;
+//       });
+//       result = result.concat(notesWithInfo);
+//     }
+//   });
+//   return result;
+// });
+
+// Add this with your other refs (if not already there)
+const forceStaffRedraw = ref(false);
+
+// --- DELETE THE FOLLOWING BLOCK ---
+// This block starting with "if (noteDeleted)" is incorrectly placed here
+// and is causing the "noteDeleted is not defined" error at line ~5030.
+// The correct logic is already inside your `deleteNote` function.
+
+/*
+if (noteDeleted) { // THIS IS THE LINE CAUSING THE ERROR
+  if (selectedNoteId.value === noteToRemove.id) {
+    selectedNoteId.value = null;
+    currentLyric.value = '';
+  }
+  
+  // Force a complete redraw of the staff
+  forceStaffRedraw.value = true;
+  nextTick(() => {
+    lastUIUpdateTimestamp.value = Date.now();
+    // Reset the flag after a brief delay to allow the DOM to update
+    setTimeout(() => {
+      forceStaffRedraw.value = false;
+    }, 50);
+  });
+} else {
+  console.error(`Failed to delete note ${noteToRemove.id}. Note not found in any voice layer.`);
+}
+*/
+// --- END OF BLOCK TO DELETE ---
+
+
+// Add this watcher to trigger manual redraw for custom rendering
+watch([forceStaffRedraw, lastUIUpdateTimestamp], ([force, timestamp], [oldForce, oldTimestamp]) => {
+  if (force || timestamp !== oldTimestamp) {
+    nextTick(() => {
+      // Instead of trying to call a redrawStaff function that doesn't exist,
+      // rely on the :key binding on the notation-area div to trigger the re-render
+      console.log("Staff redraw triggered by timestamp change or force flag");
+      // If you have a specific redraw function, call it here
+    });
+  }
+});
+
+// existing code...
+
+const allNotesWithVoiceInfo = computed(() => {
+  // Force computed property to re-evaluate when lastUIUpdateTimestamp changes
+  const _ = lastUIUpdateTimestamp.value;
+  
+  let result: NoteWithVoiceInfo[] = [];
+  voiceLayers.value.forEach(voice => {
+    if (voice.visible) {
+      const notesWithInfo = voice.notes.map(note => {
+        const staff = staves.value.find(s => s.id === voice.staffId);
+        return {
+          ...note,
+          voiceId: voice.id,
+          voiceColor: voice.color,
+          staffId: voice.staffId,
+          staffClef: staff?.clef || 'treble'
+        } as NoteWithVoiceInfo;
+      });
+      result = result.concat(notesWithInfo);
+    }
+  });
+  return result;
+});
+
+// Add this with your other refs (if not already there)
+// const forceStaffRedraw = ref(false);
+
+// --- DELETE THE FOLLOWING BLOCK ---
+// This block starting with "if (noteDeleted)" is incorrectly placed here
+// and is causing the "noteDeleted is not defined" error at line ~5030.
+// The correct logic is already inside your `deleteNote` function.
+
+/*
+if (noteDeleted) { // THIS IS THE LINE CAUSING THE ERROR
+  if (selectedNoteId.value === noteToRemove.id) {
+    selectedNoteId.value = null;
+    currentLyric.value = '';
+  }
+  
+  // Force a complete redraw of the staff
+  forceStaffRedraw.value = true;
+  nextTick(() => {
+    lastUIUpdateTimestamp.value = Date.now();
+    // Reset the flag after a brief delay to allow the DOM to update
+    setTimeout(() => {
+      forceStaffRedraw.value = false;
+    }, 50);
+  });
+} else {
+  console.error(`Failed to delete note ${noteToRemove.id}. Note not found in any voice layer.`);
+}
+*/
+// --- END OF BLOCK TO DELETE ---
+
+
+// Add this watcher to trigger manual redraw for custom rendering
+watch([forceStaffRedraw, lastUIUpdateTimestamp], ([force, timestamp], [oldForce, oldTimestamp]) => {
+  if (force || timestamp !== oldTimestamp) {
+    nextTick(() => {
+      // Instead of trying to call a redrawStaff function that doesn't exist,
+      // rely on the :key binding on the notation-area div to trigger the re-render
+      console.log("Staff redraw triggered by timestamp change or force flag");
+      // If you have a specific redraw function, call it here
+    });
+  }
+});
+
+// existing code...
 </script>
 
 <style scoped src="@/assets/styles/global.css" />
