@@ -5178,37 +5178,6 @@ const allNotesWithVoiceInfo = computed(() => {
   return result;
 });
 
-// Add this with your other refs (if not already there)
-// const forceStaffRedraw = ref(false);
-
-// --- DELETE THE FOLLOWING BLOCK ---
-// This block starting with "if (noteDeleted)" is incorrectly placed here
-// and is causing the "noteDeleted is not defined" error at line ~5030.
-// The correct logic is already inside your `deleteNote` function.
-
-/*
-if (noteDeleted) { // THIS IS THE LINE CAUSING THE ERROR
-  if (selectedNoteId.value === noteToRemove.id) {
-    selectedNoteId.value = null;
-    currentLyric.value = '';
-  }
-  
-  // Force a complete redraw of the staff
-  forceStaffRedraw.value = true;
-  nextTick(() => {
-    lastUIUpdateTimestamp.value = Date.now();
-    // Reset the flag after a brief delay to allow the DOM to update
-    setTimeout(() => {
-      forceStaffRedraw.value = false;
-    }, 50);
-  });
-} else {
-  console.error(`Failed to delete note ${noteToRemove.id}. Note not found in any voice layer.`);
-}
-*/
-// --- END OF BLOCK TO DELETE ---
-
-
 // Add this watcher to trigger manual redraw for custom rendering
 watch([forceStaffRedraw, lastUIUpdateTimestamp], ([force, timestamp], [oldForce, oldTimestamp]) => {
   if (force || timestamp !== oldTimestamp) {
@@ -5286,17 +5255,6 @@ const insertSpace = (event: MouseEvent, staffId: string) => {
   isInsertingSpace.value = false;
   saveToLocalStorage();
 };
-
-// Add a keyboard shortcut to toggle space insertion mode
-// const handleKeyPress = (event: KeyboardEvent) => {
-//   if (event.key === 'i' && !event.ctrlKey && !event.metaKey && !event.altKey) {
-//     isInsertingSpace.value = !isInsertingSpace.value;
-//     if (isInsertingSpace.value) {
-//       // Optional: Show a tooltip or notification that space insertion mode is active
-//       alert('Space insertion mode activated. Click where you want to insert space. Press "i" again to cancel.');
-//     }
-//   }
-// };
 
 // Add the event listener in onMounted
 onMounted(() => {
@@ -5393,25 +5351,6 @@ const deleteSpace = (event: MouseEvent, staffId: string) => {
   isDeletingSpace.value = false;
   saveToLocalStorage();
 };
-
-// // Update the keyboard shortcut handler to include delete mode
-// const handleKeyPress = (event: KeyboardEvent) => {
-//   if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-//     if (event.key === 'i') {
-//       isInsertingSpace.value = !isInsertingSpace.value;
-//       if (isInsertingSpace.value) {
-//         isDeletingSpace.value = false; // Ensure delete mode is off
-//         alert('Space insertion mode activated. Click where you want to insert space. Press "i" again to cancel.');
-//       }
-//     } else if (event.key === 'd') {
-//       isDeletingSpace.value = !isDeletingSpace.value;
-//       if (isDeletingSpace.value) {
-//         isInsertingSpace.value = false; // Ensure insert mode is off
-//         alert('Space deletion mode activated. Click where you want to delete space. Press "d" again to cancel.');
-//       }
-//     }
-//   }
-// };
 
 // Add this computed property near other space-related refs
 const spaceWidth = computed({
