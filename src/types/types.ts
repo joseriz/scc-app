@@ -51,6 +51,15 @@ export interface SequenceItem {
   sectionId: string;
 }
 
+export interface TieSlur {
+  id: string;
+  type: 'tie' | 'slur';
+  startNoteId: string;
+  endNoteId: string;
+  staffId: string;
+  curvature: 'above' | 'below';
+}
+
 export interface CompositionData {
   id: string;
   name: string;
@@ -62,6 +71,7 @@ export interface CompositionData {
   keySignature: string;
   timeSignature?: string;
   chordSymbols?: ChordSymbol[];
+  tiesSlurs?: TieSlur[];
   activeVoiceId?: string;
   staffWidth?: number;
   selectedDuration?: string;

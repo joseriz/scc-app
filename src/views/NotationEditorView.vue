@@ -54,12 +54,12 @@
         <div class="space-controls" v-if="!readOnlyMode">
           <div class="space-insertion-controls">
             <button
-              @click="isInsertingSpace = !isInsertingSpace; isDeletingSpace = false; isSelectingRange = false; isPasting = false"
+              @click="isInsertingSpace = !isInsertingSpace; isDeletingSpace = false; isSelectingRange = false; isPasting = false; isCreatingTieSlur = false"
               :class="{ active: isInsertingSpace }" class="insert-space-btn">
               {{ isInsertingSpace ? 'Cancel Insert' : 'Insert Space' }}
             </button>
             <button
-              @click="isDeletingSpace = !isDeletingSpace; isInsertingSpace = false; isSelectingRange = false; isPasting = false"
+              @click="isDeletingSpace = !isDeletingSpace; isInsertingSpace = false; isSelectingRange = false; isPasting = false; isCreatingTieSlur = false"
               :class="{ active: isDeletingSpace }" class="delete-space-btn">
               {{ isDeletingSpace ? 'Cancel Delete' : 'Delete Space' }}
             </button>
@@ -74,9 +74,22 @@
                 : (isSelectingRange = true);
             isInsertingSpace = false;
             isDeletingSpace = false;
-            isPasting = false" :class="{ active: isSelectingRange }" class="select-range-btn">
+            isPasting = false;
+            isCreatingTieSlur = false" :class="{ active: isSelectingRange }" class="select-range-btn">
               {{ isSelectingRange ? 'Cancel Selection' : 'Select Range' }}
             </button>
+            
+            <!-- Add Tie/Slur controls -->
+            <button 
+              @click="toggleTieSlurMode"
+              :class="{ active: isCreatingTieSlur }" 
+              class="tie-slur-btn">
+              {{ isCreatingTieSlur ? 'Cancel Tie/Slur' : 'Add Tie/Slur' }}
+            </button>
+            <div v-if="isCreatingTieSlur" class="tie-slur-info">
+              {{ tieSlurStartNote ? 'Click the end note to complete' : 'Click the start note' }}
+            </div>
+            
             <div class="copy-controls" v-if="isSelectingRange && selectionEnd">
               <button @click="copySelectedNotes(false)" class="copy-btn">
                 Copy Notes & Lyrics
@@ -125,7 +138,7 @@
 
           <!-- Scrollable staff -->
           <div class="staff-scroll-container">
-            <div class="staff" @click="
+            <div class="staff"               @click="
               isInsertingSpace
                 ? insertSpace($event, stave.id)
                 : isDeletingSpace
@@ -134,12 +147,15 @@
                     ? handleRangeSelection($event, stave.id)
                     : isPasting
                       ? pasteNotes($event, stave.id)
-                      : handleStaffClick($event, stave.id)
+                      : isCreatingTieSlur
+                        ? null // Do nothing - tie/slur creation is handled by note clicks
+                        : handleStaffClick($event, stave.id)
               " @mousedown="startDrag" @touchstart="startDrag" :class="{
                 'inserting-space': isInsertingSpace,
                 'deleting-space': isDeletingSpace,
                 'selecting-range': isSelectingRange,
-                'pasting': isPasting
+                'pasting': isPasting,
+                'tie-slur-mode': isCreatingTieSlur
               }" :style="{
                 width: `${staffWidth}px`,
                 transform: `translateX(-${scrollPosition}px)`,
@@ -155,8 +171,8 @@
               }">
               <!-- Add selection highlight -->
               <div v-if="selectionStart && selectionEnd" class="selection-highlight" :style="{
-                left: `${Math.min(selectionStart.position, selectionEnd.position) * 50}px`,
-                width: `${Math.abs(selectionEnd.position - selectionStart.position) * 50}px`
+                left: `${Math.min(selectionStart.position, selectionEnd.position) * 25}px`,
+                width: `${Math.abs(selectionEnd.position - selectionStart.position) * 25}px`
               }"></div>
 
               <!-- Staff lines -->
@@ -225,6 +241,22 @@
                 class="beat-marker" :style="{ left: `${beat.position}px` }">
               </div>
 
+              <!-- Ties and Slurs SVG Overlay -->
+              <svg class="ties-slurs-overlay" :style="{ width: `${staffWidth}px`, height: '280px' }">
+                <g v-for="tieSlur in tiesSlursForStaff(stave.id)" :key="tieSlur.id">
+                  <path 
+                    :d="getTieSlurPath(tieSlur)"
+                    :class="['tie-slur-path', tieSlur.type]"
+                    :stroke="getTieSlurColor(tieSlur)"
+                    stroke-width="2"
+                    fill="none"
+                    @click.stop="removeTieSlur(tieSlur.id)"
+                    style="cursor: pointer;"
+                    :title="`${tieSlur.type === 'tie' ? 'Tie' : 'Slur'} - Click to remove`"
+                  />
+                </g>
+              </svg>
+
               <!-- Notes container -->
               <div class="notes-container">
                 <!-- Ledger lines for notes -->
@@ -232,7 +264,7 @@
                   <!-- Ledger lines for notes above the staff -->
                   <div v-if="needsLedgerLines(note, 'above', note.staffClef)" class="ledger-lines-container above"
                     :style="{
-                      left: `${note.position * 50 - 10}px`
+                      left: `${note.position * 25 - 10}px`
                     }">
                     <div v-for="linePos in getLedgerLines(note, 'above', note.staffClef)"
                       :key="`above-${note.id}-${linePos}`" class="ledger-line" :style="{
@@ -245,7 +277,7 @@
                   <!-- Ledger lines for notes below the staff -->
                   <div v-if="needsLedgerLines(note, 'below', note.staffClef)" class="ledger-lines-container below"
                     :style="{
-                      left: `${note.position * 50 - 10}px`
+                      left: `${note.position * 25 - 10}px`
                     }">
                     <div v-for="linePos in getLedgerLines(note, 'below', note.staffClef)"
                       :key="`below-${note.id}-${linePos}`" class="ledger-line" :style="{
@@ -330,7 +362,7 @@
 
                 <!-- Chord symbols (render only on the first staff) -->
                 <div v-if="staveIndex === 0" v-for="chord in chordSymbols" :key="chord.id" class="chord-symbol" :style="{
-                  left: `${chord.position * 50}px`,
+                  left: `${chord.position * 25}px`,
                   top: `${chord.top}px`
                 }">
                   {{ formatChordName(chord.chordName) }}
@@ -339,7 +371,7 @@
                 <!-- ADD Lyric Rendering - Separate loop outside the notes loop -->
                 <div v-for="note in notesForStaffWithLyrics(stave.id)" :key="`lyric-${note.id}`" class="lyric"
                   :class="{ 'playing': currentPlayingNoteIds.includes(note.id) }" :style="{
-                    left: `${note.position * 50}px`,
+                    left: `${note.position * 25}px`,
                     top: getLyricVerticalOffset(note.voiceId, stave.id), // Pass staveId
                     color: currentPlayingNoteIds.includes(note.id) ? '#f44336' : (note.voiceColor || '#333')
                   }">
@@ -452,7 +484,7 @@
     <div style="display: none;">{{ lastUIUpdateTimestamp }}</div>
 
     <!-- Find your staff container or notation display element -->
-    <div class="notation-area" :key="forceStaffRedraw ? `staff-${lastUIUpdateTimestamp.value}` : 'staff'">
+    <div class="notation-area" :key="forceStaffRedraw ? `staff-${lastUIUpdateTimestamp}` : 'staff'">
       <!-- Your existing staff rendering code -->
       <!-- This could be a v-for loop of notes, or a custom canvas rendering, etc. -->
     </div>
@@ -461,6 +493,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, reactive, watch, type ComputedRef } from 'vue';
+import '@/assets/styles/global.css';
 import * as Tone from 'tone';
 import { useNotationStore } from '@/stores/notation';
 import HelpGuide from '@/components/HelpGuide.vue';
@@ -875,6 +908,18 @@ onMounted(async () => {
 // Add chord symbols to the store
 const chordSymbols = ref<ImportedChordSymbol[]>([]); // Use aliased import
 
+// Add tie/slur data structures
+interface TieSlur {
+  id: string;
+  type: 'tie' | 'slur';
+  startNoteId: string;
+  endNoteId: string;
+  staffId: string;
+  curvature: 'above' | 'below'; // Whether curve goes above or below the notes
+}
+
+const tiesSlurs = ref<TieSlur[]>([]);
+
 // Chord input state
 const showChordInput = ref(false);
 const chordInputPosition = ref(0);
@@ -1120,10 +1165,20 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
       "16n": 0.25 * (60 / tempo.value)
     };
 
-    let durationInSeconds = baseDurationMap[duration] || (60 / tempo.value);
-    if (isDotted) {
-      durationInSeconds *= 1.5;
+    let durationInSeconds;
+    
+    // Check if duration is already in seconds format (e.g., "2.5s" for tied notes)
+    if (duration.endsWith('s')) {
+      durationInSeconds = parseFloat(duration.slice(0, -1));
+      console.log(`Using tied note duration: ${durationInSeconds}s`);
+    } else {
+      // Use standard Tone.js notation duration
+      durationInSeconds = baseDurationMap[duration] || (60 / tempo.value);
+      if (isDotted) {
+        durationInSeconds *= 1.5;
+      }
     }
+    
     if (durationInSeconds <= 0) {
       durationInSeconds = 0.5;
     }
@@ -1225,12 +1280,13 @@ const handleStaffClick = (event, staffId: string) => {
   const x = event.clientX - staffRect.left;
   const y = event.clientY - staffRect.top;
 
-  const position = Math.floor(x / 50) + 0.5; // Center the note in the grid
+  // Use finer grid (25px) to allow more notes per measure
+  const position = Math.floor(x / 25) + 0.5; // Center the note in the finer grid
   const verticalPosition = Math.round((y - 100) / 7.5) * 7.5 + 100;
   const pitch = mapPositionToPitch(verticalPosition, currentClef);
 
   const existingNoteIndex = notesInTargetVoice.findIndex(note =>
-    Math.abs(note.position - position) < 0.1
+    Math.abs(note.position - position) < 0.2 // Slightly larger tolerance for finer grid
   );
 
   const durationMap = {
@@ -1371,7 +1427,7 @@ const getNoteStyle = (note: NoteWithVoiceInfo) => {
     color: string;
     borderColor?: string;
   } = {
-    left: `${note.position * 50}px`,
+    left: `${note.position * 25}px`, // Updated to use 25px grid for finer positioning
     top: `${note.verticalPosition}px`, // verticalPosition is already calculated based on staffClef
     color: note.voiceColor || 'black',
   };
@@ -1434,6 +1490,7 @@ const clearScore = () => {
   initializeDefaultStaffAndVoice(); // This will create one staff and one voice
 
   chordSymbols.value = [];
+  tiesSlurs.value = [];
   sections.value = [];
   sequenceItems.value = [];
 
@@ -2078,6 +2135,7 @@ const prepareCompositionData = (): CompositionData => {
     keySignature: keySignature.value,
     timeSignature: timeSignature.value,
     chordSymbols: [...chordSymbols.value],
+    tiesSlurs: [...tiesSlurs.value],
     activeVoiceId: activeVoiceId.value,
     staffWidth: staffWidth.value,
     selectedDuration: selectedDuration.value,
@@ -2293,6 +2351,7 @@ const loadComposition = (compositionId: string) => {
 
 
       chordSymbols.value = compositionToLoad.chordSymbols ? JSON.parse(JSON.stringify(compositionToLoad.chordSymbols)) : [];
+      tiesSlurs.value = (compositionToLoad as any).tiesSlurs ? JSON.parse(JSON.stringify((compositionToLoad as any).tiesSlurs)) : [];
       sections.value = compositionToLoad.sections ? JSON.parse(JSON.stringify(compositionToLoad.sections)) : [];
       sequenceItems.value = compositionToLoad.sequenceItems ? JSON.parse(JSON.stringify(compositionToLoad.sequenceItems)) : [];
 
@@ -2933,20 +2992,21 @@ const showBeatMarkers = ref(false); // Set to true for debugging
 const measureWidthByTimeSignature = computed(() => {
   const parts = timeSignature.value.split('/');
   if (parts.length !== 2) {
-    // console.warn(`Invalid time signature format: ${timeSignature.value}, using default width.`);
-    return 50 * 4; // Default to 4 quarter notes width (200px)
+    return 50 * 8; // Default to wider measure (400px) to allow more notes
   }
   const [numeratorStr, denominatorStr] = parts;
   const numerator = parseInt(numeratorStr);
   const denominator = parseInt(denominatorStr);
 
   if (isNaN(numerator) || isNaN(denominator) || denominator === 0 || numerator === 0) {
-    // console.warn(`Invalid time signature numbers: N=${numerator}, D=${denominator}, using default width.`);
-    return 50 * 4; // Default to 4 quarter notes width
+    return 50 * 8; // Default to wider measure
   }
 
-  // Base width per quarter note
+  // Base width per quarter note - increased to allow more note positions
   const quarterNoteWidth = 50;
+  
+  // Calculate minimum positions needed per measure (at least 8 for flexibility)
+  const minimumPositionsPerMeasure = 8;
 
   // Calculate beats based on time signature
   let beatsPerMeasure = numerator;
@@ -2954,18 +3014,23 @@ const measureWidthByTimeSignature = computed(() => {
 
   // Compound meters (6/8, 9/8, 12/8) have different beat structures
   if ([6, 9, 12].includes(numerator) && denominator === 8) {
-    // In compound meters, each dotted quarter note is one beat
     beatsPerMeasure = numerator / 3;
-    beatUnit = 4; // Treat as quarter note equivalent
+    beatUnit = 4;
   }
 
-  // Calculate width based on beat unit
+  // Calculate width based on beat unit, but ensure minimum width for note placement
   let beatWidth = quarterNoteWidth;
   if (beatUnit === 2) beatWidth = quarterNoteWidth * 2; // Half note
   if (beatUnit === 8) beatWidth = quarterNoteWidth / 2; // Eighth note
 
-  const width = beatsPerMeasure * beatWidth;
-  console.log(`Measure width for ${timeSignature.value}: ${width}px`);
+  // Calculate base width from time signature
+  const baseWidth = beatsPerMeasure * beatWidth;
+  
+  // Ensure we have enough positions (minimum 25px per position for tight packing)
+  const minWidthForPositions = minimumPositionsPerMeasure * 25;
+  const width = Math.max(baseWidth, minWidthForPositions);
+  
+  console.log(`Measure width for ${timeSignature.value}: ${width}px (${Math.floor(width/25)} possible positions)`);
   return width;
 });
 
@@ -3112,16 +3177,29 @@ const exportComposition = () => { // This function seems to be a duplicate of ex
   }, 100);
 };
 
-// Add the missing generateId function
-const generateId = () => {
-  return `id-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
-};
+// generateId is now imported from @/utils/idGenerator
 
 // Add a new ref for the selected note
 const selectedNoteId = ref<string | null>(null);
 
 // Update the selectNote function to work with voice layers
 const selectNote = (note) => {
+  // Handle tie/slur creation mode
+  if (isCreatingTieSlur.value) {
+    const noteWithVoiceInfo = note as NoteWithVoiceInfo;
+    
+    if (!tieSlurStartNote.value) {
+      // First note selected - set as start note
+      tieSlurStartNote.value = noteWithVoiceInfo;
+      console.log(`Selected start note: ${noteWithVoiceInfo.pitch}`);
+    } else {
+      // Second note selected - create tie/slur
+      createTieSlur(tieSlurStartNote.value, noteWithVoiceInfo);
+    }
+    return; // Don't do normal note selection in tie/slur mode
+  }
+
+  // Normal note selection
   selectedNoteId.value = note.id;
 
   // If the note has a voiceId and it's not the active voice, switch to that voice
@@ -3150,8 +3228,8 @@ const autoScrollToPlayingNote = ref(true);
 
 // Add this helper function to calculate which measure a note is in
 const getNotesMeasure = (note: ImportedNote | NoteWithVoiceInfo) => { // Update to use aliased import or union
-  // Calculate the horizontal position in pixels
-  const notePosition = note.position * 50;
+  // Calculate the horizontal position in pixels using new 25px grid
+  const notePosition = note.position * 25;
 
   // Calculate the initial position (where measure 1 starts)
   const keySignatureWidth = currentKeySignatureAccidentals.value.length * 10;
@@ -3168,6 +3246,91 @@ const getNotesMeasure = (note: ImportedNote | NoteWithVoiceInfo) => { // Update 
   // Calculate which measure this note is in
   // Use measureWidthByTimeSignature for correct measure width based on time signature
   return Math.floor(relativePosition / measureWidthByTimeSignature.value) + 1;
+};
+
+// Function to convert note duration to beats (quarter note = 1 beat)
+const getNoteDurationInBeats = (duration: string, isDotted = false) => {
+  const baseDurations = {
+    'whole': 4,
+    'half': 2,
+    'quarter': 1,
+    'eighth': 0.5,
+    'sixteenth': 0.25
+  };
+  
+  let beats = baseDurations[duration] || 1;
+  if (isDotted) {
+    beats *= 1.5; // Dotted notes are 1.5 times their normal duration
+  }
+  
+  return beats;
+};
+
+// Function to check if a note is tied and get its total duration including tied notes
+const getTotalTiedDuration = (note: NoteWithVoiceInfo): number => {
+  let totalDuration = getNoteDurationInBeats(note.duration, note.dotted);
+  
+  // Find all ties starting from this note
+  const ties = tiesSlurs.value.filter(ts => 
+    ts.type === 'tie' && 
+    ts.startNoteId === note.id
+  );
+  
+  // Recursively add durations of tied notes
+  ties.forEach(tie => {
+    const tiedNote = allVisibleNotes.value.find(n => n.id === tie.endNoteId);
+    if (tiedNote) {
+      totalDuration += getTotalTiedDuration(tiedNote);
+    }
+  });
+  
+  return totalDuration;
+};
+
+// Function to check if a note should be silent (it's the end of a tie)
+const isNoteTiedFrom = (note: NoteWithVoiceInfo): boolean => {
+  return tiesSlurs.value.some(ts => 
+    ts.type === 'tie' && 
+    ts.endNoteId === note.id
+  );
+};
+
+// Function to get the time signature duration in quarter note beats
+const getTimeSignatureDurationInBeats = () => {
+  const numerator = timeSignatureNumerator.value;
+  const denominator = timeSignatureDenominator.value;
+  
+  // Convert to quarter note beats
+  // If denominator is 4, each beat is a quarter note (1 beat)
+  // If denominator is 8, each beat is an eighth note (0.5 beats)
+  // If denominator is 2, each beat is a half note (2 beats)
+  const beatValue = 4 / denominator;
+  return numerator * beatValue;
+};
+
+// Function to calculate total written duration of notes in a measure
+const getTotalNoteDurationInMeasure = (measureNumber: number, voiceNotes: ImportedNote[]) => {
+  const notesInMeasure = voiceNotes.filter(note => getNotesMeasure(note) === measureNumber);
+  
+  return notesInMeasure.reduce((total, note) => {
+    if (note.type === 'rest' || note.type === 'note') {
+      return total + getNoteDurationInBeats(note.duration, note.dotted);
+    }
+    return total;
+  }, 0);
+};
+
+// Function to calculate timing compression factor for a measure
+const getMeasureTimingFactor = (measureNumber: number, voiceNotes: ImportedNote[]) => {
+  const timeSignatureBeats = getTimeSignatureDurationInBeats();
+  const actualNoteDuration = getTotalNoteDurationInMeasure(measureNumber, voiceNotes);
+  
+  if (actualNoteDuration === 0) return 1; // No notes in measure
+  
+  // Compression factor: how much to compress/stretch the timing
+  // If actualNoteDuration > timeSignatureBeats, notes are compressed (play faster)
+  // If actualNoteDuration < timeSignatureBeats, notes are stretched (play slower)
+  return timeSignatureBeats / actualNoteDuration;
 };
 
 // Now update the playScore function to use this helper
@@ -3241,128 +3404,178 @@ const playScore = () => {
   window.playbackTimeouts.forEach(id => clearTimeout(id));
   window.playbackTimeouts = [];
 
-  // Group notes by position for chord playback
-  const notesByPosition = {};
+  // Process each voice independently for truly independent timing
+  const voiceSchedules = new Map();
+  
+  // Group notes by voice first
+  const notesByVoice = {};
   filteredNotes.forEach(note => {
-    if (!notesByPosition[note.position]) {
-      notesByPosition[note.position] = [];
+    if (!notesByVoice[note.voiceId]) {
+      notesByVoice[note.voiceId] = [];
     }
-    notesByPosition[note.position].push(note);
+    notesByVoice[note.voiceId].push(note);
   });
 
-  // Sort positions for sequential playback
-  const positions = Object.keys(notesByPosition).map(Number).sort((a, b) => a - b);
+  // Create independent timing schedule for each voice
+  Object.entries(notesByVoice).forEach(([voiceId, voiceNotes]) => {
+    const voice = voicesToPlay.find(v => v.id === voiceId);
+    if (!voice) return;
 
-  // Play notes in sequence with proper timing
-  let totalDelay = 0;
-
-  positions.forEach(position => {
-    const notesAtPosition = notesByPosition[position];
-
-    // Find the longest note duration at this position
-    let longestDuration = 0;
-    const durationMap = {
-      'whole': 4,
-      'half': 2,
-      'quarter': 1,
-      'eighth': 0.5,
-      'sixteenth': 0.25
-    };
-
-    notesAtPosition.forEach(note => {
-      let noteDuration = durationMap[note.duration] || 1;
-      if (note.dotted) noteDuration *= 1.5;
-      longestDuration = Math.max(longestDuration, noteDuration);
+    // Sort notes by position for this voice
+    const sortedVoiceNotes = (voiceNotes as any[]).sort((a, b) => a.position - b.position);
+    
+    // Group notes by position within this voice (for chords within the same voice)
+    const notesByPosition = {};
+    sortedVoiceNotes.forEach(note => {
+      if (!notesByPosition[note.position]) {
+        notesByPosition[note.position] = [];
+      }
+      notesByPosition[note.position].push(note);
     });
 
-    // Calculate the wait duration in seconds
-    const secondsPerBeat = 60 / tempo.value;
-    const waitDurationSeconds = longestDuration * secondsPerBeat;
+    // Calculate timing for this voice independently
+    let voiceDelay = 0;
+    const voiceSchedule = [];
 
-    // Function to play all notes at this position
-    const playNotesWithDelay = (notesToPlay, delay) => {
-      const callback = () => {
-        const idsAtThisPosition = notesToPlay.map(n => n.id);
-        // Add new notes to be played, ensuring no duplicates if logic allows overlap (it doesn't currently for same-time notes)
-        currentPlayingNoteIds.value.push(...idsAtThisPosition.filter(id => !currentPlayingNoteIds.value.includes(id)));
+    Object.keys(notesByPosition).map(Number).sort((a, b) => a - b).forEach(position => {
+      const notesAtPosition = notesByPosition[position];
+      
+      // Find the longest duration at this position within this voice only
+      let longestDuration = 0;
+      notesAtPosition.forEach(note => {
+        const noteDuration = getNoteDurationInBeats(note.duration, note.dotted);
+        longestDuration = Math.max(longestDuration, noteDuration);
+      });
 
-        // Auto-scroll to the playing note if enabled (scroll to the first note in the batch)
-        if (notesToPlay.length > 0 && autoScrollToPlayingNote.value) {
-          autoScrollToNote(notesToPlay[0]);
-        }
+      // Get the measure this position is in and calculate timing compression for this voice
+      const measureNumber = getNotesMeasure(notesAtPosition[0]);
+      let voiceTimingFactor = 1;
+      if (measureNumber > 0) {
+        voiceTimingFactor = getMeasureTimingFactor(measureNumber, voice.notes);
+      }
 
-        // Play all notes at this position simultaneously
-        notesToPlay.forEach(noteToPlay => {
-          // currentPlayingNoteId.value = noteToPlay.id; // Removed, using array now
+      // Apply voice-specific compression
+      const compressedDuration = longestDuration * voiceTimingFactor;
+      
+      // Log voice-specific compression when significant
+      if (Math.abs(voiceTimingFactor - 1) > 0.01) {
+        console.log(`Voice ${voice.name}: Measure ${measureNumber}, compression factor ${voiceTimingFactor.toFixed(3)} (${longestDuration}→${compressedDuration.toFixed(3)} beats)`);
+      }
 
-          if (noteToPlay.type === 'note' && noteToPlay.pitch) {
-            // Map durations to Tone.js format
-            const toneDurationMap = {
-              'whole': '1n',
-              'half': '2n',
-              'quarter': '4n',
-              'eighth': '8n',
-              'sixteenth': '16n'
-            };
+      // Calculate the wait duration in seconds for this voice
+      const secondsPerBeat = 60 / tempo.value;
+      const waitDurationSeconds = compressedDuration * secondsPerBeat;
 
-            // Play the note using the Tone.js duration format
-            const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
+      voiceSchedule.push({
+        delay: voiceDelay * 1000, // Convert to milliseconds
+        notes: notesAtPosition,
+        duration: waitDurationSeconds * 1000
+      });
 
-            // Adjust volume based on voice settings
-            const voice = voiceLayers.value.find(v => v.id === noteToPlay.voiceId);
-            const currentVoiceVolumePercent = voice ? voice.volume : 100; // Default to 100%
+      voiceDelay += waitDurationSeconds;
+    });
 
-            playNoteSound(
-              noteToPlay.pitch,
-              toneDuration,
-              noteToPlay.dotted,
-              currentVoiceVolumePercent, // Pass the voice's volume as percentage
-              noteToPlay.explicitNatural  // Add this parameter
-            );
-          }
-        });
-
-        // Schedule the end of these notes
-        const noteEndCallback = () => {
-          // Remove IDs of notes that just finished
-          currentPlayingNoteIds.value = currentPlayingNoteIds.value.filter(id => !idsAtThisPosition.includes(id));
-        };
-
-        const noteEndTimeoutId = setTimeout(noteEndCallback, waitDurationSeconds * 1000);
-
-        // Store timeout info for potential pausing
-        (window as any)[`timeout_${noteEndTimeoutId}_info`] = {
-          startTime: Date.now(),
-          duration: waitDurationSeconds * 1000,
-          callback: noteEndCallback
-        };
-
-        window.playbackTimeouts.push(noteEndTimeoutId);
-      };
-
-      const timeoutId = setTimeout(callback, delay);
-
-      // Store timeout info for potential pausing
-      (window as any)[`timeout_${timeoutId}_info`] = {
-        startTime: Date.now(),
-        duration: delay,
-        callback
-      };
-
-      window.playbackTimeouts.push(timeoutId);
-    };
-
-    // Schedule these notes
-    playNotesWithDelay(notesAtPosition, totalDelay * 1000);
-    totalDelay += waitDurationSeconds;
+    voiceSchedules.set(voiceId, voiceSchedule);
   });
 
-  // Stop playing after all notes have played
+  // Schedule playback for all voices
+  voiceSchedules.forEach((schedule, voiceId) => {
+    const voice = voiceLayers.value.find(v => v.id === voiceId);
+    
+    schedule.forEach((scheduleItem, index) => {
+      const { delay, notes, duration } = scheduleItem;
+      
+      // Function to play notes for this voice at this time
+      const playVoiceNotesWithDelay = (notesToPlay, playDelay) => {
+        const callback = () => {
+          const idsAtThisPosition = notesToPlay.map(n => n.id);
+          currentPlayingNoteIds.value.push(...idsAtThisPosition.filter(id => !currentPlayingNoteIds.value.includes(id)));
+
+          // Auto-scroll to the first note being played (from any voice)
+          if (notesToPlay.length > 0 && autoScrollToPlayingNote.value) {
+            autoScrollToNote(notesToPlay[0]);
+          }
+
+          // Play all notes at this position for this voice
+          const tiedNotesInfo = [];
+          notesToPlay.forEach(noteToPlay => {
+            const playResult = playNoteWithTieHandling(noteToPlay, voice);
+            if (playResult.isPlaying && playResult.totalDurationMs > 0) {
+              // This is a tied note that will play longer than the schedule duration
+              tiedNotesInfo.push({
+                noteId: noteToPlay.id,
+                totalDurationMs: playResult.totalDurationMs
+              });
+            }
+          });
+
+          // Schedule the end of regular notes (independent for this voice)
+          const noteEndCallback = () => {
+            // Only remove notes that are NOT tied with extended duration
+            const tiedNoteIds = tiedNotesInfo.map(info => info.noteId);
+            const notesToRemove = idsAtThisPosition.filter(id => !tiedNoteIds.includes(id));
+            currentPlayingNoteIds.value = currentPlayingNoteIds.value.filter(id => !notesToRemove.includes(id));
+          };
+
+          const noteEndTimeoutId = setTimeout(noteEndCallback, duration);
+          window.playbackTimeouts.push(noteEndTimeoutId);
+
+          // Store timeout info for potential pausing
+          (window as any)[`timeout_${noteEndTimeoutId}_info`] = {
+            startTime: Date.now(),
+            duration: duration,
+            callback: noteEndCallback
+          };
+
+          // Schedule separate end callbacks for tied notes
+          tiedNotesInfo.forEach(tiedNoteInfo => {
+            const tiedNoteEndCallback = () => {
+              currentPlayingNoteIds.value = currentPlayingNoteIds.value.filter(id => id !== tiedNoteInfo.noteId);
+              console.log(`Tied note ${tiedNoteInfo.noteId} finished playing after ${tiedNoteInfo.totalDurationMs}ms`);
+            };
+
+            const tiedNoteEndTimeoutId = setTimeout(tiedNoteEndCallback, tiedNoteInfo.totalDurationMs);
+            window.playbackTimeouts.push(tiedNoteEndTimeoutId);
+
+            // Store timeout info for potential pausing
+            (window as any)[`timeout_${tiedNoteEndTimeoutId}_info`] = {
+              startTime: Date.now(),
+              duration: tiedNoteInfo.totalDurationMs,
+              callback: tiedNoteEndCallback
+            };
+          });
+        };
+
+        const timeoutId = setTimeout(callback, playDelay);
+        window.playbackTimeouts.push(timeoutId);
+
+        // Store timeout info for potential pausing
+        (window as any)[`timeout_${timeoutId}_info`] = {
+          startTime: Date.now(),
+          duration: playDelay,
+          callback
+        };
+      };
+
+      // Schedule this voice's notes
+      playVoiceNotesWithDelay(notes, delay);
+    });
+  });
+
+  // Calculate the total duration to know when playback ends
+  let maxTotalDuration = 0;
+  voiceSchedules.forEach(schedule => {
+    const voiceTotalDuration = schedule.reduce((total, item) => total + item.duration, 0) + 
+                               (schedule.length > 0 ? schedule[schedule.length - 1].delay : 0);
+    maxTotalDuration = Math.max(maxTotalDuration, voiceTotalDuration);
+  });
+
+  // Stop playing after all voices have finished
   const finalTimeoutId = setTimeout(() => {
     // Reset all playback state variables
     isPlaying.value = false;
     isPaused.value = false;
-    currentPlayingNoteIds.value = []; // Changed from currentPlayingNoteId
+    currentPlayingNoteIds.value = [];
 
     // Clear any remaining timeouts
     if (window.playbackTimeouts) {
@@ -3370,8 +3583,8 @@ const playScore = () => {
       window.playbackTimeouts = [];
     }
 
-    console.log('Playback complete');
-  }, totalDelay * 1000 + 100); // Add a small buffer
+    console.log('Playback complete - all voices finished');
+  }, maxTotalDuration + 100); // Add a small buffer
 
   // Store the final timeout ID for potential cleanup
   window.playbackTimeouts.push(finalTimeoutId);
@@ -3379,19 +3592,19 @@ const playScore = () => {
   // Store timeout info for the final timeout
   (window as any)[`timeout_${finalTimeoutId}_info`] = {
     startTime: Date.now(),
-    duration: totalDelay * 1000 + 100,
+    duration: maxTotalDuration + 100,
     callback: () => {
       isPlaying.value = false;
       isPaused.value = false;
-      currentPlayingNoteIds.value = []; // Changed from currentPlayingNoteId
+      currentPlayingNoteIds.value = [];
     }
   };
 };
 
 // Add the autoScrollToNote function
 const autoScrollToNote = (note: ImportedNote) => {
-  // Calculate the horizontal position of the note
-  const noteXPosition = note.position * 50;
+  // Calculate the horizontal position of the note using new 25px grid
+  const noteXPosition = note.position * 25;
 
   // Calculate the visible area boundaries
   const leftBoundary = scrollPosition.value;
@@ -3510,47 +3723,27 @@ const resumePlayback = () => {
   // These are likely to be the ones that would play immediately and cause the first note issue
   const validTimeouts = sortedTimeouts.filter(timeout => timeout.remainingTime > 10);
 
-  // Group timeouts that are very close together (within 50ms) to prevent duplicates
-  const groupedTimeouts: { remainingTime: number, callbacks: Function[]; }[] = [];
-
+  // Create individual timeouts for each callback to preserve voice independence
   validTimeouts.forEach(timeout => {
-    // Check if we have a group that's very close in time
-    const existingGroup = groupedTimeouts.find(group =>
-      Math.abs(group.remainingTime - timeout.remainingTime) < 50
-    );
-
-    if (existingGroup) {
-      // Add this callback to the existing group
-      existingGroup.callbacks.push(timeout.callback);
-    } else {
-      // Create a new group
-      groupedTimeouts.push({
-        remainingTime: timeout.remainingTime,
-        callbacks: [timeout.callback]
-      });
-    }
-  });
-
-  // Create timeouts for each group
-  groupedTimeouts.forEach(group => {
     // Add a small delay (100ms) to all timeouts to prevent immediate playback
-    const adjustedTime = Math.max(100, group.remainingTime);
+    const adjustedTime = Math.max(100, timeout.remainingTime);
 
     const newTimeoutId = setTimeout(() => {
-      // Execute only the first callback in the group to prevent duplicates
-      if (group.callbacks.length > 0) {
-        group.callbacks[0]();
+      try {
+        timeout.callback();
+      } catch (error) {
+        console.error('Error executing resume callback:', error);
       }
     }, adjustedTime);
 
     // Store the new timeout ID
     window.playbackTimeouts.push(newTimeoutId);
 
-    // Store timeout info for potential future pausing
+    // Store timeout info for potential future pausing (preserve original callback)
     (window as any)[`timeout_${newTimeoutId}_info`] = {
       startTime: Date.now(),
       duration: adjustedTime,
-      callback: group.callbacks[0]
+      callback: timeout.callback
     };
   });
 
@@ -3558,7 +3751,7 @@ const resumePlayback = () => {
   pausedTimeouts.value = [];
   pauseTime.value = null;
 
-  console.log('Playback resumed with', groupedTimeouts.length, 'grouped timeouts');
+  console.log(`Playback resumed with ${validTimeouts.length} individual timeouts`);
 };
 
 // Add a function to toggle playback
@@ -3956,6 +4149,11 @@ const notesForStaff = (staffId: string): NoteWithVoiceInfo[] => {
 // Computed property to get notes with lyrics for a specific staff
 const notesForStaffWithLyrics = (staffId: string): NoteWithVoiceInfo[] => {
   return allVisibleNotes.value.filter(note => note.staffId === staffId && note.lyric);
+};
+
+// Helper function to get ties/slurs for a specific staff
+const tiesSlursForStaff = (staffId: string): TieSlur[] => {
+  return tiesSlurs.value.filter(tieSlur => tieSlur.staffId === staffId);
 };
 
 // Add these functions to save and load compositions from localStorage
@@ -4479,106 +4677,178 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
   window.playbackTimeouts.forEach(id => clearTimeout(id));
   window.playbackTimeouts = [];
 
-  // Group notes by position for chord playback
-  const notesByPosition = {};
+  // Process each voice independently for truly independent timing
+  const voiceSchedules = new Map();
+  
+  // Group notes by voice first
+  const notesByVoice = {};
   filteredNotes.forEach(note => {
-    if (!notesByPosition[note.position]) {
-      notesByPosition[note.position] = [];
+    if (!notesByVoice[note.voiceId]) {
+      notesByVoice[note.voiceId] = [];
     }
-    notesByPosition[note.position].push(note);
+    notesByVoice[note.voiceId].push(note);
   });
 
-  // Sort positions for sequential playback
-  const positions = Object.keys(notesByPosition).map(Number).sort((a, b) => a - b);
+  // Create independent timing schedule for each voice
+  Object.entries(notesByVoice).forEach(([voiceId, voiceNotes]) => {
+    const voice = voicesToPlay.find(v => v.id === voiceId);
+    if (!voice) return;
 
-  // Play notes in sequence with proper timing
-  let totalDelay = 0;
-
-  positions.forEach(position => {
-    const notesAtPosition = notesByPosition[position];
-
-    // Find the longest note duration at this position
-    let longestDuration = 0;
-    const durationMap = {
-      'whole': 4,
-      'half': 2,
-      'quarter': 1,
-      'eighth': 0.5,
-      'sixteenth': 0.25
-    };
-
-    notesAtPosition.forEach(note => {
-      let noteDuration = durationMap[note.duration] || 1;
-      if (note.dotted) noteDuration *= 1.5;
-      longestDuration = Math.max(longestDuration, noteDuration);
+    // Sort notes by position for this voice
+    const sortedVoiceNotes = (voiceNotes as any[]).sort((a, b) => a.position - b.position);
+    
+    // Group notes by position within this voice (for chords within the same voice)
+    const notesByPosition = {};
+    sortedVoiceNotes.forEach(note => {
+      if (!notesByPosition[note.position]) {
+        notesByPosition[note.position] = [];
+      }
+      notesByPosition[note.position].push(note);
     });
 
-    // Calculate the wait duration in seconds
-    const secondsPerBeat = 60 / tempo.value;
-    const waitDurationSeconds = longestDuration * secondsPerBeat;
+    // Calculate timing for this voice independently
+    let voiceDelay = 0;
+    const voiceSchedule = [];
 
-    // Function to play all notes at this position
-    const playNotesWithDelay = (notesToPlay, delay) => {
-      const callback = () => {
-        const idsAtThisPosition = notesToPlay.map(n => n.id);
-        currentPlayingNoteIds.value.push(...idsAtThisPosition.filter(id => !currentPlayingNoteIds.value.includes(id)));
+    Object.keys(notesByPosition).map(Number).sort((a, b) => a - b).forEach(position => {
+      const notesAtPosition = notesByPosition[position];
+      
+      // Find the longest duration at this position within this voice only
+      let longestDuration = 0;
+      notesAtPosition.forEach(note => {
+        const noteDuration = getNoteDurationInBeats(note.duration, note.dotted);
+        longestDuration = Math.max(longestDuration, noteDuration);
+      });
 
-        if (notesToPlay.length > 0 && autoScrollToPlayingNote.value) {
-          autoScrollToNote(notesToPlay[0]);
-        }
+      // Get the measure this position is in and calculate timing compression for this voice
+      const measureNumber = getNotesMeasure(notesAtPosition[0]);
+      let voiceTimingFactor = 1;
+      if (measureNumber > 0) {
+        voiceTimingFactor = getMeasureTimingFactor(measureNumber, voice.notes);
+      }
 
-        // Play all notes at this position simultaneously
-        notesToPlay.forEach(noteToPlay => {
-          // Set the current playing note ID // Removed: currentPlayingNoteId.value = noteToPlay.id;
+      // Apply voice-specific compression
+      const compressedDuration = longestDuration * voiceTimingFactor;
+      
+      // Log voice-specific compression when significant
+      if (Math.abs(voiceTimingFactor - 1) > 0.01) {
+        console.log(`Voice ${voice.name}: Measure ${measureNumber}, compression factor ${voiceTimingFactor.toFixed(3)} (${longestDuration}→${compressedDuration.toFixed(3)} beats)`);
+      }
 
-          // Auto-scroll to the playing note if enabled // Moved up
-          // if (autoScrollToPlayingNote.value) {
-          //   autoScrollToNote(noteToPlay);
-          // }
+      // Calculate the wait duration in seconds for this voice
+      const secondsPerBeat = 60 / tempo.value;
+      const waitDurationSeconds = compressedDuration * secondsPerBeat;
 
-          if (noteToPlay.type === 'note' && noteToPlay.pitch) {
-            // Map durations to Tone.js format
-            const toneDurationMap = {
-              'whole': '1n',
-              'half': '2n',
-              'quarter': '4n',
-              'eighth': '8n',
-              'sixteenth': '16n'
-            };
+      voiceSchedule.push({
+        delay: voiceDelay * 1000, // Convert to milliseconds
+        notes: notesAtPosition,
+        duration: waitDurationSeconds * 1000
+      });
 
-            // Play the note using the Tone.js duration format
-            const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
+      voiceDelay += waitDurationSeconds;
+    });
 
-            // Adjust volume based on voice settings
-            const voice = voiceLayers.value.find(v => v.id === noteToPlay.voiceId);
-            const currentVoiceVolumePercent = voice ? voice.volume : 100; // Default to 100%
-
-            playNoteSound(
-              noteToPlay.pitch,
-              toneDuration,
-              noteToPlay.dotted,
-              currentVoiceVolumePercent, // Pass the voice's volume as percentage
-              noteToPlay.explicitNatural  // Add this parameter
-            );
-          }
-        });
-      };
-
-      const timeoutId = setTimeout(callback, delay);
-      window.playbackTimeouts.push(timeoutId);
-    };
-
-    // Schedule these notes
-    playNotesWithDelay(notesAtPosition, totalDelay * 1000);
-    totalDelay += waitDurationSeconds;
+    voiceSchedules.set(voiceId, voiceSchedule);
   });
 
-  // Stop playing after all notes have played
+  // Schedule playback for all voices
+  voiceSchedules.forEach((schedule, voiceId) => {
+    const voice = voiceLayers.value.find(v => v.id === voiceId);
+    
+    schedule.forEach((scheduleItem, index) => {
+      const { delay, notes, duration } = scheduleItem;
+      
+      // Function to play notes for this voice at this time
+      const playVoiceNotesWithDelay = (notesToPlay, playDelay) => {
+        const callback = () => {
+          const idsAtThisPosition = notesToPlay.map(n => n.id);
+          currentPlayingNoteIds.value.push(...idsAtThisPosition.filter(id => !currentPlayingNoteIds.value.includes(id)));
+
+          // Auto-scroll to the first note being played (from any voice)
+          if (notesToPlay.length > 0 && autoScrollToPlayingNote.value) {
+            autoScrollToNote(notesToPlay[0]);
+          }
+
+          // Play all notes at this position for this voice
+          const tiedNotesInfo = [];
+          notesToPlay.forEach(noteToPlay => {
+            const playResult = playNoteWithTieHandling(noteToPlay, voice);
+            if (playResult.isPlaying && playResult.totalDurationMs > 0) {
+              // This is a tied note that will play longer than the schedule duration
+              tiedNotesInfo.push({
+                noteId: noteToPlay.id,
+                totalDurationMs: playResult.totalDurationMs
+              });
+            }
+          });
+
+          // Schedule the end of regular notes (independent for this voice)
+          const noteEndCallback = () => {
+            // Only remove notes that are NOT tied with extended duration
+            const tiedNoteIds = tiedNotesInfo.map(info => info.noteId);
+            const notesToRemove = idsAtThisPosition.filter(id => !tiedNoteIds.includes(id));
+            currentPlayingNoteIds.value = currentPlayingNoteIds.value.filter(id => !notesToRemove.includes(id));
+          };
+
+          const noteEndTimeoutId = setTimeout(noteEndCallback, duration);
+          window.playbackTimeouts.push(noteEndTimeoutId);
+
+          // Store timeout info for potential pausing
+          (window as any)[`timeout_${noteEndTimeoutId}_info`] = {
+            startTime: Date.now(),
+            duration: duration,
+            callback: noteEndCallback
+          };
+
+          // Schedule separate end callbacks for tied notes
+          tiedNotesInfo.forEach(tiedNoteInfo => {
+            const tiedNoteEndCallback = () => {
+              currentPlayingNoteIds.value = currentPlayingNoteIds.value.filter(id => id !== tiedNoteInfo.noteId);
+              console.log(`Tied note ${tiedNoteInfo.noteId} finished playing after ${tiedNoteInfo.totalDurationMs}ms`);
+            };
+
+            const tiedNoteEndTimeoutId = setTimeout(tiedNoteEndCallback, tiedNoteInfo.totalDurationMs);
+            window.playbackTimeouts.push(tiedNoteEndTimeoutId);
+
+            // Store timeout info for potential pausing
+            (window as any)[`timeout_${tiedNoteEndTimeoutId}_info`] = {
+              startTime: Date.now(),
+              duration: tiedNoteInfo.totalDurationMs,
+              callback: tiedNoteEndCallback
+            };
+          });
+        };
+
+        const timeoutId = setTimeout(callback, playDelay);
+        window.playbackTimeouts.push(timeoutId);
+
+        // Store timeout info for potential pausing
+        (window as any)[`timeout_${timeoutId}_info`] = {
+          startTime: Date.now(),
+          duration: playDelay,
+          callback
+        };
+      };
+
+      // Schedule this voice's notes
+      playVoiceNotesWithDelay(notes, delay);
+    });
+  });
+
+  // Calculate the total duration to know when playback ends
+  let maxTotalDuration = 0;
+  voiceSchedules.forEach(schedule => {
+    const voiceTotalDuration = schedule.reduce((total, item) => total + item.duration, 0) + 
+                               (schedule.length > 0 ? schedule[schedule.length - 1].delay : 0);
+    maxTotalDuration = Math.max(maxTotalDuration, voiceTotalDuration);
+  });
+
+  // Stop playing after all voices have finished
   const finalTimeoutId = setTimeout(() => {
     // Reset playback state variables
     isPlaying.value = false;
     isPaused.value = false;
-    currentPlayingNoteIds.value = []; // Changed from currentPlayingNoteId
+    currentPlayingNoteIds.value = [];
 
     // Clear any remaining timeouts
     if (window.playbackTimeouts) {
@@ -4586,14 +4856,14 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
       window.playbackTimeouts = [];
     }
 
-    console.log('Playback complete');
+    console.log('Playback complete - all voices finished');
 
     // If we're playing a sequence, move to the next section
     if (isPlayingSequence.value) {
       currentSequenceIndex.value++;
       setTimeout(() => playNextInSequence(), 500); // Small delay between sections
     }
-  }, totalDelay * 1000 + 100);
+  }, maxTotalDuration + 100);
 
   window.playbackTimeouts.push(finalTimeoutId);
 };
@@ -5012,7 +5282,7 @@ const getLedgerLinesForDebugPanel = (noteFromDebugPanel: ImportedNote, side: "ab
   return getLedgerLines(noteWithContext, side, currentActiveStaff.clef);
 };
 
-const deleteNote = (noteToRemove: Note | NoteWithVoiceInfo) => {
+const deleteNote = (noteToRemove: ImportedNote | NoteWithVoiceInfo) => {
   if (readOnlyMode.value) return;
 
   // Attempt to get voiceId directly from the note object if it's NoteWithVoiceInfo
@@ -5194,7 +5464,11 @@ watch([forceStaffRedraw, lastUIUpdateTimestamp], ([force, timestamp], [oldForce,
 
 // Add these new refs near the top of the script section
 const isInsertingSpace = ref(false);
-const insertSpaceWidth = ref(1); // Default width of 1 grid unit (50px)
+const insertSpaceWidth = ref(1); // Default width of 1 grid unit (25px)
+
+// Add tie/slur creation refs
+const isCreatingTieSlur = ref(false);
+const tieSlurStartNote = ref<NoteWithVoiceInfo | null>(null);
 
 // Add this new function to handle space insertion
 const insertSpace = (event: MouseEvent, staffId: string) => {
@@ -5202,7 +5476,7 @@ const insertSpace = (event: MouseEvent, staffId: string) => {
 
   const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const x = event.clientX - staffRect.left;
-  const insertPosition = Math.floor(x / 50) + 0.5; // Grid-aligned position
+  const insertPosition = Math.floor(x / 25) + 0.5; // Grid-aligned position using 25px grid
 
   // Get all voices on this staff
   const voicesOnStaff = voiceLayers.value.filter(v => v.staffId === staffId);
@@ -5246,7 +5520,7 @@ const insertSpace = (event: MouseEvent, staffId: string) => {
   });
 
   // Extend staff width if needed
-  const newRequiredWidth = staffWidth.value + (insertSpaceWidth.value * 50);
+  const newRequiredWidth = staffWidth.value + (insertSpaceWidth.value * 25);
   if (newRequiredWidth > staffWidth.value) {
     staffWidth.value = newRequiredWidth;
   }
@@ -5270,7 +5544,7 @@ onBeforeUnmount(() => {
 
 // Add these new refs near the other space-related refs
 const isDeletingSpace = ref(false);
-const deleteSpaceWidth = ref(1); // Default width of 1 grid unit (50px)
+const deleteSpaceWidth = ref(1); // Default width of 1 grid unit (25px)
 
 // Add this new function to handle space deletion
 const deleteSpace = (event: MouseEvent, staffId: string) => {
@@ -5278,7 +5552,7 @@ const deleteSpace = (event: MouseEvent, staffId: string) => {
 
   const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const x = event.clientX - staffRect.left;
-  const deletePosition = Math.floor(x / 50) + 0.5; // Grid-aligned position
+  const deletePosition = Math.floor(x / 25) + 0.5; // Grid-aligned position using 25px grid
 
   // Get all voices on this staff
   const voicesOnStaff = voiceLayers.value.filter(v => v.staffId === staffId);
@@ -5341,9 +5615,9 @@ const deleteSpace = (event: MouseEvent, staffId: string) => {
   });
 
   // Reduce staff width if possible
-  const newWidth = staffWidth.value - (deleteSpaceWidth.value * 50);
+  const newWidth = staffWidth.value - (deleteSpaceWidth.value * 25);
   const minWidth = Math.max(
-    ...voiceLayers.value.flatMap(v => v.notes.map(n => n.position * 50))
+    ...voiceLayers.value.flatMap(v => v.notes.map(n => n.position * 25))
   ) + 200; // Add some padding
   staffWidth.value = Math.max(minWidth, newWidth);
 
@@ -5378,7 +5652,7 @@ const handleRangeSelection = (event: MouseEvent, staffId: string) => {
 
   const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const x = event.clientX - staffRect.left;
-  const position = Math.floor(x / 50) + 0.5;
+  const position = Math.floor(x / 25) + 0.5;
 
   if (!selectionStart.value) {
     selectionStart.value = { position, staffId };
@@ -5453,7 +5727,7 @@ const copySelectedNotes = (lyricsOnly = false) => {
     copiedNotes.value = selectedNotes.map(note => ({
       ...note,
       relativePosition: note.position - minPosition
-    }));
+    } as NoteWithVoiceInfo & { relativePosition: number }));
 
     // Clear selection and enable paste mode
     selectionStart.value = null;
@@ -5476,7 +5750,7 @@ const pasteNotes = (event: MouseEvent, targetStaffId: string) => {
 
     const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const x = event.clientX - staffRect.left;
-    const pastePosition = Math.floor(x / 50) + 0.5;
+    const pastePosition = Math.floor(x / 25) + 0.5;
 
     // Find the active voice layer
     const activeVoiceLayer = voiceLayers.value.find(v => v.active);
@@ -5515,7 +5789,7 @@ const pasteNotes = (event: MouseEvent, targetStaffId: string) => {
 
     const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const x = event.clientX - staffRect.left;
-    const pastePosition = Math.floor(x / 50) + 0.5;
+    const pastePosition = Math.floor(x / 25) + 0.5;
 
     // Get target staff
     const targetStaff = staves.value.find(s => s.id === targetStaffId);
@@ -5533,7 +5807,7 @@ const pasteNotes = (event: MouseEvent, targetStaffId: string) => {
       const newNote = {
         ...note,
         id: generateId(),
-        position: pastePosition + (note.relativePosition || 0),
+        position: pastePosition + ((note as any).relativePosition || 0),
         voiceId: activeVoiceLayer.id,
         staffId: activeVoiceLayer.staffId,
         staffClef: targetStaff.clef,
@@ -5601,12 +5875,16 @@ const handleKeyPress = (event: KeyboardEvent) => {
       // Cancel other modes and clear selection
       isInsertingSpace.value = false;
       isDeletingSpace.value = false;
+      isCreatingTieSlur.value = false;
+      tieSlurStartNote.value = null;
       clearSelection();
     } else if (event.key === 'r') {
       isSelectingRange.value ? clearSelection() : isSelectingRange.value = true;
       isInsertingSpace.value = false;
       isDeletingSpace.value = false;
       isPasting.value = false;
+      isCreatingTieSlur.value = false;
+      tieSlurStartNote.value = null;
       if (isSelectingRange.value) {
         alert('Range selection mode activated. Click to set start and end points. Press "r" again to cancel.');
       }
@@ -5615,6 +5893,8 @@ const handleKeyPress = (event: KeyboardEvent) => {
       isDeletingSpace.value = false;
       isSelectingRange.value = false;
       isPasting.value = false;
+      isCreatingTieSlur.value = false;
+      tieSlurStartNote.value = null;
       if (isInsertingSpace.value) {
         alert('Space insertion mode activated. Click where you want to insert space. Press "i" again to cancel.');
       }
@@ -5623,8 +5903,15 @@ const handleKeyPress = (event: KeyboardEvent) => {
       isInsertingSpace.value = false;
       isSelectingRange.value = false;
       isPasting.value = false;
+      isCreatingTieSlur.value = false;
+      tieSlurStartNote.value = null;
       if (isDeletingSpace.value) {
         alert('Space deletion mode activated. Click where you want to delete space. Press "d" again to cancel.');
+      }
+    } else if (event.key === 't') {
+      toggleTieSlurMode();
+      if (isCreatingTieSlur.value) {
+        alert('Tie/Slur mode activated. Click first note, then second note. Same pitch = Tie, Different pitch = Slur. Press "t" again to cancel.');
       }
     } else if (event.key === 'c' && isSelectingRange.value) {
       copySelectedNotes();
@@ -5639,7 +5926,242 @@ const clearSelection = () => {
   isSelectingRange.value = false;
 };
 
+// Add tie/slur functions
+const toggleTieSlurMode = () => {
+  isCreatingTieSlur.value = !isCreatingTieSlur.value;
+  if (!isCreatingTieSlur.value) {
+    tieSlurStartNote.value = null;
+  }
+  // Reset other modes
+  isInsertingSpace.value = false;
+  isDeletingSpace.value = false;
+  isSelectingRange.value = false;
+  isPasting.value = false;
+};
+
+// Helper function to handle tied note playback
+const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLayer | undefined) => {
+  if (noteToPlay.type !== 'note' || !noteToPlay.pitch) return { isPlaying: false, totalDurationMs: 0 };
+  
+  // Check if this note is tied from another note (should be silent)
+  if (isNoteTiedFrom(noteToPlay)) {
+    console.log(`Note ${noteToPlay.pitch} at position ${noteToPlay.position} is tied from another note - silent`);
+    return { isPlaying: false, totalDurationMs: 0 }; // Skip playing this note as it's tied from a previous note
+  }
+
+  const toneDurationMap = {
+    'whole': '1n',
+    'half': '2n',
+    'quarter': '4n',
+    'eighth': '8n',
+    'sixteenth': '16n'
+  };
+
+  // Calculate total duration if this note is tied to others
+  const totalTiedDuration = getTotalTiedDuration(noteToPlay);
+  
+  // Convert total duration in beats to seconds
+  const secondsPerBeat = 60 / tempo.value;
+  const totalDurationInSeconds = totalTiedDuration * secondsPerBeat;
+  const totalDurationMs = totalDurationInSeconds * 1000;
+  
+  const currentVoiceVolumePercent = voice ? voice.volume : 100;
+
+  console.log(`Playing note ${noteToPlay.pitch} with total tied duration: ${totalTiedDuration} beats (${totalDurationInSeconds.toFixed(2)}s)`);
+
+  // Use custom duration for tied notes, otherwise use original duration
+  if (totalTiedDuration !== getNoteDurationInBeats(noteToPlay.duration, noteToPlay.dotted)) {
+    // This note is tied - play for the total tied duration
+    playNoteSound(
+      noteToPlay.pitch,
+      `${totalDurationInSeconds}s`, // Use seconds duration for tied notes
+      false, // Don't apply dotted modifier as it's already included in total duration
+      currentVoiceVolumePercent,
+      noteToPlay.explicitNatural
+    );
+    return { isPlaying: true, totalDurationMs };
+  } else {
+    // This note is not tied - play normally
+    const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
+    playNoteSound(
+      noteToPlay.pitch,
+      toneDuration,
+      noteToPlay.dotted,
+      currentVoiceVolumePercent,
+      noteToPlay.explicitNatural
+    );
+    return { isPlaying: true, totalDurationMs: 0 }; // 0 means use standard duration
+  }
+};
+
+const createTieSlur = (startNote: NoteWithVoiceInfo, endNote: NoteWithVoiceInfo) => {
+  if (startNote.staffId !== endNote.staffId) {
+    alert('Ties and slurs can only connect notes on the same staff');
+    return;
+  }
+
+  // Determine if it's a tie or slur based on pitch
+  const isTie = startNote.pitch === endNote.pitch;
+  const type = isTie ? 'tie' : 'slur';
+
+  // Determine curvature based on note positions
+  const curvature = determineCurvature(startNote, endNote);
+
+  const newTieSlur: TieSlur = {
+    id: generateId(),
+    type,
+    startNoteId: startNote.id,
+    endNoteId: endNote.id,
+    staffId: startNote.staffId,
+    curvature
+  };
+
+  tiesSlurs.value.push(newTieSlur);
+  console.log(`Created ${type} from ${startNote.pitch} to ${endNote.pitch}`);
+  
+  // Reset tie/slur creation mode
+  isCreatingTieSlur.value = false;
+  tieSlurStartNote.value = null;
+  saveToLocalStorage();
+};
+
+const determineCurvature = (startNote: NoteWithVoiceInfo, endNote: NoteWithVoiceInfo): 'above' | 'below' => {
+  // Get all notes on the same staff between the start and end positions
+  const startPos = Math.min(startNote.position, endNote.position);
+  const endPos = Math.max(startNote.position, endNote.position);
+  
+  const notesInPath = allVisibleNotes.value.filter(note => 
+    note.staffId === startNote.staffId &&
+    note.position > startPos &&
+    note.position < endPos &&
+    note.type === 'note'
+  );
+  
+  // If there are notes in the path, curve above them to avoid overlap
+  if (notesInPath.length > 0) {
+    console.log(`Found ${notesInPath.length} notes in path between positions ${startPos} and ${endPos}, curving above`);
+    return 'above';
+  }
+  
+  // If there are no notes in the path, use position-based logic
+  const averagePosition = (startNote.verticalPosition + endNote.verticalPosition) / 2;
+  const staffCenter = 145; // Middle line of staff
+  const result = averagePosition < staffCenter ? 'below' : 'above';
+  console.log(`No notes in path, average position: ${averagePosition}, staff center: ${staffCenter}, curving: ${result}`);
+  return result;
+};
+
+const removeTieSlur = (tieSlurId: string) => {
+  const index = tiesSlurs.value.findIndex(ts => ts.id === tieSlurId);
+  if (index !== -1) {
+    tiesSlurs.value.splice(index, 1);
+    saveToLocalStorage();
+  }
+};
+
+const getTieSlurPath = (tieSlur: TieSlur): string => {
+  // Find the start and end notes
+  const startNote = allVisibleNotes.value.find(note => note.id === tieSlur.startNoteId);
+  const endNote = allVisibleNotes.value.find(note => note.id === tieSlur.endNoteId);
+  
+  if (!startNote || !endNote) return '';
+
+  const startX = startNote.position * 25 + 10; // Note center
+  const endX = endNote.position * 25 + 10;
+  
+  // Adjust starting and ending points to avoid overlapping with note heads
+  const noteHeadRadius = 8; // Approximate note head radius
+  const clearance = 8; // Additional clearance from note
+  
+  // Calculate the average note position for determining curve direction if needed
+  const avgY = (startNote.verticalPosition + endNote.verticalPosition) / 2;
+  
+  // Determine start and end Y positions with proper clearance
+  let startY, endY;
+  if (tieSlur.curvature === 'above') {
+    startY = startNote.verticalPosition - noteHeadRadius - clearance;
+    endY = endNote.verticalPosition - noteHeadRadius - clearance;
+  } else {
+    startY = startNote.verticalPosition + noteHeadRadius + clearance;
+    endY = endNote.verticalPosition + noteHeadRadius + clearance;
+  }
+
+  // Calculate curve control points
+  const midX = (startX + endX) / 2;
+  const baseDistance = Math.abs(endX - startX);
+  const curveHeight = Math.max(15, baseDistance * 0.2); // Minimum curve height of 15px
+  
+  const curveOffset = tieSlur.curvature === 'above' ? -curveHeight : curveHeight;
+  const midY = (startY + endY) / 2 + curveOffset;
+
+  // Create SVG path for quadratic curve
+  return `M ${startX} ${startY} Q ${midX} ${midY} ${endX} ${endY}`;
+};
+
+const getTieSlurColor = (tieSlur: TieSlur): string => {
+  // Find the start note to get the voice color
+  const startNote = allVisibleNotes.value.find(note => note.id === tieSlur.startNoteId);
+  
+  if (startNote && startNote.voiceColor) {
+    return startNote.voiceColor;
+  }
+  
+  // Fallback to default colors if voice color not found
+  return tieSlur.type === 'tie' ? '#2196F3' : '#4CAF50';
+};
+
 
 </script>
 
-<style scoped src="@/assets/styles/global.css" />
+<style scoped>
+/* Tie/Slur SVG Overlay Styles */
+.ties-slurs-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.ties-slurs-overlay path {
+  pointer-events: auto;
+}
+
+.tie-slur-path {
+  transition: stroke-width 0.2s ease;
+}
+
+.tie-slur-path:hover {
+  stroke-width: 3;
+}
+
+.tie-slur-path.tie {
+  stroke-dasharray: none;
+}
+
+.tie-slur-path.slur {
+  stroke-dasharray: 3, 2;
+}
+
+/* Tie/Slur button styling */
+.tie-slur-btn.active {
+  background-color: #9C27B0;
+  color: white;
+}
+
+.tie-slur-info {
+  font-size: 12px;
+  color: #666;
+  margin-top: 5px;
+}
+
+/* Visual highlight for notes in tie/slur creation mode */
+.note:hover {
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+/* Staff cursor changes for different modes */
+.staff.tie-slur-mode {
+  cursor: crosshair;
+}
+</style>
