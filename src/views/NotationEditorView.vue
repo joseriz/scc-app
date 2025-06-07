@@ -257,6 +257,53 @@
                 </g>
               </svg>
 
+              <!-- Triplet Brackets SVG Overlay -->
+              <svg class="triplet-brackets-overlay" :style="{ width: `${staffWidth}px`, height: '280px' }">
+                <g v-for="tripletGroup in getTripletGroupsForStaff(stave.id)" :key="tripletGroup.id">
+                  <!-- Horizontal bracket line -->
+                  <line 
+                    :x1="tripletGroup.startX" 
+                    :y1="tripletGroup.y" 
+                    :x2="tripletGroup.endX" 
+                    :y2="tripletGroup.y"
+                    :stroke="tripletGroup.color"
+                    stroke-width="1.5"
+                    class="triplet-bracket-line"
+                  />
+                  <!-- Left vertical bracket -->
+                  <line 
+                    :x1="tripletGroup.startX" 
+                    :y1="tripletGroup.y" 
+                    :x2="tripletGroup.startX" 
+                    :y2="tripletGroup.y + 8"
+                    :stroke="tripletGroup.color"
+                    stroke-width="1.5"
+                    class="triplet-bracket-end"
+                  />
+                  <!-- Right vertical bracket -->
+                  <line 
+                    :x1="tripletGroup.endX" 
+                    :y1="tripletGroup.y" 
+                    :x2="tripletGroup.endX" 
+                    :y2="tripletGroup.y + 8"
+                    :stroke="tripletGroup.color"
+                    stroke-width="1.5"
+                    class="triplet-bracket-end"
+                  />
+                  <!-- Number "3" in the center -->
+                  <text 
+                    :x="tripletGroup.centerX" 
+                    :y="tripletGroup.y - 3"
+                    :fill="tripletGroup.color"
+                    text-anchor="middle"
+                    class="triplet-number"
+                    font-family="Arial, sans-serif"
+                    font-size="12"
+                    font-weight="bold"
+                  >3</text>
+                </g>
+              </svg>
+
               <!-- Notes container -->
               <div class="notes-container">
                 <!-- Ledger lines for notes -->
@@ -299,6 +346,7 @@
                     !note.pitch.includes('b') &&
                     isNoteAffectedByKeySignature(note.pitch.charAt(0)),
                   'dotted': note.dotted,
+                  'triplet': note.triplet,
                   'whole-note': note.duration === 'whole',
                   'has-lyric': note.lyric,
                   'natural-accidental': note.explicitNatural
@@ -322,6 +370,7 @@
                     {{ getNoteSymbol(note) }}
                     <!-- Add dot for dotted rests -->
                     <span v-if="note.dotted" class="dot">•</span>
+                    <!-- Triplet indicator removed - now handled by triplet brackets -->
                   </template>
 
                   <!-- For notes, use separate notehead and stem -->
@@ -343,6 +392,8 @@
 
                     <!-- Add dot for dotted notes -->
                     <span v-if="note.dotted" class="dot">•</span>
+                    
+                    <!-- Triplet indicator removed - now handled by triplet brackets -->
                   </template>
 
                   <!-- Accidental -->
@@ -424,10 +475,10 @@
     <div v-if="activeTab === 'notes'">
       <div v-if="!readOnlyMode">
         <NoteInputControls v-model:selectedDuration="selectedDuration" v-model:selectedNoteType="selectedNoteType"
-          v-model:isDottedNote="isDottedNote" :availableDurations="availableDurations"
+          v-model:isDottedNote="isDottedNote" v-model:isTripletNote="isTripletNote" :availableDurations="availableDurations"
           :usesFallbackSymbols="usesFallbackSymbols" v-model:selectedAccidental="selectedAccidental"
           :availableAccidentals="availableAccidentals" v-model:selectedOctave="selectedOctave"
-          @toggleDottedNote="toggleDottedNote" />
+          @toggleDottedNote="toggleDottedNote" @toggleTripletNote="toggleTripletNote" />
         <LyricsControls v-model="currentLyric" :selectedNoteId="selectedNoteId" @setLyric="setLyricForNoteHandler" />
       </div>
       <div v-else class="read-only-message-container">
@@ -1136,7 +1187,7 @@ const getModifiedPitchForKeySignature = (pitch: string, isExplicitNatural = fals
 };
 
 // Refine the playNoteSound function for robustness
-const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, volumePercent = 100, explicitNatural = false) => {
+const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, volumePercent = 100, explicitNatural = false, isTriplet = false) => {
   let pitchToPlay = pitch;
   let noteDuration = duration;
 
@@ -1174,6 +1225,13 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
     } else {
       // Use standard Tone.js notation duration
       durationInSeconds = baseDurationMap[duration] || (60 / tempo.value);
+      
+      // Apply triplet timing first (if applicable)
+      if (isTriplet) {
+        durationInSeconds *= (2/3);
+      }
+      
+      // Then apply dotted timing
       if (isDotted) {
         durationInSeconds *= 1.5;
       }
@@ -1305,6 +1363,7 @@ const handleStaffClick = (event, staffId: string) => {
         type: selectedNoteType.value as "note" | "rest",
         duration: selectedDuration.value,
         dotted: isDottedNote.value,
+        triplet: isTripletNote.value,
         pitch: selectedNoteType.value === 'note' ?
           applyAccidental(pitch || (currentClef === 'treble' ? 'C4' : 'C3'), selectedAccidental.value) : undefined,
         explicitNatural: selectedNoteType.value === 'note' && selectedAccidental.value === 'natural' ? true : undefined
@@ -1322,7 +1381,8 @@ const handleStaffClick = (event, staffId: string) => {
           durationMap[updatedNote.duration],
           updatedNote.dotted,
           100, // volumePercent for click feedback
-          updatedNote.explicitNatural
+          updatedNote.explicitNatural,
+          updatedNote.triplet
         );
       }
       console.log(`Updated note in voice ${targetVoiceForInput.id} on staff ${staffId} at position ${position}, pitch: ${updatedNote.pitch || 'rest'}, dotted: ${updatedNote.dotted}`);
@@ -1335,6 +1395,7 @@ const handleStaffClick = (event, staffId: string) => {
         position,
         duration: selectedDuration.value,
         dotted: isDottedNote.value,
+        triplet: isTripletNote.value,
         pitch: selectedNoteType.value === 'note' ?
           applyAccidental(pitch || (currentClef === 'treble' ? 'C4' : 'C3'), selectedAccidental.value) : undefined,
         explicitNatural: selectedNoteType.value === 'note' && selectedAccidental.value === 'natural' ? true : undefined
@@ -1352,7 +1413,8 @@ const handleStaffClick = (event, staffId: string) => {
           durationMap[newNote.duration],
           newNote.dotted,
           100, // volumePercent for click feedback
-          newNote.explicitNatural
+          newNote.explicitNatural,
+          newNote.triplet
         );
       }
       console.log(`Added ${selectedNoteType.value} to voice ${targetVoiceForInput.id} on staff ${staffId} at position ${position}, pitch: ${newNote.pitch || 'rest'}, dotted: ${newNote.dotted}`);
@@ -2003,6 +2065,12 @@ const toggleDottedNote = () => {
   isDottedNote.value = !isDottedNote.value;
 };
 
+// Add a triplet note toggle button
+const isTripletNote = ref(false);
+const toggleTripletNote = () => {
+  isTripletNote.value = !isTripletNote.value;
+};
+
 // Add a function to remove a note
 const removeNote = (noteToRemove: NoteWithVoiceInfo | ImportedNote) => {
   if (readOnlyMode.value) {
@@ -2143,6 +2211,7 @@ const prepareCompositionData = (): CompositionData => {
     selectedAccidental: selectedAccidental.value,
     selectedOctave: selectedOctave.value,
     isDottedNote: isDottedNote.value,
+    isTripletNote: isTripletNote.value,
     sections: JSON.parse(JSON.stringify(sections.value)),
     sequenceItems: JSON.parse(JSON.stringify(sequenceItems.value)),
   };
@@ -2210,6 +2279,7 @@ const loadComposition = (compositionId: string) => {
       selectedAccidental.value = compositionToLoad.selectedAccidental !== undefined ? compositionToLoad.selectedAccidental : null;
       selectedOctave.value = compositionToLoad.selectedOctave || 4;
       isDottedNote.value = compositionToLoad.isDottedNote || false;
+      isTripletNote.value = (compositionToLoad as any).isTripletNote || false;
 
       // Load Staves
       if (compositionToLoad.staves && compositionToLoad.staves.length > 0) {
@@ -3249,7 +3319,7 @@ const getNotesMeasure = (note: ImportedNote | NoteWithVoiceInfo) => { // Update 
 };
 
 // Function to convert note duration to beats (quarter note = 1 beat)
-const getNoteDurationInBeats = (duration: string, isDotted = false) => {
+const getNoteDurationInBeats = (duration: string, isDotted = false, isTriplet = false) => {
   const baseDurations = {
     'whole': 4,
     'half': 2,
@@ -3259,6 +3329,11 @@ const getNoteDurationInBeats = (duration: string, isDotted = false) => {
   };
   
   let beats = baseDurations[duration] || 1;
+  
+  if (isTriplet) {
+    beats *= (2/3); // Triplets are 2/3 the duration of normal notes
+  }
+  
   if (isDotted) {
     beats *= 1.5; // Dotted notes are 1.5 times their normal duration
   }
@@ -3268,7 +3343,7 @@ const getNoteDurationInBeats = (duration: string, isDotted = false) => {
 
 // Function to check if a note is tied and get its total duration including tied notes
 const getTotalTiedDuration = (note: NoteWithVoiceInfo): number => {
-  let totalDuration = getNoteDurationInBeats(note.duration, note.dotted);
+  let totalDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
   
   // Find all ties starting from this note
   const ties = tiesSlurs.value.filter(ts => 
@@ -3314,7 +3389,7 @@ const getTotalNoteDurationInMeasure = (measureNumber: number, voiceNotes: Import
   
   return notesInMeasure.reduce((total, note) => {
     if (note.type === 'rest' || note.type === 'note') {
-      return total + getNoteDurationInBeats(note.duration, note.dotted);
+      return total + getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
     }
     return total;
   }, 0);
@@ -3443,7 +3518,7 @@ const playScore = () => {
       // Find the longest duration at this position within this voice only
       let longestDuration = 0;
       notesAtPosition.forEach(note => {
-        const noteDuration = getNoteDurationInBeats(note.duration, note.dotted);
+        const noteDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
         longestDuration = Math.max(longestDuration, noteDuration);
       });
 
@@ -4156,6 +4231,96 @@ const tiesSlursForStaff = (staffId: string): TieSlur[] => {
   return tiesSlurs.value.filter(tieSlur => tieSlur.staffId === staffId);
 };
 
+// Interface for triplet groups
+interface TripletGroup {
+  id: string;
+  notes: NoteWithVoiceInfo[];
+  startX: number;
+  endX: number;
+  centerX: number;
+  y: number;
+  color: string;
+}
+
+// Helper function to group consecutive triplet notes for a specific staff
+const getTripletGroupsForStaff = (staffId: string): TripletGroup[] => {
+  const tripletGroups: TripletGroup[] = [];
+  const notesOnStaff = notesForStaff(staffId).filter(note => note.triplet && note.type === 'note');
+  
+  if (notesOnStaff.length === 0) return tripletGroups;
+
+  // Sort notes by position and voice
+  const sortedNotes = notesOnStaff.sort((a, b) => {
+    if (a.voiceId !== b.voiceId) {
+      return a.voiceId.localeCompare(b.voiceId);
+    }
+    return a.position - b.position;
+  });
+
+  // Group consecutive triplet notes by voice and proximity
+  let currentGroup: NoteWithVoiceInfo[] = [];
+  let lastPosition = -1;
+  let lastVoiceId = '';
+
+  sortedNotes.forEach((note, index) => {
+    const positionGap = note.position - lastPosition;
+    const isConsecutive = positionGap <= 2; // Allow for small gaps between triplet notes
+    const isSameVoice = note.voiceId === lastVoiceId;
+
+    if (currentGroup.length === 0 || (!isConsecutive || !isSameVoice)) {
+      // Start a new group
+      if (currentGroup.length >= 2) {
+        // Process the previous group if it has at least 2 notes
+        createTripletGroup(currentGroup, tripletGroups);
+      }
+      currentGroup = [note];
+    } else {
+      // Add to current group
+      currentGroup.push(note);
+    }
+
+    lastPosition = note.position;
+    lastVoiceId = note.voiceId;
+
+    // Process the last group
+    if (index === sortedNotes.length - 1 && currentGroup.length >= 2) {
+      createTripletGroup(currentGroup, tripletGroups);
+    }
+  });
+
+  return tripletGroups;
+};
+
+// Helper function to create a triplet group
+const createTripletGroup = (notes: NoteWithVoiceInfo[], tripletGroups: TripletGroup[]) => {
+  if (notes.length < 2) return;
+
+  const startNote = notes[0];
+  const endNote = notes[notes.length - 1];
+  
+  // Calculate positions
+  const startX = startNote.position * 25 - 5; // Slightly before the first note
+  const endX = endNote.position * 25 + 15; // Slightly after the last note
+  const centerX = (startX + endX) / 2;
+  
+  // Calculate Y position - above the highest note in the group
+  const highestY = Math.min(...notes.map(note => note.verticalPosition));
+  const y = highestY - 30; // Position bracket 30px above the highest note
+  
+  // Use the voice color of the first note
+  const color = startNote.voiceColor || '#333';
+  
+  tripletGroups.push({
+    id: `triplet-${startNote.voiceId}-${startNote.position}-${endNote.position}`,
+    notes: [...notes],
+    startX,
+    endX,
+    centerX,
+    y,
+    color
+  });
+};
+
 // Add these functions to save and load compositions from localStorage
 
 // Save compositions to localStorage
@@ -4716,7 +4881,7 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
       // Find the longest duration at this position within this voice only
       let longestDuration = 0;
       notesAtPosition.forEach(note => {
-        const noteDuration = getNoteDurationInBeats(note.duration, note.dotted);
+        const noteDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
         longestDuration = Math.max(longestDuration, noteDuration);
       });
 
@@ -5970,7 +6135,7 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
   console.log(`Playing note ${noteToPlay.pitch} with total tied duration: ${totalTiedDuration} beats (${totalDurationInSeconds.toFixed(2)}s)`);
 
   // Use custom duration for tied notes, otherwise use original duration
-  if (totalTiedDuration !== getNoteDurationInBeats(noteToPlay.duration, noteToPlay.dotted)) {
+  if (totalTiedDuration !== getNoteDurationInBeats(noteToPlay.duration, noteToPlay.dotted, noteToPlay.triplet)) {
     // This note is tied - play for the total tied duration
     playNoteSound(
       noteToPlay.pitch,
@@ -6144,9 +6309,24 @@ const getTieSlurColor = (tieSlur: TieSlur): string => {
 }
 
 /* Tie/Slur button styling */
-.tie-slur-btn.active {
+.tie-slur-btn {
+  padding: 8px 16px;
   background-color: #9C27B0;
   color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tie-slur-btn.active {
+  background-color: #7B1FA2;
+}
+
+.tie-slur-btn:hover {
+  opacity: 0.9;
 }
 
 .tie-slur-info {
@@ -6163,5 +6343,36 @@ const getTieSlurColor = (tieSlur: TieSlur): string => {
 /* Staff cursor changes for different modes */
 .staff.tie-slur-mode {
   cursor: crosshair;
+}
+
+/* Triplet Bracket Styling */
+.triplet-brackets-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 12; /* Above ties/slurs but below notes */
+}
+
+.triplet-bracket-line,
+.triplet-bracket-end {
+  stroke-linecap: round;
+}
+
+.triplet-number {
+  pointer-events: none;
+  user-select: none;
+}
+
+.note.triplet {
+  /* Optional: Add subtle visual styling for triplet notes */
+  border-radius: 3px;
+}
+
+/* Ensure triplet brackets are responsive */
+.triplet-brackets-overlay .triplet-bracket-line,
+.triplet-brackets-overlay .triplet-bracket-end,
+.triplet-brackets-overlay .triplet-number {
+  transition: none; /* Prevent animation lag during scrolling */
 }
 </style>

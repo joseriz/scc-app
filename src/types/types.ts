@@ -8,6 +8,7 @@ export interface Note {
   position: number;
   verticalPosition: number;
   dotted?: boolean;
+  triplet?: boolean;
   lyric?: string;
   explicitNatural?: boolean;
 }
@@ -79,6 +80,7 @@ export interface CompositionData {
   selectedAccidental?: string | null;
   selectedOctave?: number;
   isDottedNote?: boolean;
+  isTripletNote?: boolean;
   sections?: Section[];
   sequenceItems?: SequenceItem[];
 }
