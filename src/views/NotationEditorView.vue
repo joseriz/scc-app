@@ -90,6 +90,37 @@
               {{ tieSlurStartNote ? 'Click the end note to complete' : 'Click the start note' }}
             </div>
             
+            <!-- Key Signature Change controls -->
+            <button 
+              @click="toggleKeySignatureChangeMode"
+              :class="{ active: isAddingKeySignatureChange }" 
+              class="key-change-btn">
+              {{ isAddingKeySignatureChange ? 'Cancel Key Change' : 'Add Key Change' }}
+            </button>
+            <div v-if="isAddingKeySignatureChange" class="key-change-controls">
+              <label>New Key:</label>
+              <select v-model="newKeySignature">
+                <option value="C">C Major</option>
+                <option value="G">G Major</option>
+                <option value="D">D Major</option>
+                <option value="A">A Major</option>
+                <option value="E">E Major</option>
+                <option value="B">B Major</option>
+                <option value="F#">F♯ Major</option>
+                <option value="C#">C♯ Major</option>
+                <option value="F">F Major</option>
+                <option value="Bb">B♭ Major</option>
+                <option value="Eb">E♭ Major</option>
+                <option value="Ab">A♭ Major</option>
+                <option value="Db">D♭ Major</option>
+                <option value="Gb">G♭ Major</option>
+                <option value="Cb">C♭ Major</option>
+              </select>
+              <div class="key-change-info">
+                Click on a measure to insert key change
+              </div>
+            </div>
+            
             <div class="copy-controls" v-if="isSelectingRange && selectionEnd">
               <button @click="copySelectedNotes(false)" class="copy-btn">
                 Copy Notes & Lyrics
@@ -149,13 +180,16 @@
                       ? pasteNotes($event, stave.id)
                       : isCreatingTieSlur
                         ? null // Do nothing - tie/slur creation is handled by note clicks
-                        : handleStaffClick($event, stave.id)
+                        : isAddingKeySignatureChange
+                          ? addKeySignatureChange($event, stave.id)
+                      : handleStaffClick($event, stave.id)
               " @mousedown="startDrag" @touchstart="startDrag" :class="{
                 'inserting-space': isInsertingSpace,
                 'deleting-space': isDeletingSpace,
                 'selecting-range': isSelectingRange,
                 'pasting': isPasting,
-                'tie-slur-mode': isCreatingTieSlur
+                'tie-slur-mode': isCreatingTieSlur,
+                'key-change-mode': isAddingKeySignatureChange
               }" :style="{
                 width: `${staffWidth}px`,
                 transform: `translateX(-${scrollPosition}px)`,
@@ -167,6 +201,8 @@
                       ? 'copy'
                       : isPasting
                         ? 'cell'
+                        : isAddingKeySignatureChange
+                          ? 'pointer'
                         : 'default'
               }">
               <!-- Add selection highlight -->
@@ -233,6 +269,25 @@
                 <!-- Add measure number (only show if showMeasureNumbers is true and on the first staff) -->
                 <div v-if="staveIndex === 0 && showMeasureNumbers && barline.measureNumber > 0" class="measure-number">
                   {{ barline.measureNumber }}
+                </div>
+              </div>
+
+              <!-- Key Signature Changes -->
+              <div v-for="keyChange in keySignatureChanges" :key="`key-change-${keyChange.id}`" 
+                   class="key-signature-change" :style="{ left: `${keyChange.position}px` }">
+                <div class="key-signature-change-accidentals">
+                  <div v-for="(accidental, index) in getAccidentalsForKeySignature(keyChange.keySignature)" 
+                       :key="`change-${keyChange.id}-${index}`"
+                       class="key-signature-accidental" :style="{
+                         top: `${getKeySignaturePosition(accidental, stave.clef)}px`,
+                         left: `${index * 8}px`
+                       }">
+                    {{ getAccidentalSymbolForKeySignature(accidental) }}
+                  </div>
+                </div>
+                <!-- Key signature change label -->
+                <div class="key-signature-change-label" :title="`Key change to ${keyChange.keySignature} at measure ${keyChange.measure}`">
+                  {{ keyChange.keySignature }}
                 </div>
               </div>
 
@@ -344,7 +399,7 @@
                     note.pitch &&
                     !note.pitch.includes('#') &&
                     !note.pitch.includes('b') &&
-                    isNoteAffectedByKeySignature(note.pitch.charAt(0)),
+                    isNoteAffectedByKeySignature(note.pitch.charAt(0), note.position),
                   'dotted': note.dotted,
                   'triplet': note.triplet,
                   'whole-note': note.duration === 'whole',
@@ -399,14 +454,14 @@
                   <!-- Accidental -->
                   <span v-if="note.type === 'note' && note.pitch && (
                     (note.pitch.includes('#') || note.pitch.includes('b')) ||
-                    isNoteAffectedByKeySignature(note.pitch.charAt(0)) ||
+                    isNoteAffectedByKeySignature(note.pitch.charAt(0), note.position) ||
                     note.explicitNatural
                   )" class="accidental">
                     {{
                       note.explicitNatural ? '♮' :
                         (note.pitch.includes('#') || note.pitch.includes('b')) ?
                           getAccidentalSymbol(note) :
-                          getAccidentalSymbolForKeySignature(getKeySignatureAccidentalForNote(note.pitch.charAt(0)))
+                          getAccidentalSymbolForKeySignature(getKeySignatureAccidentalForNote(note.pitch.charAt(0), note.position))
                     }}
                   </span>
                 </div>
@@ -573,6 +628,7 @@ import type {
   Section,
   SequenceItem,
   Stave, // Import Stave
+  KeySignatureChange,
 } from '@/types/types'; // Updated path
 
 // Store
@@ -971,6 +1027,10 @@ interface TieSlur {
 
 const tiesSlurs = ref<TieSlur[]>([]);
 
+// Key signature changes are now imported from types.ts
+
+const keySignatureChanges = ref<KeySignatureChange[]>([]);
+
 // Chord input state
 const showChordInput = ref(false);
 const chordInputPosition = ref(0);
@@ -1027,6 +1087,100 @@ const keySignatures = {
 const currentKeySignatureAccidentals = computed(() => {
   return keySignatures[keySignature.value] || [];
 });
+
+// Cache for key signature calculations to avoid redundant computation
+const keySignatureCache = new Map<string, string>();
+
+// Function to clear the key signature cache when changes are made
+const clearKeySignatureCache = () => {
+  keySignatureCache.clear();
+};
+
+// Function to get the effective key signature at a specific position
+const getEffectiveKeySignatureAtPosition = (position: number): string => {
+  // Create cache key based on position and current state
+  const cacheKey = `${position}-${keySignature.value}-${keySignatureChanges.value.length}`;
+  
+  // Check cache first
+  if (keySignatureCache.has(cacheKey)) {
+    const cachedResult = keySignatureCache.get(cacheKey)!;
+    return cachedResult;
+  }
+  
+  // Find the measure number for this position
+  const measureWidth = measureWidthByTimeSignature.value;
+  // Calculate initial position using the GLOBAL key signature (not position-specific)
+  // This avoids circular dependency since we're not calling getEffectiveKeySignatureAtPosition
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20; // clef + global key sig + time sig
+  
+  const relativePosition = position - initialPosition;
+  const measureNumber = Math.floor(relativePosition / measureWidth) + 1;
+  
+  const effectiveKey = getEffectiveKeySignatureAtMeasure(measureNumber);
+  
+  // Cache the result
+  keySignatureCache.set(cacheKey, effectiveKey);
+  
+  // Only log if it's a different result than the global key signature
+  if (effectiveKey !== keySignature.value) {
+    console.log(`🎼 Key change at position ${position} (measure ${measureNumber}): ${keySignature.value} → ${effectiveKey}`);
+  }
+  
+  return effectiveKey;
+};
+
+// Function to get the effective key signature at a specific measure
+const getEffectiveKeySignatureAtMeasure = (measureNumber: number): string => {
+  // Find the most recent key signature change at or before this measure
+  const applicableChanges = keySignatureChanges.value
+    .filter(change => change.measure <= measureNumber)
+    .sort((a, b) => b.measure - a.measure); // Sort by measure descending
+  
+  // If there's a key signature change, use it; otherwise use the global key signature
+  const result = applicableChanges.length > 0 ? applicableChanges[0].keySignature : keySignature.value;
+  
+  return result;
+};
+
+// Function to get accidentals for a specific key signature
+const getAccidentalsForKeySignature = (keySig: string): string[] => {
+  return keySignatures[keySig] || [];
+};
+
+// Function to reverse a key signature application - convert note back to natural form
+const reverseKeySignature = (pitch: string, keySignatureToReverse: string): string => {
+  if (!pitch || !keySignatureToReverse) return pitch;
+  
+  const noteLetter = pitch.charAt(0);
+  const octave = pitch.slice(-1);
+  const hasAccidental = pitch.includes('#') || pitch.includes('b');
+  
+  // If no accidental in stored pitch, it's already natural
+  if (!hasAccidental) {
+    return pitch;
+  }
+  
+  // Get the accidentals for the key signature we want to reverse
+  const keyAccidentals = getAccidentalsForKeySignature(keySignatureToReverse);
+  
+  // Check if this note's accidental matches what the key signature would apply
+  const expectedAccidental = keyAccidentals.find(acc => acc.startsWith(noteLetter));
+  
+  if (expectedAccidental) {
+    // Check if the stored accidental matches the key signature accidental
+    const expectedSymbol = expectedAccidental.includes('#') ? '#' : 'b';
+    const storedSymbol = pitch.includes('#') ? '#' : 'b';
+    
+    if (expectedSymbol === storedSymbol) {
+      // This accidental came from the key signature, so remove it to get natural form
+      return `${noteLetter}${octave}`;
+  }
+  }
+  
+  // The accidental doesn't match the key signature, so it's explicit - keep it
+  return pitch;
+};
 
 // Function to change the key signature
 const changeKeySignature = (key: string) => {
@@ -1143,9 +1297,18 @@ const getPitchPosition = (pitch: string, clef: 'treble' | 'bass') => {
   }
 };
 
-// Add this function to check if a note is affected by the key signature
-const isNoteAffectedByKeySignature = (noteName: string) => {
-  const accidentals = currentKeySignatureAccidentals.value;
+// Add this function to check if a note is affected by the key signature at a specific position
+const isNoteAffectedByKeySignature = (noteName: string, notePosition?: number) => {
+  let accidentals;
+  
+  if (notePosition !== undefined) {
+    // Get the effective key signature at this position
+    const effectiveKeySignature = getEffectiveKeySignatureAtPosition(notePosition * 25);
+    accidentals = getAccidentalsForKeySignature(effectiveKeySignature);
+  } else {
+    // Fall back to global key signature for backward compatibility
+    accidentals = currentKeySignatureAccidentals.value;
+  }
 
   // Check if the note is in the key signature
   for (const accidental of accidentals) {
@@ -1157,11 +1320,10 @@ const isNoteAffectedByKeySignature = (noteName: string) => {
   return false;
 };
 
-// Update the getModifiedPitchForKeySignature function
-const getModifiedPitchForKeySignature = (pitch: string, isExplicitNatural = false) => {
+// Update the getModifiedPitchForKeySignature function to consider position
+const getModifiedPitchForKeySignature = (pitch: string, isExplicitNatural = false, notePosition?: number) => {
   // If this note has an explicit natural, its stored pitch is already the correct natural pitch.
   if (isExplicitNatural) {
-    // console.log(`getModifiedPitchForKeySignature: Explicit natural for ${pitch}, returning as is.`);
     return pitch;
   }
 
@@ -1169,20 +1331,33 @@ const getModifiedPitchForKeySignature = (pitch: string, isExplicitNatural = fals
   // it means it's either an explicit sharp/flat or a courtesy accidental.
   // The key signature should not override an existing explicit sharp or flat in the pitch string itself.
   if (pitch.includes('#') || pitch.includes('b')) {
-    // console.log(`getModifiedPitchForKeySignature: Pitch ${pitch} already has accidental, returning as is.`);
     return pitch;
   }
 
   const noteName = pitch.charAt(0);
   const octave = pitch.slice(pitch.length - 1); // Correctly get last char for octave
 
-  for (const accidentalInKey of currentKeySignatureAccidentals.value) {
+  let effectiveAccidentals;
+  let effectiveKeySignature;
+  
+  if (notePosition !== undefined) {
+    // Get the effective key signature at this position
+    effectiveKeySignature = getEffectiveKeySignatureAtPosition(notePosition * 25);
+    effectiveAccidentals = getAccidentalsForKeySignature(effectiveKeySignature);
+  } else {
+    // Fall back to global key signature for backward compatibility
+    effectiveKeySignature = keySignature.value;
+    effectiveAccidentals = currentKeySignatureAccidentals.value;
+  }
+
+  // Check if we have an effective key signature with accidentals
+  for (const accidentalInKey of effectiveAccidentals) {
     if (accidentalInKey.startsWith(noteName)) {
-      // console.log(`getModifiedPitchForKeySignature: Applying key sig to ${pitch} -> ${noteName}${accidentalInKey.includes('#') ? '#' : 'b'}${octave}`);
-      return `${noteName}${accidentalInKey.includes('#') ? '#' : 'b'}${octave}`;
+      const modifiedPitch = `${noteName}${accidentalInKey.includes('#') ? '#' : 'b'}${octave}`;
+      return modifiedPitch;
     }
   }
-  // console.log(`getModifiedPitchForKeySignature: No key sig effect on ${pitch}, returning as is.`);
+  
   return pitch;
 };
 
@@ -1198,14 +1373,16 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
     // Make sure Tone.js is started
     await Tone.start();
 
+    console.log(`🎼 playNoteSound input: "${pitch}", explicitNatural: ${explicitNatural}`);
+
     if (explicitNatural) {
       const noteLetter = pitch.charAt(0);
       const octave = pitch.slice(pitch.length - 1);
       pitchToPlay = `${noteLetter}${octave}`;
+      console.log(`🎼 Applied explicit natural: "${pitch}" → "${pitchToPlay}"`);
     } else {
-      if (!pitchToPlay.includes('#') && !pitchToPlay.includes('b')) {
-        pitchToPlay = getModifiedPitchForKeySignature(pitchToPlay, false);
-      }
+      // Just use the pitch as-is - it should already be correctly converted by playNoteWithTieHandling
+      console.log(`🎼 Using pre-converted pitch: "${pitchToPlay}"`);
     }
 
     const baseDurationMap: { [key: string]: number; } = {
@@ -1232,9 +1409,9 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
       }
       
       // Then apply dotted timing
-      if (isDotted) {
-        durationInSeconds *= 1.5;
-      }
+    if (isDotted) {
+      durationInSeconds *= 1.5;
+    }
     }
     
     if (durationInSeconds <= 0) {
@@ -1250,6 +1427,9 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
     // Convert volumePercent (0-100) to velocity (0.0-1.0)
     // Ensure velocity is clamped between 0 and 1.
     const velocity = Math.max(0, Math.min(1, volumePercent / 100));
+
+      // Final confirmation of what pitch will actually play
+  console.log(`🔊 AUDIO: Playing "${pitchToPlay}" for ${noteDuration}`);
 
     // Use the piano synth to play the note if available, otherwise use basic synth
     if (pianoSynth && pianoSynth.loaded) {
@@ -1290,6 +1470,21 @@ const playComposition = () => {
       clearInterval(checkPlaybackStatus);
     }
   }, 500); // Check every half second
+};
+
+// Function to get preview pitch with correct key signature
+const getPreviewPitch = (basePitch: string, position: number): string => {
+  if (!basePitch) return '';
+  
+  // Get the effective key signature at this position
+  const effectiveKey = getEffectiveKeySignatureAtPosition(position * 25);
+  const globalKey = keySignature.value;
+  
+  // Get the natural form first
+  const naturalPitch = reverseKeySignature(basePitch, globalKey);
+  
+  // Then apply the effective key signature
+  return getModifiedPitchForKeySignature(naturalPitch, false, position);
 };
 
 // Update the existing handleStaffClick function to handle explicit natural accidentals
@@ -1358,14 +1553,25 @@ const handleStaffClick = (event, staffId: string) => {
   if (existingNoteIndex !== -1) {
     const existingNote = notesInTargetVoice[existingNoteIndex];
     if (pitch || selectedNoteType.value === 'rest') {
+      // Get the base pitch first
+      let basePitch = pitch || (currentClef === 'treble' ? 'C4' : 'C3');
+      
+      // If an accidental is selected, apply it directly
+      if (selectedAccidental.value !== '') {
+        basePitch = applyAccidental(basePitch, selectedAccidental.value, position);
+      } else {
+        // Otherwise, apply the effective key signature
+        const effectiveKey = getEffectiveKeySignatureAtPosition(position * 25);
+        basePitch = getModifiedPitchForKeySignature(basePitch, false, position);
+      }
+      
       const updatedNoteBase = {
         ...existingNote,
         type: selectedNoteType.value as "note" | "rest",
         duration: selectedDuration.value,
         dotted: isDottedNote.value,
         triplet: isTripletNote.value,
-        pitch: selectedNoteType.value === 'note' ?
-          applyAccidental(pitch || (currentClef === 'treble' ? 'C4' : 'C3'), selectedAccidental.value) : undefined,
+        pitch: selectedNoteType.value === 'note' ? basePitch : undefined,
         explicitNatural: selectedNoteType.value === 'note' && selectedAccidental.value === 'natural' ? true : undefined
       };
       const updatedNote = {
@@ -1376,8 +1582,21 @@ const handleStaffClick = (event, staffId: string) => {
       notesInTargetVoice.splice(existingNoteIndex, 1, updatedNote);
 
       if (selectedNoteType.value === 'note' && updatedNote.pitch) {
+        // For preview sound, we need to convert the pitch just like during playback
+        let pitchToPlay = updatedNote.pitch;
+        if (!updatedNote.explicitNatural) {
+          const effectiveKey = getEffectiveKeySignatureAtPosition(position * 25);
+          const globalKey = keySignature.value;
+          
+          // Get the natural form first
+          const naturalPitch = reverseKeySignature(pitchToPlay, globalKey);
+          
+          // Then apply the effective key signature
+          pitchToPlay = getModifiedPitchForKeySignature(naturalPitch, false, position);
+        }
+        
         playNoteSound(
-          updatedNote.pitch,
+          pitchToPlay,
           durationMap[updatedNote.duration],
           updatedNote.dotted,
           100, // volumePercent for click feedback
@@ -1389,6 +1608,18 @@ const handleStaffClick = (event, staffId: string) => {
     }
   } else {
     if (pitch || selectedNoteType.value === 'rest') {
+      // Get the base pitch first
+      let basePitch = pitch || (currentClef === 'treble' ? 'C4' : 'C3');
+      
+      // If an accidental is selected, apply it directly
+      if (selectedAccidental.value !== '') {
+        basePitch = applyAccidental(basePitch, selectedAccidental.value, position);
+      } else {
+        // Otherwise, apply the effective key signature
+        const effectiveKey = getEffectiveKeySignatureAtPosition(position * 25);
+        basePitch = getModifiedPitchForKeySignature(basePitch, false, position);
+      }
+      
       const newNoteBase = {
         id: generateId(),
         type: selectedNoteType.value as "note" | "rest",
@@ -1396,8 +1627,7 @@ const handleStaffClick = (event, staffId: string) => {
         duration: selectedDuration.value,
         dotted: isDottedNote.value,
         triplet: isTripletNote.value,
-        pitch: selectedNoteType.value === 'note' ?
-          applyAccidental(pitch || (currentClef === 'treble' ? 'C4' : 'C3'), selectedAccidental.value) : undefined,
+        pitch: selectedNoteType.value === 'note' ? basePitch : undefined,
         explicitNatural: selectedNoteType.value === 'note' && selectedAccidental.value === 'natural' ? true : undefined
       };
       const newNote = {
@@ -1408,8 +1638,21 @@ const handleStaffClick = (event, staffId: string) => {
       notesInTargetVoice.push(newNote);
 
       if (selectedNoteType.value === 'note' && newNote.pitch) {
+        // For preview sound, we need to convert the pitch just like during playback
+        let pitchToPlay = newNote.pitch;
+        if (!newNote.explicitNatural) {
+          const effectiveKey = getEffectiveKeySignatureAtPosition(position * 25);
+          const globalKey = keySignature.value;
+          
+          // Get the natural form first
+          const naturalPitch = reverseKeySignature(pitchToPlay, globalKey);
+          
+          // Then apply the effective key signature
+          pitchToPlay = getModifiedPitchForKeySignature(naturalPitch, false, position);
+        }
+        
         playNoteSound(
-          newNote.pitch,
+          pitchToPlay,
           durationMap[newNote.duration],
           newNote.dotted,
           100, // volumePercent for click feedback
@@ -1553,6 +1796,7 @@ const clearScore = () => {
 
   chordSymbols.value = [];
   tiesSlurs.value = [];
+  keySignatureChanges.value = [];
   sections.value = [];
   sequenceItems.value = [];
 
@@ -1664,9 +1908,22 @@ const addExampleChords = () => {
   ];
 };
 
-// Helper function to safely get the key signature accidental for a note
-const getKeySignatureAccidentalForNote = (noteName: string) => {
-  const accidental = currentKeySignatureAccidentals.value.find(a => a.startsWith(noteName));
+// Helper function to safely get the key signature accidental for a note at a specific position
+const getKeySignatureAccidentalForNote = (noteName: string, notePosition?: number) => {
+  let accidentals;
+  let effectiveKeySignature;
+  
+  if (notePosition !== undefined) {
+    // Get the effective key signature at this position
+    effectiveKeySignature = getEffectiveKeySignatureAtPosition(notePosition * 25);
+    accidentals = getAccidentalsForKeySignature(effectiveKeySignature);
+    } else {
+      // Fall back to global key signature for backward compatibility
+      effectiveKeySignature = keySignature.value;
+      accidentals = currentKeySignatureAccidentals.value;
+    }
+  
+  const accidental = accidentals.find(a => a.startsWith(noteName));
   return accidental || '';
 };
 
@@ -2031,24 +2288,20 @@ const mapPositionToPitch = (verticalPosition: number, clef: 'treble' | 'bass'): 
   return positions[verticalPosition] || null;
 };
 
-// Update the applyAccidental function to be more aggressive about naturals
-const applyAccidental = (pitch: string, accidental: string | null): string => {
+// Update the applyAccidental function to consider position
+const applyAccidental = (pitch: string, accidental: string | null, notePosition?: number): string => {
   if (!pitch) return ''; // Should not happen if mapPositionToPitch returns a valid pitch
 
   const noteLetter = pitch.charAt(0);
   const octave = pitch.charAt(pitch.length - 1);
 
-  // console.log(`Applying ${accidental} to ${pitch}`); // Keep for debugging if needed
-
   if (accidental === 'natural') {
     // ALWAYS return the natural note (no accidental), regardless of key signature
-    // console.log(`Forcing natural for ${noteLetter}${octave}`); // Keep for debugging
     return `${noteLetter}${octave}`; // This ensures the pitch *value* is natural
   } else if (accidental === null) {
-    // If no specific accidental is selected, apply key signature (respecting explicitNatural if passed)
-    // This function is usually called when placing a new note without an explicit accidental selected.
-    // The `explicitNatural` flag on the note object itself will handle display/playback.
-    return getModifiedPitchForKeySignature(pitch, false); // Assume not explicitly natural here
+    // Store the base pitch without key signature modifications
+    // Key signature will be applied during display and playback
+    return `${noteLetter}${octave}`;
   } else if (accidental === 'sharp') {
     return `${noteLetter}#${octave}`;
   } else if (accidental === 'flat') {
@@ -2204,6 +2457,7 @@ const prepareCompositionData = (): CompositionData => {
     timeSignature: timeSignature.value,
     chordSymbols: [...chordSymbols.value],
     tiesSlurs: [...tiesSlurs.value],
+    keySignatureChanges: [...keySignatureChanges.value],
     activeVoiceId: activeVoiceId.value,
     staffWidth: staffWidth.value,
     selectedDuration: selectedDuration.value,
@@ -2422,6 +2676,7 @@ const loadComposition = (compositionId: string) => {
 
       chordSymbols.value = compositionToLoad.chordSymbols ? JSON.parse(JSON.stringify(compositionToLoad.chordSymbols)) : [];
       tiesSlurs.value = (compositionToLoad as any).tiesSlurs ? JSON.parse(JSON.stringify((compositionToLoad as any).tiesSlurs)) : [];
+      keySignatureChanges.value = (compositionToLoad as any).keySignatureChanges ? JSON.parse(JSON.stringify((compositionToLoad as any).keySignatureChanges)) : [];
       sections.value = compositionToLoad.sections ? JSON.parse(JSON.stringify(compositionToLoad.sections)) : [];
       sequenceItems.value = compositionToLoad.sequenceItems ? JSON.parse(JSON.stringify(compositionToLoad.sequenceItems)) : [];
 
@@ -3302,8 +3557,9 @@ const getNotesMeasure = (note: ImportedNote | NoteWithVoiceInfo) => { // Update 
   const notePosition = note.position * 25;
 
   // Calculate the initial position (where measure 1 starts)
-  const keySignatureWidth = currentKeySignatureAccidentals.value.length * 10;
-  const initialPosition = 70 + keySignatureWidth + 20; // clef + key sig + time sig
+  // Use global key signature to be consistent with getEffectiveKeySignatureAtPosition
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20; // clef + global key sig + time sig
 
   // If the note is before the first measure, return 0
   if (notePosition < initialPosition) {
@@ -3450,7 +3706,9 @@ const playScore = () => {
 
   // Calculate measure boundaries
   const measureWidth = measureWidthByTimeSignature.value;
-  const initialPosition = 70 + (currentKeySignatureAccidentals.value.length * 10) + 20;
+  // Use global key signature for consistency with getEffectiveKeySignatureAtPosition
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20;
 
   console.log(`Playback range: measures ${playbackStartMeasure.value} to ${playbackEndMeasure.value || 'end'}`);
   console.log(`Measure width: ${measureWidth}px, Initial position: ${initialPosition}px`);
@@ -3502,25 +3760,25 @@ const playScore = () => {
     // Group notes by position within this voice (for chords within the same voice)
     const notesByPosition = {};
     sortedVoiceNotes.forEach(note => {
-      if (!notesByPosition[note.position]) {
-        notesByPosition[note.position] = [];
-      }
-      notesByPosition[note.position].push(note);
-    });
+    if (!notesByPosition[note.position]) {
+      notesByPosition[note.position] = [];
+    }
+    notesByPosition[note.position].push(note);
+  });
 
     // Calculate timing for this voice independently
     let voiceDelay = 0;
     const voiceSchedule = [];
 
     Object.keys(notesByPosition).map(Number).sort((a, b) => a - b).forEach(position => {
-      const notesAtPosition = notesByPosition[position];
-      
+    const notesAtPosition = notesByPosition[position];
+
       // Find the longest duration at this position within this voice only
-      let longestDuration = 0;
-      notesAtPosition.forEach(note => {
+    let longestDuration = 0;
+    notesAtPosition.forEach(note => {
         const noteDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
-        longestDuration = Math.max(longestDuration, noteDuration);
-      });
+      longestDuration = Math.max(longestDuration, noteDuration);
+    });
 
       // Get the measure this position is in and calculate timing compression for this voice
       const measureNumber = getNotesMeasure(notesAtPosition[0]);
@@ -3538,7 +3796,7 @@ const playScore = () => {
       }
 
       // Calculate the wait duration in seconds for this voice
-      const secondsPerBeat = 60 / tempo.value;
+    const secondsPerBeat = 60 / tempo.value;
       const waitDurationSeconds = compressedDuration * secondsPerBeat;
 
       voiceSchedule.push({
@@ -3562,18 +3820,18 @@ const playScore = () => {
       
       // Function to play notes for this voice at this time
       const playVoiceNotesWithDelay = (notesToPlay, playDelay) => {
-        const callback = () => {
-          const idsAtThisPosition = notesToPlay.map(n => n.id);
-          currentPlayingNoteIds.value.push(...idsAtThisPosition.filter(id => !currentPlayingNoteIds.value.includes(id)));
+      const callback = () => {
+        const idsAtThisPosition = notesToPlay.map(n => n.id);
+        currentPlayingNoteIds.value.push(...idsAtThisPosition.filter(id => !currentPlayingNoteIds.value.includes(id)));
 
           // Auto-scroll to the first note being played (from any voice)
-          if (notesToPlay.length > 0 && autoScrollToPlayingNote.value) {
-            autoScrollToNote(notesToPlay[0]);
-          }
+        if (notesToPlay.length > 0 && autoScrollToPlayingNote.value) {
+          autoScrollToNote(notesToPlay[0]);
+        }
 
           // Play all notes at this position for this voice
           const tiedNotesInfo = [];
-          notesToPlay.forEach(noteToPlay => {
+        notesToPlay.forEach(noteToPlay => {
             const playResult = playNoteWithTieHandling(noteToPlay, voice);
             if (playResult.isPlaying && playResult.totalDurationMs > 0) {
               // This is a tied note that will play longer than the schedule duration
@@ -3585,7 +3843,7 @@ const playScore = () => {
           });
 
           // Schedule the end of regular notes (independent for this voice)
-          const noteEndCallback = () => {
+        const noteEndCallback = () => {
             // Only remove notes that are NOT tied with extended duration
             const tiedNoteIds = tiedNotesInfo.map(info => info.noteId);
             const notesToRemove = idsAtThisPosition.filter(id => !tiedNoteIds.includes(id));
@@ -3595,12 +3853,12 @@ const playScore = () => {
           const noteEndTimeoutId = setTimeout(noteEndCallback, duration);
           window.playbackTimeouts.push(noteEndTimeoutId);
 
-          // Store timeout info for potential pausing
-          (window as any)[`timeout_${noteEndTimeoutId}_info`] = {
-            startTime: Date.now(),
+        // Store timeout info for potential pausing
+        (window as any)[`timeout_${noteEndTimeoutId}_info`] = {
+          startTime: Date.now(),
             duration: duration,
-            callback: noteEndCallback
-          };
+          callback: noteEndCallback
+        };
 
           // Schedule separate end callbacks for tied notes
           tiedNotesInfo.forEach(tiedNoteInfo => {
@@ -3612,9 +3870,9 @@ const playScore = () => {
             const tiedNoteEndTimeoutId = setTimeout(tiedNoteEndCallback, tiedNoteInfo.totalDurationMs);
             window.playbackTimeouts.push(tiedNoteEndTimeoutId);
 
-            // Store timeout info for potential pausing
+      // Store timeout info for potential pausing
             (window as any)[`timeout_${tiedNoteEndTimeoutId}_info`] = {
-              startTime: Date.now(),
+        startTime: Date.now(),
               duration: tiedNoteInfo.totalDurationMs,
               callback: tiedNoteEndCallback
             };
@@ -3622,7 +3880,7 @@ const playScore = () => {
         };
 
         const timeoutId = setTimeout(callback, playDelay);
-        window.playbackTimeouts.push(timeoutId);
+      window.playbackTimeouts.push(timeoutId);
 
         // Store timeout info for potential pausing
         (window as any)[`timeout_${timeoutId}_info`] = {
@@ -4690,8 +4948,9 @@ const playSection = (section: Section) => {
 const jumpToSection = (section: Section) => {
   // Calculate position of start measure
   const measureWidth = measureWidthByTimeSignature.value;
-  const keySignatureWidth = currentKeySignatureAccidentals.value.length * 10;
-  const initialPosition = 70 + keySignatureWidth + 20; // clef + key sig + time sig
+  // Use global key signature for consistency
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20; // clef + global key sig + time sig
 
   // Calculate where the measure starts
   const measureStart = initialPosition + ((section.startMeasure - 1) * measureWidth);
@@ -4706,8 +4965,9 @@ const jumpToSection = (section: Section) => {
 // Add this function to calculate the position of a section marker
 const getSectionPosition = (measure: number) => {
   const measureWidth = measureWidthByTimeSignature.value;
-  const keySignatureWidth = currentKeySignatureAccidentals.value.length * 10;
-  const initialPosition = 70 + keySignatureWidth + 20; // clef + key sig + time sig
+  // Use global key signature for consistency
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20; // clef + global key sig + time sig
 
   // Calculate position based on measure number
   return initialPosition + ((measure - 1) * measureWidth);
@@ -4865,25 +5125,25 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
     // Group notes by position within this voice (for chords within the same voice)
     const notesByPosition = {};
     sortedVoiceNotes.forEach(note => {
-      if (!notesByPosition[note.position]) {
-        notesByPosition[note.position] = [];
-      }
-      notesByPosition[note.position].push(note);
-    });
+    if (!notesByPosition[note.position]) {
+      notesByPosition[note.position] = [];
+    }
+    notesByPosition[note.position].push(note);
+  });
 
     // Calculate timing for this voice independently
     let voiceDelay = 0;
     const voiceSchedule = [];
 
     Object.keys(notesByPosition).map(Number).sort((a, b) => a - b).forEach(position => {
-      const notesAtPosition = notesByPosition[position];
-      
+    const notesAtPosition = notesByPosition[position];
+
       // Find the longest duration at this position within this voice only
-      let longestDuration = 0;
-      notesAtPosition.forEach(note => {
+    let longestDuration = 0;
+    notesAtPosition.forEach(note => {
         const noteDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
-        longestDuration = Math.max(longestDuration, noteDuration);
-      });
+      longestDuration = Math.max(longestDuration, noteDuration);
+    });
 
       // Get the measure this position is in and calculate timing compression for this voice
       const measureNumber = getNotesMeasure(notesAtPosition[0]);
@@ -4901,7 +5161,7 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
       }
 
       // Calculate the wait duration in seconds for this voice
-      const secondsPerBeat = 60 / tempo.value;
+    const secondsPerBeat = 60 / tempo.value;
       const waitDurationSeconds = compressedDuration * secondsPerBeat;
 
       voiceSchedule.push({
@@ -4925,18 +5185,18 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
       
       // Function to play notes for this voice at this time
       const playVoiceNotesWithDelay = (notesToPlay, playDelay) => {
-        const callback = () => {
-          const idsAtThisPosition = notesToPlay.map(n => n.id);
-          currentPlayingNoteIds.value.push(...idsAtThisPosition.filter(id => !currentPlayingNoteIds.value.includes(id)));
+      const callback = () => {
+        const idsAtThisPosition = notesToPlay.map(n => n.id);
+        currentPlayingNoteIds.value.push(...idsAtThisPosition.filter(id => !currentPlayingNoteIds.value.includes(id)));
 
           // Auto-scroll to the first note being played (from any voice)
-          if (notesToPlay.length > 0 && autoScrollToPlayingNote.value) {
-            autoScrollToNote(notesToPlay[0]);
-          }
+        if (notesToPlay.length > 0 && autoScrollToPlayingNote.value) {
+          autoScrollToNote(notesToPlay[0]);
+        }
 
           // Play all notes at this position for this voice
           const tiedNotesInfo = [];
-          notesToPlay.forEach(noteToPlay => {
+        notesToPlay.forEach(noteToPlay => {
             const playResult = playNoteWithTieHandling(noteToPlay, voice);
             if (playResult.isPlaying && playResult.totalDurationMs > 0) {
               // This is a tied note that will play longer than the schedule duration
@@ -4981,11 +5241,11 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
               duration: tiedNoteInfo.totalDurationMs,
               callback: tiedNoteEndCallback
             };
-          });
-        };
+        });
+      };
 
         const timeoutId = setTimeout(callback, playDelay);
-        window.playbackTimeouts.push(timeoutId);
+      window.playbackTimeouts.push(timeoutId);
 
         // Store timeout info for potential pausing
         (window as any)[`timeout_${timeoutId}_info`] = {
@@ -5088,6 +5348,9 @@ const enforceNaturalNotes = () => {
 const changeKeySignatureDirectly = (newKeySignature: string) => {
   // console.log(`Changing key signature from ${keySignature.value} to ${newKeySignature}`);
   keySignature.value = newKeySignature;
+
+  // Clear the key signature cache since the global key signature changed
+  clearKeySignatureCache();
 
   // Enforce natural notes after key signature change to ensure their pitches remain natural
   const changedCount = enforceNaturalNotes();
@@ -5635,6 +5898,10 @@ const insertSpaceWidth = ref(1); // Default width of 1 grid unit (25px)
 const isCreatingTieSlur = ref(false);
 const tieSlurStartNote = ref<NoteWithVoiceInfo | null>(null);
 
+// Add key signature change refs
+const isAddingKeySignatureChange = ref(false);
+const newKeySignature = ref('C');
+
 // Add this new function to handle space insertion
 const insertSpace = (event: MouseEvent, staffId: string) => {
   if (readOnlyMode.value || !isInsertingSpace.value) return;
@@ -6042,6 +6309,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
       isDeletingSpace.value = false;
       isCreatingTieSlur.value = false;
       tieSlurStartNote.value = null;
+      isAddingKeySignatureChange.value = false;
       clearSelection();
     } else if (event.key === 'r') {
       isSelectingRange.value ? clearSelection() : isSelectingRange.value = true;
@@ -6060,6 +6328,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
       isPasting.value = false;
       isCreatingTieSlur.value = false;
       tieSlurStartNote.value = null;
+      isAddingKeySignatureChange.value = false;
       if (isInsertingSpace.value) {
         alert('Space insertion mode activated. Click where you want to insert space. Press "i" again to cancel.');
       }
@@ -6070,6 +6339,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
       isPasting.value = false;
       isCreatingTieSlur.value = false;
       tieSlurStartNote.value = null;
+      isAddingKeySignatureChange.value = false;
       if (isDeletingSpace.value) {
         alert('Space deletion mode activated. Click where you want to delete space. Press "d" again to cancel.');
       }
@@ -6077,6 +6347,11 @@ const handleKeyPress = (event: KeyboardEvent) => {
       toggleTieSlurMode();
       if (isCreatingTieSlur.value) {
         alert('Tie/Slur mode activated. Click first note, then second note. Same pitch = Tie, Different pitch = Slur. Press "t" again to cancel.');
+      }
+    } else if (event.key === 'k') {
+      toggleKeySignatureChangeMode();
+      if (isAddingKeySignatureChange.value) {
+        alert('Key signature change mode activated. Click on a measure to insert key change. Press "k" again to cancel.');
       }
     } else if (event.key === 'c' && isSelectingRange.value) {
       copySelectedNotes();
@@ -6102,6 +6377,74 @@ const toggleTieSlurMode = () => {
   isDeletingSpace.value = false;
   isSelectingRange.value = false;
   isPasting.value = false;
+  isAddingKeySignatureChange.value = false;
+};
+
+// Add key signature change functions
+const toggleKeySignatureChangeMode = () => {
+  isAddingKeySignatureChange.value = !isAddingKeySignatureChange.value;
+  // Reset other modes
+  isInsertingSpace.value = false;
+  isDeletingSpace.value = false;
+  isSelectingRange.value = false;
+  isPasting.value = false;
+  isCreatingTieSlur.value = false;
+  tieSlurStartNote.value = null;
+};
+
+// Function to add a key signature change at a specific measure
+const addKeySignatureChange = (event: MouseEvent, staffId: string) => {
+  if (readOnlyMode.value || !isAddingKeySignatureChange.value) return;
+
+  const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX - staffRect.left;
+  
+  // Calculate which measure was clicked
+  const measureWidth = measureWidthByTimeSignature.value;
+  // Use the same calculation as getEffectiveKeySignatureAtPosition
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20;
+  
+  const relativePosition = x - initialPosition;
+  const measureNumber = Math.floor(relativePosition / measureWidth) + 1;
+  
+  // Don't allow key signature change in measure 1 (use global key signature instead)
+  if (measureNumber < 2) {
+    alert('Key signature changes cannot be placed in measure 1. Use the global key signature setting instead.');
+    return;
+  }
+  
+  // Check if there's already a key signature change at this measure
+  const existingChange = keySignatureChanges.value.find(change => change.measure === measureNumber);
+  if (existingChange) {
+    // Update existing change
+    console.log(`🔄 Updating existing key change at measure ${measureNumber}: ${existingChange.keySignature} → ${newKeySignature.value}`);
+    existingChange.keySignature = newKeySignature.value;
+  } else {
+    // Create new change  
+    const newChange: KeySignatureChange = {
+      id: generateId(),
+      measure: measureNumber,
+      keySignature: newKeySignature.value,
+      position: initialPosition + ((measureNumber - 1) * measureWidth) + 5 // Small offset from measure line
+    };
+    console.log(`➕ Creating NEW key signature change: ${newKeySignature.value} at measure ${measureNumber}, position ${newChange.position}`);
+    console.log(`Current global key signature: ${keySignature.value}`);
+    console.log(`Measure width: ${measureWidth}, Initial position: ${initialPosition}`);
+    keySignatureChanges.value.push(newChange);
+  }
+  
+  // Sort key signature changes by measure
+  keySignatureChanges.value.sort((a, b) => a.measure - b.measure);
+  
+  // Clear the key signature cache since changes were made
+  clearKeySignatureCache();
+  
+  // Exit key signature change mode
+  isAddingKeySignatureChange.value = false;
+  saveToLocalStorage();
+  
+  console.log(`Added key signature change to ${newKeySignature.value} at measure ${measureNumber}`);
 };
 
 // Helper function to handle tied note playback
@@ -6134,11 +6477,35 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
 
   console.log(`Playing note ${noteToPlay.pitch} with total tied duration: ${totalTiedDuration} beats (${totalDurationInSeconds.toFixed(2)}s)`);
 
+  // For playback, apply the key signature at the note's position
+  let pitchToPlay = noteToPlay.pitch;
+  
+    // Handle notes that may have been stored with old key signature system
+  if (pitchToPlay && !noteToPlay.explicitNatural) {
+    const effectiveKey = getEffectiveKeySignatureAtPosition(noteToPlay.position * 25);
+    const globalKey = keySignature.value;
+    
+    console.log(`🔍 PLAYBACK: Position ${noteToPlay.position}, Stored: "${pitchToPlay}", Global: ${globalKey}, Effective: ${effectiveKey}`);
+    
+    // Always get the natural form first
+    const naturalPitch = reverseKeySignature(pitchToPlay, globalKey);
+    
+    // Then apply the effective key signature
+    const convertedPitch = getModifiedPitchForKeySignature(naturalPitch, false, noteToPlay.position);
+    
+    if (convertedPitch !== pitchToPlay) {
+      console.log(`🎵 Applied effective key: "${pitchToPlay}" → "${convertedPitch}" (${effectiveKey})`);
+      pitchToPlay = convertedPitch;
+    } else if (effectiveKey !== globalKey) {
+      console.log(`🎵 Key change keeps note natural: "${pitchToPlay}" stays "${convertedPitch}" (${effectiveKey} has no ${pitchToPlay.charAt(0)} accidental)`);
+    }
+  }
+
   // Use custom duration for tied notes, otherwise use original duration
   if (totalTiedDuration !== getNoteDurationInBeats(noteToPlay.duration, noteToPlay.dotted, noteToPlay.triplet)) {
     // This note is tied - play for the total tied duration
     playNoteSound(
-      noteToPlay.pitch,
+      pitchToPlay,
       `${totalDurationInSeconds}s`, // Use seconds duration for tied notes
       false, // Don't apply dotted modifier as it's already included in total duration
       currentVoiceVolumePercent,
@@ -6149,7 +6516,7 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
     // This note is not tied - play normally
     const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
     playNoteSound(
-      noteToPlay.pitch,
+      pitchToPlay,
       toneDuration,
       noteToPlay.dotted,
       currentVoiceVolumePercent,
@@ -6343,6 +6710,79 @@ const getTieSlurColor = (tieSlur: TieSlur): string => {
 /* Staff cursor changes for different modes */
 .staff.tie-slur-mode {
   cursor: crosshair;
+}
+
+.staff.key-change-mode {
+  cursor: pointer;
+}
+
+/* Key signature change styling */
+.key-change-btn {
+  padding: 8px 16px;
+  background-color: #FF5722;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.key-change-btn.active {
+  background-color: #D84315;
+}
+
+.key-change-btn:hover {
+  opacity: 0.9;
+}
+
+.key-change-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.key-change-controls select {
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.key-change-info {
+  color: #666;
+  font-style: italic;
+}
+
+/* Key signature change visual styling */
+.key-signature-change {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  z-index: 3;
+  border-left: 2px solid #FF5722;
+  padding-left: 3px;
+}
+
+.key-signature-change-accidentals {
+  position: relative;
+  height: 100%;
+}
+
+.key-signature-change-label {
+  position: absolute;
+  top: 60px;
+  left: -5px;
+  font-size: 10px;
+  font-weight: bold;
+  color: #FF5722;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 2px 4px;
+  border-radius: 2px;
+  border: 1px solid #FF5722;
+  white-space: nowrap;
 }
 
 /* Triplet Bracket Styling */

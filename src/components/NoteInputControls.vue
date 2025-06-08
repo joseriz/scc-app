@@ -18,10 +18,10 @@
             </button>
           </div>
           <div class="note-modifiers">
-            <button @click="$emit('toggleDottedNote')" :class="{ active: isDottedNote }">
+            <button @click="$emit('toggleDottedNote')" :class="['duration-btn', { active: isDottedNote }]">
               Dotted
             </button>
-            <button @click="$emit('toggleTripletNote')" :class="{ active: isTripletNote }">
+            <button @click="$emit('toggleTripletNote')" :class="['duration-btn', { active: isTripletNote }]">
               Triplet
             </button>
           </div>
@@ -409,7 +409,7 @@ const handleAccidentalClick = (value: string) => {
   
   .duration-btn {
     height: 45px;
-    font-size: 14px;
+    font-size: 20px;
   }
 }
 
@@ -439,7 +439,7 @@ const handleAccidentalClick = (value: string) => {
   
   .duration-btn {
     height: 40px;
-    font-size: 12px;
+    font-size: 20px;
     padding: 4px;
   }
   

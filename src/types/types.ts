@@ -61,6 +61,13 @@ export interface TieSlur {
   curvature: 'above' | 'below';
 }
 
+export interface KeySignatureChange {
+  id: string;
+  measure: number;
+  keySignature: string;
+  position: number;
+}
+
 export interface CompositionData {
   id: string;
   name: string;
@@ -73,6 +80,7 @@ export interface CompositionData {
   timeSignature?: string;
   chordSymbols?: ChordSymbol[];
   tiesSlurs?: TieSlur[];
+  keySignatureChanges?: KeySignatureChange[];
   activeVoiceId?: string;
   staffWidth?: number;
   selectedDuration?: string;
