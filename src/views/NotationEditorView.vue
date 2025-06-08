@@ -121,6 +121,33 @@
               </div>
             </div>
             
+            <!-- Time Signature Change controls -->
+            <button 
+              @click="toggleTimeSignatureChangeMode"
+              :class="{ active: isAddingTimeSignatureChange }" 
+              class="time-change-btn">
+              {{ isAddingTimeSignatureChange ? 'Cancel Time Change' : 'Add Time Change' }}
+            </button>
+            <div v-if="isAddingTimeSignatureChange" class="time-change-controls">
+              <label>New Time:</label>
+              <select v-model="newTimeSignatureNumerator" class="time-sig-select">
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="6">6</option>
+                <option value="9">9</option>
+                <option value="12">12</option>
+              </select>
+              <span>/</span>
+              <select v-model="newTimeSignatureDenominator" class="time-sig-select">
+                <option value="4">4</option>
+                <option value="8">8</option>
+              </select>
+              <div class="time-change-info">
+                Click on a measure to insert time signature change
+              </div>
+            </div>
+            
             <div class="copy-controls" v-if="isSelectingRange && selectionEnd">
               <button @click="copySelectedNotes(false)" class="copy-btn">
                 Copy Notes & Lyrics
@@ -182,6 +209,8 @@
                         ? null // Do nothing - tie/slur creation is handled by note clicks
                         : isAddingKeySignatureChange
                           ? addKeySignatureChange($event, stave.id)
+                          : isAddingTimeSignatureChange
+                            ? addTimeSignatureChange($event, stave.id)
                       : handleStaffClick($event, stave.id)
               " @mousedown="startDrag" @touchstart="startDrag" :class="{
                 'inserting-space': isInsertingSpace,
@@ -189,7 +218,8 @@
                 'selecting-range': isSelectingRange,
                 'pasting': isPasting,
                 'tie-slur-mode': isCreatingTieSlur,
-                'key-change-mode': isAddingKeySignatureChange
+                'key-change-mode': isAddingKeySignatureChange,
+                'time-change-mode': isAddingTimeSignatureChange
               }" :style="{
                 width: `${staffWidth}px`,
                 transform: `translateX(-${scrollPosition}px)`,
@@ -203,6 +233,8 @@
                         ? 'cell'
                         : isAddingKeySignatureChange
                           ? 'pointer'
+                          : isAddingTimeSignatureChange
+                            ? 'pointer'
                         : 'default'
               }">
               <!-- Add selection highlight -->
@@ -274,20 +306,35 @@
 
               <!-- Key Signature Changes -->
               <div v-for="keyChange in keySignatureChanges" :key="`key-change-${keyChange.id}`" 
-                   class="key-signature-change" :style="{ left: `${keyChange.position}px` }">
-                <div class="key-signature-change-accidentals">
-                  <div v-for="(accidental, index) in getAccidentalsForKeySignature(keyChange.keySignature)" 
-                       :key="`change-${keyChange.id}-${index}`"
-                       class="key-signature-accidental" :style="{
-                         top: `${getKeySignaturePosition(accidental, stave.clef)}px`,
-                         left: `${index * 8}px`
-                       }">
-                    {{ getAccidentalSymbolForKeySignature(accidental) }}
-                  </div>
+                   class="key-signature-change" 
+                   :class="{ 'clickable': !readOnlyMode }"
+                   :style="{ left: `${keyChange.position}px` }"
+                   @click.stop="!readOnlyMode && removeKeySignatureChange(keyChange.id)"
+                   @mousedown.stop
+                   :title="readOnlyMode ? undefined : 'Click to remove key signature change'">
+                <!-- Key signature change marker -->
+                <div class="key-change-marker" style="pointer-events: none;">
+                  <div class="key-change-icon">🔑</div>
+                  <div class="key-change-text">{{ keyChange.keySignature }}</div>
                 </div>
-                <!-- Key signature change label -->
-                <div class="key-signature-change-label" :title="`Key change to ${keyChange.keySignature} at measure ${keyChange.measure}`">
-                  {{ keyChange.keySignature }}
+              </div>
+
+              <!-- Time Signature Changes -->
+              <div v-for="timeChange in timeSignatureChanges" :key="`time-change-${timeChange.id}`" 
+                   class="time-signature-change" 
+                   :style="{ left: `${timeChange.position}px` }"
+                   :class="{ 'clickable': !readOnlyMode }"
+                   :title="readOnlyMode ? undefined : 'Click to remove time signature change'"
+                   @mousedown.prevent.stop
+                   @click.prevent.stop="() => {
+                     if (!readOnlyMode) {
+                       removeTimeSignatureChange(timeChange.id);
+                     }
+                   }">
+                <!-- Time signature change marker -->
+                <div class="time-change-marker" style="pointer-events: none;">
+                  <div class="time-change-icon">⏱️</div>
+                  <div class="time-change-text">{{ timeChange.numerator }}/{{ timeChange.denominator }}</div>
                 </div>
               </div>
 
@@ -629,6 +676,7 @@ import type {
   SequenceItem,
   Stave, // Import Stave
   KeySignatureChange,
+  TimeSignatureChange,
 } from '@/types/types'; // Updated path
 
 // Store
@@ -1143,6 +1191,89 @@ const getEffectiveKeySignatureAtMeasure = (measureNumber: number): string => {
   return result;
 };
 
+// Function to get the effective time signature at a specific measure
+const getEffectiveTimeSignatureAtMeasure = (measureNumber: number): { numerator: number; denominator: number; } => {
+  // Find the most recent time signature change at or before this measure
+  const applicableChanges = timeSignatureChanges.value
+    .filter(change => change.measure <= measureNumber)
+    .sort((a, b) => b.measure - a.measure); // Sort by measure descending
+  
+  if (applicableChanges.length > 0) {
+    return {
+      numerator: applicableChanges[0].numerator,
+      denominator: applicableChanges[0].denominator
+    };
+  }
+  
+  // If no changes, use the global time signature
+  const [numerator, denominator] = timeSignature.value.split('/').map(Number);
+  return { numerator, denominator };
+};
+
+// Function to toggle time signature change mode
+const toggleTimeSignatureChangeMode = () => {
+  isAddingTimeSignatureChange.value = !isAddingTimeSignatureChange.value;
+  // Reset other modes
+  isInsertingSpace.value = false;
+  isDeletingSpace.value = false;
+  isSelectingRange.value = false;
+  isPasting.value = false;
+  isCreatingTieSlur.value = false;
+  tieSlurStartNote.value = null;
+  isAddingKeySignatureChange.value = false;
+};
+
+// Function to add a time signature change at a specific measure
+const addTimeSignatureChange = (event: MouseEvent, staffId: string) => {
+  if (readOnlyMode.value || !isAddingTimeSignatureChange.value) return;
+
+  const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX - staffRect.left;
+  
+  // Calculate which measure was clicked
+  const measureWidth = measureWidthByTimeSignature.value;
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20;
+  
+  const relativePosition = x - initialPosition;
+  const measureNumber = Math.floor(relativePosition / measureWidth) + 1;
+  
+  // Don't allow time signature change in measure 1 (use global time signature instead)
+  if (measureNumber < 2) {
+    alert('Time signature changes cannot be placed in measure 1. Use the global time signature setting instead.');
+    return;
+  }
+  
+  // Check if there's already a time signature change at this measure
+  const existingChange = timeSignatureChanges.value.find(change => change.measure === measureNumber);
+  if (existingChange) {
+    // Update existing change
+    console.log(`🔄 Updating existing time signature change at measure ${measureNumber}: ${existingChange.numerator}/${existingChange.denominator} → ${newTimeSignatureNumerator.value}/${newTimeSignatureDenominator.value}`);
+    existingChange.numerator = newTimeSignatureNumerator.value;
+    existingChange.denominator = newTimeSignatureDenominator.value;
+  } else {
+    // Create new change
+    const newChange: TimeSignatureChange = {
+      id: generateId(),
+      measure: measureNumber,
+      numerator: newTimeSignatureNumerator.value,
+      denominator: newTimeSignatureDenominator.value,
+      position: initialPosition + ((measureNumber - 1) * measureWidth) + 5 // Small offset from measure line
+    };
+    console.log(`➕ Creating NEW time signature change: ${newTimeSignatureNumerator.value}/${newTimeSignatureDenominator.value} at measure ${measureNumber}, position ${newChange.position}`);
+    timeSignatureChanges.value.push(newChange);
+  }
+  
+  // Sort time signature changes by measure
+  timeSignatureChanges.value.sort((a, b) => a.measure - b.measure);
+  
+  // Exit time signature change mode
+  isAddingTimeSignatureChange.value = false;
+  saveToLocalStorage();
+  
+  console.log(`Added time signature change to ${newTimeSignatureNumerator.value}/${newTimeSignatureDenominator.value} at measure ${measureNumber}`);
+};
+
 // Function to get accidentals for a specific key signature
 const getAccidentalsForKeySignature = (keySig: string): string[] => {
   return keySignatures[keySig] || [];
@@ -1362,9 +1493,17 @@ const getModifiedPitchForKeySignature = (pitch: string, isExplicitNatural = fals
 };
 
 // Refine the playNoteSound function for robustness
-const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, volumePercent = 100, explicitNatural = false, isTriplet = false) => {
+const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, volumePercent = 100, explicitNatural = false, isTriplet = false, position?: number) => {
   let pitchToPlay = pitch;
   let noteDuration = duration;
+  
+  // Get the measure number if position is provided
+  let measureTempo = tempo.value;
+  if (position !== undefined) {
+    const dummyNote = { position, type: 'note' } as ImportedNote;
+    const measureNumber = getNotesMeasure(dummyNote);
+    measureTempo = getTempoForMeasure(measureNumber);
+  }
 
   try {
     // Start Tone.js context (this requires user interaction)
@@ -1385,12 +1524,17 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
       console.log(`🎼 Using pre-converted pitch: "${pitchToPlay}"`);
     }
 
+    // Extract position from the pitch string (e.g., "C4") and create a dummy note for measure calculation
+    const dummyNote = { position: Math.floor(pitchToPlay.length > 0 ? pitchToPlay.charCodeAt(0) / 25 : 0), type: 'note' } as ImportedNote;
+    const measureNumber = getNotesMeasure(dummyNote);
+    const measureTempo = getTempoForMeasure(measureNumber);
+    
     const baseDurationMap: { [key: string]: number; } = {
-      "1n": 4 * (60 / tempo.value),
-      "2n": 2 * (60 / tempo.value),
-      "4n": 1 * (60 / tempo.value),
-      "8n": 0.5 * (60 / tempo.value),
-      "16n": 0.25 * (60 / tempo.value)
+      "1n": 4 * (60 / measureTempo),
+      "2n": 2 * (60 / measureTempo),
+      "4n": 1 * (60 / measureTempo),
+      "8n": 0.5 * (60 / measureTempo),
+      "16n": 0.25 * (60 / measureTempo)
     };
 
     let durationInSeconds;
@@ -1601,7 +1745,8 @@ const handleStaffClick = (event, staffId: string) => {
           updatedNote.dotted,
           100, // volumePercent for click feedback
           updatedNote.explicitNatural,
-          updatedNote.triplet
+          updatedNote.triplet,
+          updatedNote.position
         );
       }
       console.log(`Updated note in voice ${targetVoiceForInput.id} on staff ${staffId} at position ${position}, pitch: ${updatedNote.pitch || 'rest'}, dotted: ${updatedNote.dotted}`);
@@ -2713,7 +2858,7 @@ const loadComposition = (compositionId: string) => {
   }
 };
 
-// Update updateStaffDisplay to accept an optional width parameter
+// Update the updateStaffDisplay function to accept an optional width parameter
 const updateStaffDisplay = (width?: number) => {
   document.querySelectorAll('.staff').forEach(staffElement => {
     if (staffElement) {
@@ -2728,7 +2873,7 @@ const updateStaffDisplay = (width?: number) => {
   }
 };
 
-// Improve saveToLocalStorage to handle potential errors
+// Improve the saveToLocalStorage function to handle potential errors
 const saveToLocalStorage = () => {
   try {
     const dataToSave = JSON.stringify(savedCompositions.value);
@@ -2740,7 +2885,7 @@ const saveToLocalStorage = () => {
   }
 };
 
-// Improve loadSavedCompositions for better error handling
+// Improve the loadSavedCompositions function for better error handling
 const loadSavedCompositions = () => {
   const savedItems = localStorage.getItem('musicNotationAppCompositions');
   if (savedItems) {
@@ -3313,20 +3458,8 @@ const timeSignatureNumerator = computed(() => parseInt(timeSignature.value.split
 const timeSignatureDenominator = computed(() => parseInt(timeSignature.value.split('/')[1]) || 4);
 const showBeatMarkers = ref(false); // Set to true for debugging
 
-// Make sure this computed property is correctly calculating measure width
-const measureWidthByTimeSignature = computed(() => {
-  const parts = timeSignature.value.split('/');
-  if (parts.length !== 2) {
-    return 50 * 8; // Default to wider measure (400px) to allow more notes
-  }
-  const [numeratorStr, denominatorStr] = parts;
-  const numerator = parseInt(numeratorStr);
-  const denominator = parseInt(denominatorStr);
-
-  if (isNaN(numerator) || isNaN(denominator) || denominator === 0 || numerator === 0) {
-    return 50 * 8; // Default to wider measure
-  }
-
+// Function to calculate measure width based on time signature
+const getMeasureWidth = (numerator: number, denominator: number): number => {
   // Base width per quarter note - increased to allow more note positions
   const quarterNoteWidth = 50;
   
@@ -3355,15 +3488,42 @@ const measureWidthByTimeSignature = computed(() => {
   const minWidthForPositions = minimumPositionsPerMeasure * 25;
   const width = Math.max(baseWidth, minWidthForPositions);
   
+  return width;
+};
+
+// Make sure this computed property is correctly calculating measure width
+const measureWidthByTimeSignature = computed(() => {
+  const parts = timeSignature.value.split('/');
+  if (parts.length !== 2) {
+    return 50 * 8; // Default to wider measure (400px) to allow more notes
+  }
+  const [numeratorStr, denominatorStr] = parts;
+  const numerator = parseInt(numeratorStr);
+  const denominator = parseInt(denominatorStr);
+
+  if (isNaN(numerator) || isNaN(denominator) || denominator === 0 || numerator === 0) {
+    return 50 * 8; // Default to wider measure
+  }
+
+  const width = getMeasureWidth(numerator, denominator);
   console.log(`Measure width for ${timeSignature.value}: ${width}px (${Math.floor(width/25)} possible positions)`);
   return width;
 });
 
+// Function to calculate total width up to a measure
+const getWidthUpToMeasure = (measureNumber: number): number => {
+  let totalWidth = 0;
+  for (let i = 1; i <= measureNumber; i++) {
+    const timeSignature = getEffectiveTimeSignatureAtMeasure(i);
+    totalWidth += getMeasureWidth(timeSignature.numerator, timeSignature.denominator);
+  }
+  return totalWidth;
+};
+
 // Generate barlines with proper musical positioning and measure numbers
 const barlines = computed(() => {
   const lines = [];
-  const totalMeasures = Math.ceil(staffWidth.value / measureWidthByTimeSignature.value);
-
+  
   // Calculate key signature width
   const keySignatureWidth = currentKeySignatureAccidentals.value.length * 10;
 
@@ -3378,24 +3538,32 @@ const barlines = computed(() => {
     isIntervalMeasure: false
   });
 
-  // Add remaining barlines
-  for (let i = 1; i < totalMeasures; i++) {
-    // Position each barline at the end of the measure
-    const position = initialPosition + (i * measureWidthByTimeSignature.value);
+  // Calculate total width and measures
+  let currentPosition = initialPosition;
+  let measureNumber = 1;
+  
+  while (currentPosition < staffWidth.value) {
+    // Get the width of the current measure
+    const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+    const measureWidth = getMeasureWidth(timeSignature.numerator, timeSignature.denominator);
+    
+    // Add the measure width to get the next barline position
+    currentPosition += measureWidth;
+    measureNumber++;
 
     // By default, use single barlines for all regular measures
     let type = 'single';
 
     // For the last measure, use a final barline
-    if (i === totalMeasures - 1) {
+    if (currentPosition >= staffWidth.value) {
       type = 'final';
     }
 
     lines.push({
       type,
-      position,
-      measureNumber: i + 1, // Adjust measure number to start from 2
-      isIntervalMeasure: (i + 1) % 5 === 0
+      position: currentPosition,
+      measureNumber, // This is the next measure number
+      isIntervalMeasure: measureNumber % 5 === 0
     });
   }
 
@@ -3405,38 +3573,49 @@ const barlines = computed(() => {
 // Calculate beat positions (for visual aid)
 const beatPositions = computed(() => {
   const positions = [];
-  const [numerator, denominator] = timeSignature.value.split('/').map(n => parseInt(n));
-
-  // Base width per quarter note
-  const quarterNoteWidth = 50;
-
-  // Calculate beat width based on denominator
-  let beatWidth = quarterNoteWidth; // Default for quarter note
-  if (denominator === 2) beatWidth = quarterNoteWidth * 2; // Half note
-  if (denominator === 8) beatWidth = quarterNoteWidth / 2; // Eighth note
-
-  // Calculate total beats (used for compound meters)
-  let totalBeats = numerator;
-
-  // For compound meters, show subdivisions
-  if ([6, 9, 12].includes(numerator) && denominator === 8) {
-    totalBeats = numerator; // Show all eighth notes
-  }
-
-  const totalMeasures = Math.ceil(staffWidth.value / measureWidthByTimeSignature.value);
-
-  for (let measure = 0; measure < totalMeasures; measure++) {
-    const measureStart = 70 + (measure * measureWidthByTimeSignature.value);
-
+  
+  // Calculate key signature width
+  const keySignatureWidth = currentKeySignatureAccidentals.value.length * 10;
+  const initialPosition = 70 + keySignatureWidth + 20; // clef + key sig + time sig
+  
+  let currentPosition = initialPosition;
+  let measureNumber = 1;
+  
+  while (currentPosition < staffWidth.value) {
+    // Get the time signature for this measure
+    const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+    const { numerator, denominator } = timeSignature;
+    
+    // Calculate beat width based on denominator
+    let beatWidth = 50; // Default for quarter note
+    if (denominator === 2) beatWidth = 100; // Half note
+    if (denominator === 8) beatWidth = 25; // Eighth note
+    
+    // Calculate total beats (used for compound meters)
+    let totalBeats = numerator;
+    
+    // For compound meters, show subdivisions
+    if ([6, 9, 12].includes(numerator) && denominator === 8) {
+      totalBeats = numerator; // Show all eighth notes
+    }
+    
+    // Get the width of this measure
+    const measureWidth = getMeasureWidth(numerator, denominator);
+    
+    // Add beat positions for this measure
     for (let beat = 1; beat < totalBeats; beat++) {
       positions.push({
-        position: measureStart + (beat * (measureWidthByTimeSignature.value / totalBeats)),
-        measure,
+        position: currentPosition + (beat * (measureWidth / totalBeats)),
+        measure: measureNumber,
         beat
       });
     }
+    
+    // Move to next measure
+    currentPosition += measureWidth;
+    measureNumber++;
   }
-
+  
   return positions;
 });
 
@@ -3575,7 +3754,7 @@ const getNotesMeasure = (note: ImportedNote | NoteWithVoiceInfo) => { // Update 
 };
 
 // Function to convert note duration to beats (quarter note = 1 beat)
-const getNoteDurationInBeats = (duration: string, isDotted = false, isTriplet = false) => {
+const getNoteDurationInBeats = (duration: string, isDotted = false, isTriplet = false, measureNumber?: number) => {
   const baseDurations = {
     'whole': 4,
     'half': 2,
@@ -3594,12 +3773,44 @@ const getNoteDurationInBeats = (duration: string, isDotted = false, isTriplet = 
     beats *= 1.5; // Dotted notes are 1.5 times their normal duration
   }
   
+  // If measure number is provided, adjust beats based on time signature
+  if (measureNumber !== undefined) {
+    const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+    
+    // Convert beats based on time signature denominator
+    if (timeSignature.denominator === 8) {
+      beats *= 0.5; // Convert to eighth note beats
+    } else if (timeSignature.denominator === 2) {
+      beats *= 2; // Convert to half note beats
+    }
+  }
+  
   return beats;
+};
+
+// Function to get the tempo for a specific measure
+const getTempoForMeasure = (measureNumber: number): number => {
+  const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+  
+  // Adjust tempo based on time signature denominator
+  let adjustedTempo = tempo.value;
+  
+  // For compound meters (6/8, 9/8, 12/8), adjust tempo to maintain musical feel
+  if ([6, 9, 12].includes(timeSignature.numerator) && timeSignature.denominator === 8) {
+    adjustedTempo = tempo.value * (2/3); // Slower for compound meters
+  }
+  // For 2/2 (cut time), double the tempo
+  else if (timeSignature.numerator === 2 && timeSignature.denominator === 2) {
+    adjustedTempo = tempo.value * 2;
+  }
+  
+  return adjustedTempo;
 };
 
 // Function to check if a note is tied and get its total duration including tied notes
 const getTotalTiedDuration = (note: NoteWithVoiceInfo): number => {
-  let totalDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
+  const measureNumber = getNotesMeasure(note);
+  let totalDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet, measureNumber);
   
   // Find all ties starting from this note
   const ties = tiesSlurs.value.filter(ts => 
@@ -3643,17 +3854,54 @@ const getTimeSignatureDurationInBeats = () => {
 const getTotalNoteDurationInMeasure = (measureNumber: number, voiceNotes: ImportedNote[]) => {
   const notesInMeasure = voiceNotes.filter(note => getNotesMeasure(note) === measureNumber);
   
-  return notesInMeasure.reduce((total, note) => {
+  // Get the time signature for this measure
+  const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+  
+  // Calculate total duration in beats
+  let totalBeats = notesInMeasure.reduce((total, note) => {
     if (note.type === 'rest' || note.type === 'note') {
-      return total + getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
+      // Get base duration in quarter note beats
+      let beats = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
+      
+      // Convert beats based on time signature denominator
+      if (timeSignature.denominator === 8) {
+        beats *= 0.5; // Convert to eighth note beats
+      } else if (timeSignature.denominator === 2) {
+        beats *= 2; // Convert to half note beats
+      }
+      
+      return total + beats;
     }
     return total;
   }, 0);
+  
+  // Convert total beats to quarter note beats for consistent comparison
+  if (timeSignature.denominator === 8) {
+    totalBeats *= 2; // Convert from eighth note beats to quarter note beats
+  } else if (timeSignature.denominator === 2) {
+    totalBeats *= 0.5; // Convert from half note beats to quarter note beats
+  }
+  
+  return totalBeats;
+};
+
+// Function to get time signature duration in beats for a specific measure
+const getTimeSignatureDurationInBeatsForMeasure = (measureNumber: number): number => {
+  const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+  const numerator = timeSignature.numerator;
+  const denominator = timeSignature.denominator;
+  
+  // Convert to quarter note beats
+  // If denominator is 4, each beat is a quarter note (1 beat)
+  // If denominator is 8, each beat is an eighth note (0.5 beats)
+  // If denominator is 2, each beat is a half note (2 beats)
+  const beatValue = 4 / denominator;
+  return numerator * beatValue;
 };
 
 // Function to calculate timing compression factor for a measure
 const getMeasureTimingFactor = (measureNumber: number, voiceNotes: ImportedNote[]) => {
-  const timeSignatureBeats = getTimeSignatureDurationInBeats();
+  const timeSignatureBeats = getTimeSignatureDurationInBeatsForMeasure(measureNumber);
   const actualNoteDuration = getTotalNoteDurationInMeasure(measureNumber, voiceNotes);
   
   if (actualNoteDuration === 0) return 1; // No notes in measure
@@ -4397,6 +4645,37 @@ const assignVoiceToStaff = (voiceId: string, newStaffId: string) => {
   }
 };
 
+// Add this function to remove time signature changes
+const removeTimeSignatureChange = (timeChangeId: string) => {
+  if (readOnlyMode.value) return;
+
+  const index = timeSignatureChanges.value.findIndex(change => change.id === timeChangeId);
+  if (index !== -1) {
+    const change = timeSignatureChanges.value[index];
+    if (confirm(`Remove time signature change ${change.numerator}/${change.denominator} at measure ${change.measure}?`)) {
+      timeSignatureChanges.value.splice(index, 1);
+      saveToLocalStorage();
+      console.log(`Removed time signature change at measure ${change.measure}`);
+    }
+  }
+};
+
+// Add this function near other key signature related functions
+const removeKeySignatureChange = (keyChangeId: string) => {
+  if (readOnlyMode.value) return;
+
+  const index = keySignatureChanges.value.findIndex(change => change.id === keyChangeId);
+  if (index !== -1) {
+    const change = keySignatureChanges.value[index];
+    if (confirm(`Remove key signature change to ${change.keySignature} at measure ${change.measure}?`)) {
+      keySignatureChanges.value.splice(index, 1);
+      clearKeySignatureCache(); // Clear cache since we removed a key signature change
+      saveToLocalStorage();
+      console.log(`Removed key signature change at measure ${change.measure}`);
+    }
+  }
+};
+
 // End of your script section with watches
 watch(allVisibleNotes, (newNotes) => {
   console.log('All visible notes changed:', newNotes.length);
@@ -4697,7 +4976,7 @@ const {
 // Add this import at the top of your script section
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
-// Add this function near other composition-related functions (around line 2060)
+// Add this function near line 2060
 const combineCompositions = (compositionIds: string[], newName: string, preserveStaves: boolean) => {
   const compositionsToCombine = savedCompositions.value.filter(comp => compositionIds.includes(comp.id));
   if (compositionsToCombine.length < 2) {
@@ -6078,6 +6357,12 @@ const selectionStart = ref<{ position: number; staffId: string; } | null>(null);
 const selectionEnd = ref<{ position: number; staffId: string; } | null>(null);
 const copiedNotes = ref<NoteWithVoiceInfo[]>([]);
 
+// Add refs for time signature changes
+const timeSignatureChanges = ref<TimeSignatureChange[]>([]);
+const isAddingTimeSignatureChange = ref(false);
+const newTimeSignatureNumerator = ref(4);
+const newTimeSignatureDenominator = ref(4);
+
 // Add this function to handle range selection
 const handleRangeSelection = (event: MouseEvent, staffId: string) => {
   if (!isSelectingRange.value) return;
@@ -6353,6 +6638,11 @@ const handleKeyPress = (event: KeyboardEvent) => {
       if (isAddingKeySignatureChange.value) {
         alert('Key signature change mode activated. Click on a measure to insert key change. Press "k" again to cancel.');
       }
+    } else if (event.key === 'm') {
+      toggleTimeSignatureChangeMode();
+      if (isAddingTimeSignatureChange.value) {
+        alert('Time signature change mode activated. Click on a measure to insert time change. Press "m" again to cancel.');
+      }
     } else if (event.key === 'c' && isSelectingRange.value) {
       copySelectedNotes();
     }
@@ -6468,8 +6758,15 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
   // Calculate total duration if this note is tied to others
   const totalTiedDuration = getTotalTiedDuration(noteToPlay);
   
-  // Convert total duration in beats to seconds
-  const secondsPerBeat = 60 / tempo.value;
+  // Get the measure number for this note
+  const measureNumber = getNotesMeasure(noteToPlay);
+  
+  // Get the effective time signature and tempo for this measure
+  const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+  const measureTempo = getTempoForMeasure(measureNumber);
+  
+  // Convert total duration in beats to seconds, using measure-specific tempo
+  const secondsPerBeat = 60 / measureTempo;
   const totalDurationInSeconds = totalTiedDuration * secondsPerBeat;
   const totalDurationMs = totalDurationInSeconds * 1000;
   
@@ -6520,7 +6817,9 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
       toneDuration,
       noteToPlay.dotted,
       currentVoiceVolumePercent,
-      noteToPlay.explicitNatural
+      noteToPlay.explicitNatural,
+      noteToPlay.triplet,
+      noteToPlay.position
     );
     return { isPlaying: true, totalDurationMs: 0 }; // 0 means use standard duration
   }
@@ -6756,33 +7055,174 @@ const getTieSlurColor = (tieSlur: TieSlur): string => {
   font-style: italic;
 }
 
+/* Time signature change styling */
+.time-change-btn {
+  padding: 8px 16px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.time-change-btn.active {
+  background-color: #1976D2;
+}
+
+.time-change-btn:hover {
+  opacity: 0.9;
+}
+
+.time-change-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.time-sig-select {
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 60px;
+}
+
+.time-change-info {
+  color: #666;
+  font-style: italic;
+}
+
+/* Time signature change visual styling */
+.time-signature-change {
+  position: absolute;
+  top: 180px; /* Position just below the staff lines */
+  left: 0;
+  z-index: 15;
+  pointer-events: all;
+  min-width: 60px;
+}
+
+.time-signature-change.clickable {
+  cursor: pointer;
+}
+
+.time-change-marker {
+  background: linear-gradient(135deg, #2196F3, #42A5F5);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  border: 2px solid #2196F3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 50px;
+}
+
+.time-change-icon {
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.time-change-text {
+  font-size: 9px;
+  line-height: 1;
+}
+
+.time-signature-change.clickable:hover .time-change-marker {
+  transform: scale(1.05);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+}
+
+.time-signature-change.clickable:hover::after {
+  content: '×';
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  font-size: 16px;
+  color: #f44336;
+  background: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  pointer-events: none;
+  font-weight: bold;
+}
+
 /* Key signature change visual styling */
 .key-signature-change {
   position: absolute;
-  top: 0;
-  height: 100%;
-  z-index: 3;
-  border-left: 2px solid #FF5722;
-  padding-left: 3px;
+  top: 20px; /* Position above the staff, clear of high notes */
+  left: 0;
+  z-index: 15;
+  pointer-events: all;
+  min-width: 60px;
 }
 
-.key-signature-change-accidentals {
-  position: relative;
-  height: 100%;
+.key-signature-change.clickable {
+  cursor: pointer;
 }
 
-.key-signature-change-label {
-  position: absolute;
-  top: 60px;
-  left: -5px;
+.key-change-marker {
+  background: linear-gradient(135deg, #FF5722, #FF7043);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 6px;
   font-size: 10px;
   font-weight: bold;
-  color: #FF5722;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 2px 4px;
-  border-radius: 2px;
-  border: 1px solid #FF5722;
-  white-space: nowrap;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  border: 2px solid #FF5722;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 50px;
+}
+
+.key-change-icon {
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.key-change-text {
+  font-size: 9px;
+  line-height: 1;
+}
+
+.key-signature-change.clickable:hover .key-change-marker {
+  transform: scale(1.05);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+}
+
+.key-signature-change.clickable:hover::after {
+  content: '×';
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  font-size: 16px;
+  color: #f44336;
+  background: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  pointer-events: none;
+  font-weight: bold;
 }
 
 /* Triplet Bracket Styling */
@@ -6815,4 +7255,6 @@ const getTieSlurColor = (tieSlur: TieSlur): string => {
 .triplet-brackets-overlay .triplet-number {
   transition: none; /* Prevent animation lag during scrolling */
 }
+
+
 </style>

@@ -68,6 +68,14 @@ export interface KeySignatureChange {
   position: number;
 }
 
+export interface TimeSignatureChange {
+  id: string;
+  measure: number;
+  numerator: number;
+  denominator: number;
+  position: number;
+}
+
 export interface CompositionData {
   id: string;
   name: string;
@@ -81,6 +89,7 @@ export interface CompositionData {
   chordSymbols?: ChordSymbol[];
   tiesSlurs?: TieSlur[];
   keySignatureChanges?: KeySignatureChange[];
+  timeSignatureChanges?: TimeSignatureChange[];
   activeVoiceId?: string;
   staffWidth?: number;
   selectedDuration?: string;
