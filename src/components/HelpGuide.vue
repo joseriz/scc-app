@@ -164,6 +164,42 @@
                 <li>If you place an explicit sharp (♯) or flat (♭) on a note, that accidental takes precedence over the key signature for that specific note.</li>
               </ul>
             </div>
+
+            <div class="help-section">
+              <h3>Key Signature Changes</h3>
+              <ul>
+                <li><strong>Adding Key Changes:</strong> Click on a measure line to add a key signature change at that point.</li>
+                <li><strong>Removing Key Changes:</strong> Click on an existing key signature change marker to remove it.</li>
+                <li><strong>Visual Indicators:</strong> Key signature changes appear as markers above the staff, showing the new key.</li>
+                <li><strong>Automatic Note Adjustment:</strong> Notes after a key change will automatically display with the correct accidentals.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> Key signature changes are useful for pieces that modulate to different keys.</div>
+            </div>
+
+            <div class="help-section">
+              <h3>Time Signature Changes</h3>
+              <ul>
+                <li><strong>Adding Time Changes:</strong> Click on a measure line to add a time signature change.</li>
+                <li><strong>Removing Time Changes:</strong> Click on an existing time signature change marker to remove it.</li>
+                <li><strong>Visual Indicators:</strong> Time signature changes appear as markers above the staff.</li>
+                <li><strong>Measure Layout:</strong> The measure width will automatically adjust based on the new time signature.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> Time signature changes affect measure spacing and playback timing.</div>
+            </div>
+
+            <div class="help-section">
+              <h3>Clef Changes</h3>
+              <ul>
+                <li><strong>Adding Clef Changes:</strong> Click on a measure line to add a clef change.</li>
+                <li><strong>Removing Clef Changes:</strong> Click on an existing clef change marker to remove it.</li>
+                <li><strong>Visual Indicators:</strong> Clef changes appear as markers on the staff.</li>
+                <li><strong>Note Position Adjustment:</strong> Notes after a clef change will automatically adjust their vertical positions.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> Use clef changes to accommodate different vocal or instrumental ranges within the same staff.</div>
+            </div>
           </div>
           
           <!-- Voice Layers Tab -->
@@ -202,6 +238,18 @@
               <div class="help-tip">
                 <strong>Tip:</strong> Use different colors for voices to easily distinguish them on the staff, especially when multiple lines are complex.
               </div>
+            </div>
+
+            <div class="help-section">
+              <h3>Voice Layer Selection</h3>
+              <ul>
+                <li><strong>Selecting Voices:</strong> Each voice layer has a checkbox to mark it as "selected".</li>
+                <li><strong>Playback:</strong> You can choose to play only selected voices using the playback settings.</li>
+                <li><strong>Export:</strong> When exporting, you can choose to include only selected voices in the exported file.</li>
+                <li><strong>Visual Feedback:</strong> Selected voices are clearly indicated in the Voice Layers panel.</li>
+              </ul>
+              <div class="help-tip">
+                <strong>Tip:</strong> Use voice selection to focus on specific parts during practice or when sharing specific voice parts.</div>
             </div>
           </div>
           
