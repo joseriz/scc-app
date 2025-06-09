@@ -261,7 +261,7 @@
                               : 'default'
               }">
               <!-- Add selection highlight -->
-              <div v-if="selectionStart && selectionEnd" class="selection-highlight" :style="{
+              <div v-if="selectionStart && selectionEnd && selectionStart.staffId === stave.id" class="selection-highlight" :style="{
                 left: `${Math.min(selectionStart.position, selectionEnd.position) * 25}px`,
                 width: `${Math.abs(selectionEnd.position - selectionStart.position) * 25}px`
               }"></div>
@@ -864,6 +864,26 @@ const notes = computed<ImportedNote[]>({ // Explicitly type notes using aliased 
 });
 
 // Create a safer version of availableDurations with fallback characters
+// Add a ref to track if we need to use fallback symbols
+const usesFallbackSymbols = ref(false);
+
+// Test if the browser can display musical symbols
+onMounted(() => {
+  const testSymbols = ['𝅝', '𝄻', '𝅗𝅥', '𝄼', '♩', '𝄽', '♪', '𝄾', '♬', '𝄿'];
+  const testElement = document.createElement('span');
+  document.body.appendChild(testElement);
+  
+  for (const symbol of testSymbols) {
+    testElement.textContent = symbol;
+    if (testElement.offsetWidth === 0) {
+      usesFallbackSymbols.value = true;
+      break;
+    }
+  }
+  
+  document.body.removeChild(testElement);
+});
+
 const availableDurations = [
   {
     value: 'whole',
@@ -1396,68 +1416,50 @@ const getAccidentalSymbolForKeySignature = (accidental: string) => {
 
 // Functions
 const getPitchPosition = (pitch: string, clef: 'treble' | 'bass') => {
+  if (!pitch) return 0;
+  
   // Map pitches to vertical positions (in pixels)
   const octave = parseInt(pitch.slice(-1));
   const note = pitch.slice(0, -1).replace(/[#b]/, ''); // Remove accidentals
 
+  // For notes above or below the staff
+  const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const noteIndex = noteOrder.indexOf(note);
+  
   if (clef === 'treble') {
-    // Treble clef staff positions (pixels from top)
-    const staffPositions: Record<string, number> = {
-      'F5': 100, 'E5': 107.5, 'D5': 115, 'C5': 122.5, 'B4': 130,
-      'A4': 137.5, 'G4': 145, 'F4': 152.5, 'E4': 160, 'D4': 167.5,
-      'C4': 175, 'B3': 182.5, 'A3': 190, 'G3': 197.5, 'F3': 205
-    };
-
-    // Calculate position based on note and octave
-    const baseNote = `${note}${octave}`;
-
-    // If the note is in our standard staff range
-    if (baseNote in staffPositions) {
-      return staffPositions[baseNote];
-    }
-
-    // For notes above or below the staff
-    const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-    const noteIndex = noteOrder.indexOf(note);
-
-    if (baseNote > 'F5') {
-      // Notes above the staff (higher than F5)
-      const stepsAboveF5 = (octave - 5) * 7 + noteIndex - noteOrder.indexOf('F');
-      return 100 - (stepsAboveF5 * 7.5); // Each step is 7.5px
-    } else {
-      // Notes below the staff (lower than F3)
-      const stepsBelowF3 = (3 - octave) * 7 + noteOrder.indexOf('F') - noteIndex;
-      return 205 + (stepsBelowF3 * 7.5); // Each step is 7.5px
-    }
+    // Each step is 7.5px, F5 is at 100px
+    const stepsFromF5 = (octave - 5) * 7 + noteIndex - noteOrder.indexOf('F');
+    return 100 - (stepsFromF5 * 7.5); // Each step is 7.5px up (negative) or down (positive)
   } else {
-    // Bass clef staff positions (pixels from top)
-    const staffPositions: Record<string, number> = {
-      'A3': 100, 'G3': 107.5, 'F3': 115, 'E3': 122.5, 'D3': 130,
-      'C3': 137.5, 'B2': 145, 'A2': 152.5, 'G2': 160, 'F2': 167.5,
-      'E2': 175, 'D2': 182.5, 'C2': 190, 'B1': 197.5, 'A1': 205
-    };
+    // Each step is 7.5px, A3 is at 100px
+    const stepsFromA3 = (octave - 3) * 7 + noteIndex - noteOrder.indexOf('A');
+    return 100 - (stepsFromA3 * 7.5); // Each step is 7.5px up (negative) or down (positive)
+  }
+};
 
-    // Calculate position based on note and octave
-    const baseNote = `${note}${octave}`;
-
-    // If the note is in our standard staff range
-    if (baseNote in staffPositions) {
-      return staffPositions[baseNote];
-    }
-
-    // For notes above or below the staff
-    const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-    const noteIndex = noteOrder.indexOf(note);
-
-    if (baseNote > 'A3') {
-      // Notes above the staff (higher than A3)
-      const stepsAboveA3 = (octave - 3) * 7 + noteIndex - noteOrder.indexOf('A');
-      return 100 - (stepsAboveA3 * 7.5); // Each step is 7.5px
-    } else {
-      // Notes below the staff (lower than A1)
-      const stepsBelowA1 = (1 - octave) * 7 + noteOrder.indexOf('A') - noteIndex;
-      return 205 + (stepsBelowA1 * 7.5); // Each step is 7.5px
-    }
+// Update mapPositionToPitch to handle a wider range
+const mapPositionToPitch = (verticalPosition: number, clef: 'treble' | 'bass'): string | null => {
+  // Each 7.5px represents one step
+  const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  
+  if (clef === 'treble') {
+    // F5 is at 100px
+    const stepsFromF5 = Math.round((100 - verticalPosition) / 7.5);
+    const totalSteps = noteOrder.indexOf('F') + (stepsFromF5);
+    
+    const octave = Math.floor(totalSteps / 7) + 5;
+    const noteIndex = ((totalSteps % 7) + 7) % 7;
+    
+    return `${noteOrder[noteIndex]}${octave}`;
+  } else {
+    // A3 is at 100px
+    const stepsFromA3 = Math.round((100 - verticalPosition) / 7.5);
+    const totalSteps = noteOrder.indexOf('A') + (stepsFromA3);
+    
+    const octave = Math.floor(totalSteps / 7) + 3;
+    const noteIndex = ((totalSteps % 7) + 7) % 7;
+    
+    return `${noteOrder[noteIndex]}${octave}`;
   }
 };
 
@@ -1742,7 +1744,7 @@ const handleStaffClick = (event, staffId: string) => {
       };
       const updatedNote = {
         ...updatedNoteBase,
-        verticalPosition: getPitchPosition(updatedNoteBase.pitch || (currentClef === 'treble' ? 'C4' : 'C3'), currentClef)
+        verticalPosition: selectedNoteType.value === 'rest' ? verticalPosition : getPitchPosition(updatedNoteBase.pitch || (currentClef === 'treble' ? 'C4' : 'C3'), currentClef)
       };
 
       notesInTargetVoice.splice(existingNoteIndex, 1, updatedNote);
@@ -1824,7 +1826,7 @@ const handleStaffClick = (event, staffId: string) => {
       };
       const newNote = {
         ...newNoteBase,
-        verticalPosition: getPitchPosition(newNoteBase.pitch || (currentClef === 'treble' ? 'C4' : 'C3'), currentClef)
+        verticalPosition: selectedNoteType.value === 'rest' ? verticalPosition : getPitchPosition(newNoteBase.pitch || (currentClef === 'treble' ? 'C4' : 'C3'), currentClef)
       };
 
       notesInTargetVoice.push(newNote);
@@ -2417,69 +2419,10 @@ onBeforeUnmount(() => {
   }
 });
 
-// Add the mapPositionToPitch function
-const mapPositionToPitch = (verticalPosition: number, clef: 'treble' | 'bass'): string | null => {
-  const positions: Record<number, string> = {};
 
-  if (clef === 'treble') {
-    // Treble clef positions (rounded to nearest 7.5px)
-    positions[85] = 'A5';    // Ledger line above staff
-    positions[92.5] = 'G5';  // Space above top line
-    positions[100] = 'F5';   // Top line
-    positions[107.5] = 'E5'; // Space
-    positions[115] = 'D5';   // Line
-    positions[122.5] = 'C5'; // Space
-    positions[130] = 'B4';   // Line
-    positions[137.5] = 'A4'; // Space
-    positions[145] = 'G4';   // Line
-    positions[152.5] = 'F4'; // Space
-    positions[160] = 'E4';   // Bottom line
-    positions[167.5] = 'D4'; // Space below bottom line
-    positions[175] = 'C4';   // First ledger line below staff
-    positions[182.5] = 'B3'; // Space
-    positions[190] = 'A3';   // Ledger line
-    positions[197.5] = 'G3'; // Space
-    positions[205] = 'F3';   // Ledger line
-    positions[212.5] = 'E3'; // Space
-    positions[220] = 'D3';   // Ledger line
-    positions[227.5] = 'C3'; // Space
-    positions[235] = 'B2';   // Ledger line
-  } else {
-    // Bass clef positions (rounded to nearest 7.5px)
-    // Adding notes up to G4 (3rd ledger line above staff)
-    positions[55] = 'G4';    // 3rd Ledger line above staff
-    positions[62.5] = 'F4';  // Space above 2nd ledger
-    positions[70] = 'E4';    // 2nd Ledger line above staff
-    positions[77.5] = 'D4';  // Space above 1st ledger
-    positions[85] = 'C4';    // 1st Ledger line above staff
-    positions[92.5] = 'B3';  // Space above top line
-    positions[100] = 'A3';   // Top line
-    positions[107.5] = 'G3'; // Space
-    positions[115] = 'F3';   // Line
-    positions[122.5] = 'E3'; // Space
-    positions[130] = 'D3';   // Line
-    positions[137.5] = 'C3'; // Space
-    positions[145] = 'B2';   // Line
-    positions[152.5] = 'A2'; // Space
-    positions[160] = 'G2';   // Bottom line
-    positions[167.5] = 'F2'; // Space below bottom line
-    positions[175] = 'E2';   // First ledger line below staff
-    positions[182.5] = 'D2'; // Space
-    positions[190] = 'C2';   // Ledger line
-    positions[197.5] = 'B1'; // Space
-    positions[205] = 'A1';   // Ledger line
-    positions[212.5] = 'G1'; // Space
-    positions[220] = 'F1';   // Ledger line
-    positions[227.5] = 'E1'; // Space
-    positions[235] = 'D1';   // Ledger line
-  }
-
-  // Return the pitch for the exact position, or null if not found
-  return positions[verticalPosition] || null;
-};
 
 // Update the applyAccidental function to consider position
-const applyAccidental = (pitch: string, accidental: string | null, notePosition?: number): string => {
+const applyAccidental = (pitch, accidental, notePosition) => {
   if (!pitch) return ''; // Should not happen if mapPositionToPitch returns a valid pitch
 
   const noteLetter = pitch.charAt(0);
@@ -2515,12 +2458,12 @@ const toggleTripletNote = () => {
 };
 
 // Add a function to remove a note
-const removeNote = (noteToRemove: NoteWithVoiceInfo | ImportedNote) => {
+const removeNote = (noteToRemove) => {
   if (readOnlyMode.value) {
     return; // Exit early if in read-only mode
   }
 
-  const voiceId = (noteToRemove as NoteWithVoiceInfo).voiceId || activeVoice.value?.id;
+  const voiceId = noteToRemove.voiceId || activeVoice.value?.id;
   if (!voiceId) return;
 
   const voiceIndex = voiceLayers.value.findIndex(v => v.id === voiceId);
@@ -2537,12 +2480,12 @@ const removeNote = (noteToRemove: NoteWithVoiceInfo | ImportedNote) => {
 };
 
 // Add these variables for touch handling
-const touchTimer = ref<number | null>(null);
+const touchTimer = ref(null);
 const touchStartPos = ref({ x: 0, y: 0 });
 const isTouching = ref(false);
 
 // Add these functions to handle touch events
-const handleTouchStart = (note: ImportedNote, event: TouchEvent) => {
+const handleTouchStart = (note, event) => {
   // Store initial touch position
   touchStartPos.value = {
     x: event.touches[0].clientX,
@@ -2571,7 +2514,7 @@ const handleTouchEnd = () => {
   isTouching.value = false;
 };
 
-const handleTouchMove = (event: TouchEvent) => {
+const handleTouchMove = (event) => {
   // If user moves finger more than a small threshold, cancel the long press
   const moveX = Math.abs(event.touches[0].clientX - touchStartPos.value.x);
   const moveY = Math.abs(event.touches[0].clientY - touchStartPos.value.y);
@@ -2673,7 +2616,7 @@ const saveComposition = () => {
 };
 
 // Update the loadComposition function to be more robust
-const loadComposition = (compositionId: string) => {
+const loadComposition = (compositionId) => {
   const compositionToLoad = savedCompositions.value.find(comp => comp.id === compositionId);
   if (compositionToLoad) {
     try {
@@ -2711,9 +2654,9 @@ const loadComposition = (compositionId: string) => {
       }
 
       // Use staffSettings if available, otherwise staffWidth
-      if ((compositionToLoad as any).staffSettings) {
-        staffWidth.value = (compositionToLoad as any).staffSettings.width || 2000;
-        scrollPosition.value = (compositionToLoad as any).staffSettings.scrollPosition || 0;
+      if (compositionToLoad.staffSettings) {
+        staffWidth.value = compositionToLoad.staffSettings.width || 2000;
+        scrollPosition.value = compositionToLoad.staffSettings.scrollPosition || 0;
       } else {
         staffWidth.value = compositionToLoad.staffWidth || 2000;
         scrollPosition.value = 0;
@@ -2724,7 +2667,7 @@ const loadComposition = (compositionId: string) => {
       selectedAccidental.value = compositionToLoad.selectedAccidental !== undefined ? compositionToLoad.selectedAccidental : null;
       selectedOctave.value = compositionToLoad.selectedOctave || 4;
       isDottedNote.value = compositionToLoad.isDottedNote || false;
-      isTripletNote.value = (compositionToLoad as any).isTripletNote || false;
+      isTripletNote.value = compositionToLoad.isTripletNote || false;
 
       // Load Staves
       if (compositionToLoad.staves && compositionToLoad.staves.length > 0) {
@@ -2736,7 +2679,7 @@ const loadComposition = (compositionId: string) => {
           name: s.name || `Staff ${index + 1}`,
           isCollapsed: typeof s.isCollapsed === 'boolean' ? s.isCollapsed : false, // Load isCollapsed, default false
           // Keep voiceLayerIds temporarily if present in old data, for mapping
-          voiceLayerIds: (s as any).voiceLayerIds
+          voiceLayerIds: s.voiceLayerIds
         }));
       } else {
         const defaultStaffId = generateId();
@@ -2745,16 +2688,16 @@ const loadComposition = (compositionId: string) => {
       activeStaffId.value = staves.value.length > 0 ? staves.value[0].id : null;
 
       // Load Voice Layers
-      const loadedVoiceLayers: VoiceLayer[] = [];
+      const loadedVoiceLayers = [];
       if (compositionToLoad.voiceLayers && compositionToLoad.voiceLayers.length > 0) {
         const tempVoiceLayers = JSON.parse(JSON.stringify(compositionToLoad.voiceLayers));
 
         tempVoiceLayers.forEach(vl => {
-          let staffIdForVoice: string | null = null;
+          let staffIdForVoice = null;
           // Attempt to find staffId using the old voiceLayerIds structure on staves
           if (!vl.staffId) {
             for (const staff of staves.value) {
-              if ((staff as any).voiceLayerIds && (staff as any).voiceLayerIds.includes(vl.id)) {
+              if (staff.voiceLayerIds && staff.voiceLayerIds.includes(vl.id)) {
                 staffIdForVoice = staff.id;
                 break;
               }
@@ -2776,9 +2719,9 @@ const loadComposition = (compositionId: string) => {
 
           loadedVoiceLayers.push({
             ...vl,
-            staffId: staffIdForVoice!, // Assert non-null after logic above
+            staffId: staffIdForVoice, // Assert non-null after logic above
             notes: (vl.notes || []).map(note => {
-              const { voiceId, voiceColor, ...restOfNote } = (note as any); // Strip voiceId and voiceColor
+              const { voiceId, voiceColor, ...restOfNote } = note; // Strip voiceId and voiceColor
               return restOfNote;
             }),
             active: vl.active || false, // Ensure active is boolean
@@ -2794,8 +2737,8 @@ const loadComposition = (compositionId: string) => {
         }
 
         // Group notes by their original voiceId from the flat array
-        const notesByOldVoiceId: Record<string, any[]> = {};
-        (compositionToLoad.notes as any[]).forEach(note => {
+        const notesByOldVoiceId = {};
+        compositionToLoad.notes.forEach(note => {
           const { voiceId, voiceColor, ...restOfNote } = note; // note is already any here due to source
           if (!notesByOldVoiceId[voiceId]) {
             notesByOldVoiceId[voiceId] = [];
@@ -2821,11 +2764,11 @@ const loadComposition = (compositionId: string) => {
       voiceLayers.value = loadedVoiceLayers;
 
       // Migrate Lyrics from old structure if present
-      if ((compositionToLoad as any).lyrics) {
-        for (const voiceIdWithLyrics in (compositionToLoad as any).lyrics) {
+      if (compositionToLoad.lyrics) {
+        for (const voiceIdWithLyrics in compositionToLoad.lyrics) {
           const voiceLayer = voiceLayers.value.find(vl => vl.id === voiceIdWithLyrics);
           if (voiceLayer) {
-            const lyricEntries = (compositionToLoad as any).lyrics[voiceIdWithLyrics];
+            const lyricEntries = compositionToLoad.lyrics[voiceIdWithLyrics];
             if (Array.isArray(lyricEntries)) {
               lyricEntries.forEach(lyricEntry => {
                 const noteToUpdate = voiceLayer.notes.find(n => n.id === lyricEntry.noteId);
@@ -2839,7 +2782,7 @@ const loadComposition = (compositionId: string) => {
       }
 
       // Clean up temporary voiceLayerIds from staves object
-      staves.value.forEach(s => delete (s as any).voiceLayerIds);
+      staves.value.forEach(s => delete s.voiceLayerIds);
 
 
       // Set active voice and staff
@@ -2863,8 +2806,8 @@ const loadComposition = (compositionId: string) => {
 
 
       chordSymbols.value = compositionToLoad.chordSymbols ? JSON.parse(JSON.stringify(compositionToLoad.chordSymbols)) : [];
-      tiesSlurs.value = (compositionToLoad as any).tiesSlurs ? JSON.parse(JSON.stringify((compositionToLoad as any).tiesSlurs)) : [];
-      keySignatureChanges.value = (compositionToLoad as any).keySignatureChanges ? JSON.parse(JSON.stringify((compositionToLoad as any).keySignatureChanges)) : [];
+      tiesSlurs.value = compositionToLoad.tiesSlurs ? JSON.parse(JSON.stringify(compositionToLoad.tiesSlurs)) : [];
+      keySignatureChanges.value = compositionToLoad.keySignatureChanges ? JSON.parse(JSON.stringify(compositionToLoad.keySignatureChanges)) : [];
       sections.value = compositionToLoad.sections ? JSON.parse(JSON.stringify(compositionToLoad.sections)) : [];
       sequenceItems.value = compositionToLoad.sequenceItems ? JSON.parse(JSON.stringify(compositionToLoad.sequenceItems)) : [];
 
@@ -2895,11 +2838,11 @@ const loadComposition = (compositionId: string) => {
 };
 
 // Update the updateStaffDisplay function to accept an optional width parameter
-const updateStaffDisplay = (width?: number) => {
+const updateStaffDisplay = (width) => {
   document.querySelectorAll('.staff').forEach(staffElement => {
     if (staffElement) {
       const displayWidth = width || staffWidth.value;
-      (staffElement as HTMLElement).style.width = `${displayWidth}px`;
+      staffElement.style.width = `${displayWidth}px`;
     }
   });
 };
@@ -2928,7 +2871,7 @@ const loadSavedCompositions = () => {
 };
 
 // Delete a composition
-const deleteComposition = (id: string) => {
+const deleteComposition = (id) => {
   if (!confirm('Are you sure you want to delete this composition?')) {
     return;
   }
@@ -2938,7 +2881,7 @@ const deleteComposition = (id: string) => {
 };
 
 // Format date for display
-const formatDate = (timestamp: number) => {
+const formatDate = (timestamp) => {
   return new Date(timestamp).toLocaleDateString();
 };
 
@@ -2999,7 +2942,7 @@ const editingComposition = ref('');
 const editCompositionName = ref('');
 
 // Update existing updateComposition function
-const updateComposition = (id: string) => {
+const updateComposition = (id) => {
   if (!confirm('Are you sure you want to update this saved composition with your current changes?')) {
     return;
   }
@@ -3026,12 +2969,12 @@ const updateComposition = (id: string) => {
 };
 
 // Functions for renaming compositions
-const startRename = (id: string, currentName: string) => {
+const startRename = (id, currentName) => {
   editingComposition.value = id;
   editCompositionName.value = currentName;
 };
 
-const saveRename = (id: string) => {
+const saveRename = (id) => {
   if (!editCompositionName.value.trim()) {
     alert('Please enter a valid name');
     return;
@@ -6258,11 +6201,21 @@ const handleRangeSelection = (event: MouseEvent, staffId: string) => {
 const getSelectedNotes = (): NoteWithVoiceInfo[] => {
   if (!selectionStart.value || !selectionEnd.value) return [];
 
+  // Only select notes if the selection starts and ends on the same staff
+  if (selectionStart.value.staffId !== selectionEnd.value.staffId) {
+    alert('Selection must be within the same staff');
+    return [];
+  }
+
   const startPos = Math.min(selectionStart.value.position, selectionEnd.value.position);
   const endPos = Math.max(selectionStart.value.position, selectionEnd.value.position);
+  const targetStaffId = selectionStart.value.staffId;
 
   let selectedNotes: NoteWithVoiceInfo[] = [];
   voiceLayers.value.forEach(voice => {
+    // Only process voices that belong to the target staff
+    if (voice.staffId !== targetStaffId) return;
+
     const staff = staves.value.find(s => s.id === voice.staffId);
     if (!staff) return;
 
@@ -6400,11 +6353,15 @@ const pasteNotes = (event: MouseEvent, targetStaffId: string) => {
       const newNote = {
         ...note,
         id: generateId(),
-        position: pastePosition + ((note as any).relativePosition || 0),
+        // For exact positioning where clicked
+        position: Math.floor(pastePosition) + (note.position - Math.floor(note.position)),
         voiceId: activeVoiceLayer.id,
         staffId: activeVoiceLayer.staffId,
         staffClef: targetStaff.clef,
-        verticalPosition: getPitchPosition(note.pitch || '', targetStaff.clef),
+        // Preserve the original vertical position for both notes and rests
+        verticalPosition: note.verticalPosition,
+        // Add a scale factor of 0.75 for rest sizes
+        scale: note.type === 'rest' ? 0.75 : 1,
         lyric: note.lyric // Preserve lyrics
       };
       activeVoiceLayer.notes.push(newNote);
@@ -7363,6 +7320,38 @@ const getEffectiveClefAtPosition = (position: number, staffId: string): 'treble'
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
   pointer-events: none;
   font-weight: bold;
+}
+
+/* Ensure rests are properly scaled and positioned */
+.note.rest {
+  font-size: 2.5em; /* Reduce base size from 3.5em */
+  transform: translate(-50%, -50%) scale(0.6); /* Reduce scale from 0.75 to 0.6 */
+  transform-origin: center center;
+  width: auto;
+  height: auto;
+  position: absolute;
+}
+
+/* Specific rest positioning adjustments */
+.note.rest[data-duration="whole"],
+.note.rest[data-duration="half"],
+.note.rest[data-duration="quarter"],
+.note.rest[data-duration="eighth"],
+.note.rest[data-duration="sixteenth"] {
+  transform: translate(-50%, -50%) scale(0.6);
+}
+
+/* Ensure rests maintain their color */
+.note.rest {
+  color: currentColor;
+}
+
+/* Ensure selected rests are properly highlighted */
+.note.rest.selected {
+  outline: 2px solid #2196F3;
+  outline-offset: 3px;
+  border-radius: 4px;
+  box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
 }
 
 </style>

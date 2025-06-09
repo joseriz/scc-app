@@ -66,7 +66,7 @@
           <h4>Octave</h4>
           <div class="scrollable-buttons">
             <button
-              v-for="octave in [2, 3, 4, 5, 6]"
+              v-for="octave in [2, 3, 4, 5, 6, 7, 8]"
               :key="octave"
               @click="$emit('update:selectedOctave', octave)"
               :class="['octave-btn', { active: selectedOctave === octave }]"
