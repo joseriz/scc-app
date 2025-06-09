@@ -148,6 +148,24 @@
               </div>
             </div>
             
+            <!-- Clef Change controls -->
+            <button 
+              @click="toggleClefChangeMode"
+              :class="{ active: isAddingClefChange }" 
+              class="clef-change-btn">
+              {{ isAddingClefChange ? 'Cancel Clef Change' : 'Add Clef Change' }}
+            </button>
+            <div v-if="isAddingClefChange" class="clef-change-controls">
+              <label>New Clef:</label>
+              <select v-model="newClef">
+                <option value="treble">Treble</option>
+                <option value="bass">Bass</option>
+              </select>
+              <div class="clef-change-info">
+                Click on a measure to insert clef change
+              </div>
+            </div>
+            
             <div class="copy-controls" v-if="isSelectingRange && selectionEnd">
               <button @click="copySelectedNotes(false)" class="copy-btn">
                 Copy Notes & Lyrics
@@ -211,7 +229,9 @@
                           ? addKeySignatureChange($event, stave.id)
                           : isAddingTimeSignatureChange
                             ? addTimeSignatureChange($event, stave.id)
-                      : handleStaffClick($event, stave.id)
+                            : isAddingClefChange
+                              ? addClefChange($event, stave.id)
+                              : handleStaffClick($event, stave.id)
               " @mousedown="startDrag" @touchstart="startDrag" :class="{
                 'inserting-space': isInsertingSpace,
                 'deleting-space': isDeletingSpace,
@@ -219,7 +239,8 @@
                 'pasting': isPasting,
                 'tie-slur-mode': isCreatingTieSlur,
                 'key-change-mode': isAddingKeySignatureChange,
-                'time-change-mode': isAddingTimeSignatureChange
+                'time-change-mode': isAddingTimeSignatureChange,
+                'clef-change-mode': isAddingClefChange
               }" :style="{
                 width: `${staffWidth}px`,
                 transform: `translateX(-${scrollPosition}px)`,
@@ -235,7 +256,9 @@
                           ? 'pointer'
                           : isAddingTimeSignatureChange
                             ? 'pointer'
-                        : 'default'
+                            : isAddingClefChange
+                              ? 'pointer'
+                              : 'default'
               }">
               <!-- Add selection highlight -->
               <div v-if="selectionStart && selectionEnd" class="selection-highlight" :style="{
@@ -308,7 +331,7 @@
               <div v-for="keyChange in keySignatureChanges" :key="`key-change-${keyChange.id}`" 
                    class="key-signature-change" 
                    :class="{ 'clickable': !readOnlyMode }"
-                   :style="{ left: `${keyChange.position}px` }"
+                   :style="{ left: `${keyChange.position}px`, transform: 'translateX(70px)' }"
                    @click.stop="!readOnlyMode && removeKeySignatureChange(keyChange.id)"
                    @mousedown.stop
                    :title="readOnlyMode ? undefined : 'Click to remove key signature change'">
@@ -335,6 +358,21 @@
                 <div class="time-change-marker" style="pointer-events: none;">
                   <div class="time-change-icon">⏱️</div>
                   <div class="time-change-text">{{ timeChange.numerator }}/{{ timeChange.denominator }}</div>
+                </div>
+              </div>
+
+              <!-- Clef Changes -->
+              <div v-for="clefChange in clefChanges.filter(c => c.staffId === stave.id)" 
+                   :key="`clef-change-${clefChange.id}`" 
+                   class="clef-change" 
+                   :class="{ 'clickable': !readOnlyMode }"
+                   :style="{ left: `${clefChange.position}px` }"
+                   @click.stop="!readOnlyMode && removeClefChange(clefChange.id)"
+                   @mousedown.stop
+                   :title="readOnlyMode ? undefined : 'Click to remove clef change'">
+                <div class="clef-change-marker" style="pointer-events: none;">
+                  <div class="clef-change-icon">{{ clefChange.clef === 'treble' ? '𝄞' : '𝄢' }}</div>
+                  <div class="clef-change-text">{{ clefChange.clef === 'treble' ? 'Treble' : 'Bass' }}</div>
                 </div>
               </div>
 
@@ -677,6 +715,7 @@ import type {
   Stave, // Import Stave
   KeySignatureChange,
   TimeSignatureChange,
+  ClefChange,
 } from '@/types/types'; // Updated path
 
 // Store
@@ -1170,11 +1209,6 @@ const getEffectiveKeySignatureAtPosition = (position: number): string => {
   // Cache the result
   keySignatureCache.set(cacheKey, effectiveKey);
   
-  // Only log if it's a different result than the global key signature
-  if (effectiveKey !== keySignature.value) {
-    console.log(`🎼 Key change at position ${position} (measure ${measureNumber}): ${keySignature.value} → ${effectiveKey}`);
-  }
-  
   return effectiveKey;
 };
 
@@ -1248,7 +1282,6 @@ const addTimeSignatureChange = (event: MouseEvent, staffId: string) => {
   const existingChange = timeSignatureChanges.value.find(change => change.measure === measureNumber);
   if (existingChange) {
     // Update existing change
-    console.log(`🔄 Updating existing time signature change at measure ${measureNumber}: ${existingChange.numerator}/${existingChange.denominator} → ${newTimeSignatureNumerator.value}/${newTimeSignatureDenominator.value}`);
     existingChange.numerator = newTimeSignatureNumerator.value;
     existingChange.denominator = newTimeSignatureDenominator.value;
   } else {
@@ -1493,7 +1526,7 @@ const getModifiedPitchForKeySignature = (pitch: string, isExplicitNatural = fals
 };
 
 // Refine the playNoteSound function for robustness
-const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, volumePercent = 100, explicitNatural = false, isTriplet = false, position?: number) => {
+const playNoteSound = (pitch: string, duration = "8n", isDotted = false, volumePercent = 100, explicitNatural = false, isTriplet = false, position?: number) => {
   let pitchToPlay = pitch;
   let noteDuration = duration;
   
@@ -1507,21 +1540,15 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
 
   try {
     // Start Tone.js context (this requires user interaction)
-    await startToneJs();
+    startToneJs();
 
     // Make sure Tone.js is started
-    await Tone.start();
-
-    console.log(`🎼 playNoteSound input: "${pitch}", explicitNatural: ${explicitNatural}`);
+    Tone.start();
 
     if (explicitNatural) {
       const noteLetter = pitch.charAt(0);
       const octave = pitch.slice(pitch.length - 1);
       pitchToPlay = `${noteLetter}${octave}`;
-      console.log(`🎼 Applied explicit natural: "${pitch}" → "${pitchToPlay}"`);
-    } else {
-      // Just use the pitch as-is - it should already be correctly converted by playNoteWithTieHandling
-      console.log(`🎼 Using pre-converted pitch: "${pitchToPlay}"`);
     }
 
     // Extract position from the pitch string (e.g., "C4") and create a dummy note for measure calculation
@@ -1542,7 +1569,6 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
     // Check if duration is already in seconds format (e.g., "2.5s" for tied notes)
     if (duration.endsWith('s')) {
       durationInSeconds = parseFloat(duration.slice(0, -1));
-      console.log(`Using tied note duration: ${durationInSeconds}s`);
     } else {
       // Use standard Tone.js notation duration
       durationInSeconds = baseDurationMap[duration] || (60 / tempo.value);
@@ -1564,7 +1590,6 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
     noteDuration = `${durationInSeconds}s`;
 
     if (!pitchToPlay) {
-      console.warn("Invalid pitch provided, cannot play note.");
       return;
     }
 
@@ -1572,8 +1597,7 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
     // Ensure velocity is clamped between 0 and 1.
     const velocity = Math.max(0, Math.min(1, volumePercent / 100));
 
-      // Final confirmation of what pitch will actually play
-  console.log(`🔊 AUDIO: Playing "${pitchToPlay}" for ${noteDuration}`);
+
 
     // Use the piano synth to play the note if available, otherwise use basic synth
     if (pianoSynth && pianoSynth.loaded) {
@@ -1581,7 +1605,6 @@ const playNoteSound = async (pitch: string, duration = "8n", isDotted = false, v
     } else if (noteSynth) {
       noteSynth.triggerAttackRelease(pitchToPlay, noteDuration, undefined, velocity);
     } else {
-      console.warn('No synth available to play note.');
       // Fallback to a very basic Tone.Synth if nothing else is initialized
       const fallbackSynth = createFallbackPianoSynth(); // Ensure this function exists or use new Tone.Synth()
       fallbackSynth.triggerAttackRelease(pitchToPlay, noteDuration, undefined, velocity);
@@ -1634,7 +1657,6 @@ const getPreviewPitch = (basePitch: string, position: number): string => {
 // Update the existing handleStaffClick function to handle explicit natural accidentals
 const handleStaffClick = (event, staffId: string) => {
   if (readOnlyMode.value) {
-    console.log("Read-only mode active - note editing disabled");
     return; // Exit early if in read-only mode
   }
 
@@ -1728,6 +1750,32 @@ const handleStaffClick = (event, staffId: string) => {
       if (selectedNoteType.value === 'note' && updatedNote.pitch) {
         // For preview sound, we need to convert the pitch just like during playback
         let pitchToPlay = updatedNote.pitch;
+        
+        // First handle clef changes
+        const effectiveClef = getEffectiveClefAtPosition(position * 25, staffId);
+        const staff = staves.value.find(s => s.id === staffId);
+        const originalClef = staff?.clef || 'treble';
+        
+        if (effectiveClef !== originalClef) {
+          // Extract the note letter and octave
+          const noteLetter = pitchToPlay.charAt(0);
+          const hasAccidental = pitchToPlay.includes('#') || pitchToPlay.includes('b');
+          const accidental = hasAccidental ? pitchToPlay.charAt(1) : '';
+          const octave = parseInt(pitchToPlay.slice(hasAccidental ? -1 : -1));
+          
+          // Adjust octave based on clef change
+          let newOctave = octave;
+          if (originalClef === 'treble' && effectiveClef === 'bass') {
+            newOctave = octave - 2; // Move down two octaves for treble to bass
+          } else if (originalClef === 'bass' && effectiveClef === 'treble') {
+            newOctave = octave + 2; // Move up two octaves for bass to treble
+          }
+          
+          // Reconstruct the pitch with the new octave
+          pitchToPlay = `${noteLetter}${accidental}${newOctave}`;
+        }
+        
+        // Then handle key signature changes
         if (!updatedNote.explicitNatural) {
           const effectiveKey = getEffectiveKeySignatureAtPosition(position * 25);
           const globalKey = keySignature.value;
@@ -1749,7 +1797,6 @@ const handleStaffClick = (event, staffId: string) => {
           updatedNote.position
         );
       }
-      console.log(`Updated note in voice ${targetVoiceForInput.id} on staff ${staffId} at position ${position}, pitch: ${updatedNote.pitch || 'rest'}, dotted: ${updatedNote.dotted}`);
     }
   } else {
     if (pitch || selectedNoteType.value === 'rest') {
@@ -1785,6 +1832,32 @@ const handleStaffClick = (event, staffId: string) => {
       if (selectedNoteType.value === 'note' && newNote.pitch) {
         // For preview sound, we need to convert the pitch just like during playback
         let pitchToPlay = newNote.pitch;
+        
+        // First handle clef changes
+        const effectiveClef = getEffectiveClefAtPosition(position * 25, staffId);
+        const staff = staves.value.find(s => s.id === staffId);
+        const originalClef = staff?.clef || 'treble';
+        
+        if (effectiveClef !== originalClef) {
+          // Extract the note letter and octave
+          const noteLetter = pitchToPlay.charAt(0);
+          const hasAccidental = pitchToPlay.includes('#') || pitchToPlay.includes('b');
+          const accidental = hasAccidental ? pitchToPlay.charAt(1) : '';
+          const octave = parseInt(pitchToPlay.slice(hasAccidental ? -1 : -1));
+          
+          // Adjust octave based on clef change
+          let newOctave = octave;
+          if (originalClef === 'treble' && effectiveClef === 'bass') {
+            newOctave = octave - 2; // Move down two octaves for treble to bass
+          } else if (originalClef === 'bass' && effectiveClef === 'treble') {
+            newOctave = octave + 2; // Move up two octaves for bass to treble
+          }
+          
+          // Reconstruct the pitch with the new octave
+          pitchToPlay = `${noteLetter}${accidental}${newOctave}`;
+        }
+        
+        // Then handle key signature changes
         if (!newNote.explicitNatural) {
           const effectiveKey = getEffectiveKeySignatureAtPosition(position * 25);
           const globalKey = keySignature.value;
@@ -1802,21 +1875,13 @@ const handleStaffClick = (event, staffId: string) => {
           newNote.dotted,
           100, // volumePercent for click feedback
           newNote.explicitNatural,
-          newNote.triplet
+          newNote.triplet,
+          position // Add position parameter to ensure correct tempo
         );
       }
-      console.log(`Added ${selectedNoteType.value} to voice ${targetVoiceForInput.id} on staff ${staffId} at position ${position}, pitch: ${newNote.pitch || 'rest'}, dotted: ${newNote.dotted}`);
     }
   }
 };
-
-// const toggleDebugMode = () => { // This function is now in useDebug.ts
-//   debugMode.value = !debugMode.value;
-// };
-
-// const testAllNotes = () => { // This function is now in useDebug.ts
-//   // ...
-// };
 
 // Add a function to determine stem direction based on note position
 const getStemDirection = (pitch: string, clef: 'treble' | 'bass') => {
@@ -1923,7 +1988,6 @@ const stopPlayback = () => {
     window.playbackTimeouts = [];
   }
 
-  console.log('Playback stopped');
 };
 
 // Update the clearScore function to handle voice layers
@@ -1955,7 +2019,6 @@ const clearScore = () => {
   currentCompositionId.value = '';
 
 
-  console.log('Score cleared. Reset to default staff and voice.');
 };
 
 // Add these functions to handle ledger lines
@@ -2134,7 +2197,6 @@ const scrollStaff = (direction: 'left' | 'right') => {
     (staffElement as HTMLElement).style.transform = `translateX(-${scrollPosition.value}px)`;
   }
 
-  console.log(`Scrolled ${direction}: position=${scrollPosition.value}, max=${maxScrollPosition.value}`);
 };
 
 onBeforeUnmount(() => {
@@ -2148,19 +2210,6 @@ const handleResize = () => {
     visibleStaffWidth.value = staffContainer.clientWidth;
   }
 };
-
-// Add back the convertPitchToToneFormat function
-// const convertPitchToToneFormat = (pitch: string) => {
-//   // First, apply key signature if needed
-//   let modifiedPitch = pitch;
-
-//   // If the note doesn't have an explicit accidental, check key signature
-//   if (!modifiedPitch.includes('#') && !modifiedPitch.includes('b')) {
-//     modifiedPitch = getModifiedPitchForKeySignature(modifiedPitch);
-//   }
-
-//   return modifiedPitch;
-// };
 
 // Add back the getAccidentalSymbol function
 const getAccidentalSymbol = (note: ImportedNote) => {
@@ -2179,8 +2228,6 @@ const handleStaffClefChange = (stave: Stave) => {
   // The v-model on the select already updates stave.clef.
   // Now, we need to update the vertical position of all notes on this staff.
 
-  console.log(`Clef for staff ${stave.name || stave.id} (ID: ${stave.id}) changed to ${stave.clef}. Updating note positions.`);
-
   let notesUpdatedCount = 0;
   voiceLayers.value.forEach(voice => {
     if (voice.staffId === stave.id) {
@@ -2190,7 +2237,6 @@ const handleStaffClefChange = (stave: Stave) => {
           note.verticalPosition = getPitchPosition(note.pitch, stave.clef);
           if (oldPosition !== note.verticalPosition) {
             notesUpdatedCount++;
-            // console.log(`Note ${note.id} (${note.pitch}) on staff ${stave.id} moved from ${oldPosition} to ${note.verticalPosition}`);
           }
         }
       });
@@ -2198,7 +2244,6 @@ const handleStaffClefChange = (stave: Stave) => {
   });
 
   if (notesUpdatedCount > 0) {
-    console.log(`Updated vertical positions for ${notesUpdatedCount} notes on staff ${stave.id} due to clef change.`);
   }
 
   saveToLocalStorage(); // Save changes after updating note positions
@@ -2472,7 +2517,6 @@ const toggleTripletNote = () => {
 // Add a function to remove a note
 const removeNote = (noteToRemove: NoteWithVoiceInfo | ImportedNote) => {
   if (readOnlyMode.value) {
-    console.log("Read-only mode active - note deletion disabled");
     return; // Exit early if in read-only mode
   }
 
@@ -2484,7 +2528,6 @@ const removeNote = (noteToRemove: NoteWithVoiceInfo | ImportedNote) => {
     const noteIndex = voiceLayers.value[voiceIndex].notes.findIndex(n => n.id === noteToRemove.id);
     if (noteIndex !== -1) {
       voiceLayers.value[voiceIndex].notes.splice(noteIndex, 1);
-      console.log(`Removed note ${noteToRemove.id} from voice ${voiceId}`);
     }
   }
 
@@ -2573,14 +2616,6 @@ const savedCompositions = ref<CompositionData[]>([]);
 
 // Function that prepares a composition object for saving
 const prepareCompositionData = (): CompositionData => {
-  // console.log('Saving with notes having naturalAccidentals:', // Debug log
-  //   voiceLayers.value.flatMap(v =>
-  //     v.notes.filter(n => n.explicitNatural).map(n => ({
-  //       id: n.id, pitch: n.pitch, explicitNatural: n.explicitNatural
-  //     }))
-  //   )
-  // );
-
   return {
     id: currentCompositionId.value || generateId(),
     name: compositionName.value.trim(),
@@ -2603,6 +2638,8 @@ const prepareCompositionData = (): CompositionData => {
     chordSymbols: [...chordSymbols.value],
     tiesSlurs: [...tiesSlurs.value],
     keySignatureChanges: [...keySignatureChanges.value],
+    timeSignatureChanges: [...timeSignatureChanges.value],
+    clefChanges: [...clefChanges.value],
     activeVoiceId: activeVoiceId.value,
     staffWidth: staffWidth.value,
     selectedDuration: selectedDuration.value,
@@ -2625,14 +2662,6 @@ const saveComposition = () => {
 
   const newComposition = prepareCompositionData();
 
-  // Add near the start of saveComposition
-  const notesWithNaturals = voiceLayers.value.flatMap(voice =>
-    voice.notes.filter(note => note.explicitNatural)
-  );
-  console.log(`About to save composition with ${notesWithNaturals.length} natural notes:`,
-    notesWithNaturals.map(n => ({ id: n.id, pitch: n.pitch, position: n.position }))
-  );
-
   // Save the composition
   savedCompositions.value.push(newComposition);
 
@@ -2648,7 +2677,6 @@ const loadComposition = (compositionId: string) => {
   const compositionToLoad = savedCompositions.value.find(comp => comp.id === compositionId);
   if (compositionToLoad) {
     try {
-      console.log('Loading composition:', compositionToLoad.name, compositionToLoad);
       stopPlayback();
 
       // Clear current state
@@ -2657,12 +2685,30 @@ const loadComposition = (compositionId: string) => {
       chordSymbols.value = [];
       sections.value = [];
       sequenceItems.value = [];
+      timeSignatureChanges.value = [];
+      clefChanges.value = [];
+      keySignatureChanges.value = [];
 
       currentCompositionId.value = compositionToLoad.id;
       compositionName.value = compositionToLoad.name;
       tempo.value = Number(compositionToLoad.tempo) || 120; // Ensure tempo is a number
       keySignature.value = compositionToLoad.keySignature || 'C';
       timeSignature.value = compositionToLoad.timeSignature || '4/4';
+
+      // Load time signature changes
+      if (compositionToLoad.timeSignatureChanges) {
+        timeSignatureChanges.value = JSON.parse(JSON.stringify(compositionToLoad.timeSignatureChanges));
+      }
+
+      // Load clef changes
+      if (compositionToLoad.clefChanges) {
+        clefChanges.value = JSON.parse(JSON.stringify(compositionToLoad.clefChanges));
+      }
+
+      // Load key signature changes
+      if (compositionToLoad.keySignatureChanges) {
+        keySignatureChanges.value = JSON.parse(JSON.stringify(compositionToLoad.keySignatureChanges));
+      }
 
       // Use staffSettings if available, otherwise staffWidth
       if ((compositionToLoad as any).staffSettings) {
@@ -2719,7 +2765,6 @@ const loadComposition = (compositionId: string) => {
 
           // If still no staffId, assign to the first staff or create one if needed
           if (!staffIdForVoice || !staves.value.some(s => s.id === staffIdForVoice)) {
-            console.warn(`Voice layer ${vl.name} has missing/invalid staffId or mapping. Assigning to first available staff.`);
             staffIdForVoice = activeStaffId.value || (staves.value.length > 0 ? staves.value[0].id : null);
             if (!staffIdForVoice) { // Should be very rare: no staves exist at all
               const newEmergencyStaffId = generateId();
@@ -2742,7 +2787,6 @@ const loadComposition = (compositionId: string) => {
         });
       } else if (compositionToLoad.notes && compositionToLoad.notes.length > 0) {
         // Backwards compatibility: Convert flat notes array
-        console.warn("Loading composition with old flat notes structure. Converting to voice layers.");
         const firstStaffId = activeStaffId.value || (staves.value.length > 0 ? staves.value[0].id : generateId());
         if (!staves.value.find(s => s.id === firstStaffId)) {
           staves.value.push({ id: firstStaffId, clef: 'treble', order: 0, name: 'Default Staff (Import)' });
@@ -2778,7 +2822,6 @@ const loadComposition = (compositionId: string) => {
 
       // Migrate Lyrics from old structure if present
       if ((compositionToLoad as any).lyrics) {
-        console.warn("Migrating lyrics from old structure.");
         for (const voiceIdWithLyrics in (compositionToLoad as any).lyrics) {
           const voiceLayer = voiceLayers.value.find(vl => vl.id === voiceIdWithLyrics);
           if (voiceLayer) {
@@ -2841,16 +2884,9 @@ const loadComposition = (compositionId: string) => {
         updateStaffScroll();
       });
 
-      console.log('Composition loaded successfully.');
       saveToLocalStorage();
 
     } catch (error) {
-      console.error(`Error loading composition: ${error}`); // Log the error object itself
-      if (error instanceof Error) {
-        console.error("Error name:", error.name);
-        console.error("Error message:", error.message);
-        console.error("Error stack:", error.stack);
-      }
       alert(`Error loading composition: ${error instanceof Error ? error.message : String(error)}`);
     }
   } else {
@@ -2866,35 +2902,26 @@ const updateStaffDisplay = (width?: number) => {
       (staffElement as HTMLElement).style.width = `${displayWidth}px`;
     }
   });
-  if (document.querySelectorAll('.staff').length > 0) {
-    console.log(`Set staff width to ${width || staffWidth.value}px for ${document.querySelectorAll('.staff').length} staves`);
-  } else {
-    console.warn('No staff elements found to update display');
-  }
 };
 
 // Improve the saveToLocalStorage function to handle potential errors
 const saveToLocalStorage = () => {
   try {
     const dataToSave = JSON.stringify(savedCompositions.value);
-    console.log('Saving data to localStorage:', dataToSave);
-    localStorage.setItem('musicNotationAppCompositions', dataToSave);
+    localStorage.setItem('stCeciliaCompositions', dataToSave);
   } catch (e) {
-    console.error('Error saving to localStorage:', e);
     alert('Error saving compositions. Local storage may be full or disabled.');
   }
 };
 
 // Improve the loadSavedCompositions function for better error handling
 const loadSavedCompositions = () => {
-  const savedItems = localStorage.getItem('musicNotationAppCompositions');
+  const savedItems = localStorage.getItem('stCeciliaCompositions');
   if (savedItems) {
     try {
       const parsed = JSON.parse(savedItems);
-      console.log('Loaded compositions from localStorage:', parsed);
       savedCompositions.value = parsed;
     } catch (e) {
-      console.error('Error parsing saved compositions:', e);
       savedCompositions.value = [];
     }
   }
@@ -2936,7 +2963,6 @@ onMounted(async () => {
     // Set up the initial display
     updateStaffDisplay();
 
-    console.log('Component mounted, saved compositions loaded:', savedCompositions.value);
   } catch (error) {
     console.error('Error during component initialization:', error);
   }
@@ -2946,9 +2972,7 @@ onMounted(async () => {
 const startToneJs = async () => {
   try {
     // This should only be called after a user gesture
-    console.log('Starting Tone.js AudioContext...');
     await Tone.start();
-    console.log('Tone.js AudioContext started successfully');
     return true;
   } catch (error) {
     console.error('Error starting Tone.js AudioContext:', error);
@@ -2963,12 +2987,10 @@ const startToneJs = async () => {
 
 // With this one that watches allVisibleNotes instead
 watch(allVisibleNotes, (newNotes) => {
-  console.log('All visible notes changed:', newNotes.length);
 }, { deep: true });
 
 // Or alternatively, watch the voiceLayers directly
 watch(voiceLayers, () => {
-  console.log('Voice layers changed');
 }, { deep: true });
 
 // Add variables for tracking the current composition and renaming state
@@ -3107,20 +3129,10 @@ const exportCurrentComposition = async () => {
       sequenceItems: sequenceItems.value ? JSON.parse(JSON.stringify(sequenceItems.value)) : [],
     };
 
-    console.log('Exporting composition with sequence items:', compositionToExport.sequenceItems);
-
-    console.log('[Export] Initial compositionToExport from live state:', JSON.parse(JSON.stringify(compositionToExport)));
-    console.log('[Export] exportOnlySelectedVoices flag:', exportOnlySelectedVoices.value);
-
     if (exportOnlySelectedVoices.value) {
-      console.log('[Export] Filtering for selected voices. Initial voiceLayers from live state:', JSON.parse(JSON.stringify(compositionToExport.voiceLayers)));
-
       if (compositionToExport.voiceLayers && Array.isArray(compositionToExport.voiceLayers)) {
         const allVoiceStates = compositionToExport.voiceLayers.map(v => ({ id: v.id, name: v.name, selected: v.selected }));
-        console.log('[Export] All voice selected states from live data:', allVoiceStates);
-
         const selectedVoiceLayers = compositionToExport.voiceLayers.filter(v => v.selected === true);
-        console.log('[Export] Filtered selectedVoiceLayers:', JSON.parse(JSON.stringify(selectedVoiceLayers)));
 
         if (selectedVoiceLayers.length === 0 && compositionToExport.voiceLayers.length > 0) {
           alert("No voices are selected for export. Please select at least one voice or uncheck 'Export selected voices only'.");
@@ -3139,14 +3151,8 @@ const exportCurrentComposition = async () => {
             voiceColor: voice.color
           }))
         );
-        console.log('[Export] Updated compositionToExport.voiceLayers after filtering:', JSON.parse(JSON.stringify(compositionToExport.voiceLayers)));
-        console.log('[Export] Updated compositionToExport.notes count after filtering:', compositionToExport.notes.length);
       }
-    } else {
-      console.log('[Export] Not filtering by selected voices. Exporting all from live state.');
     }
-
-    console.log('[Export] Final compositionToExport for stringify:', JSON.parse(JSON.stringify(compositionToExport)));
     const dataToExport = JSON.stringify(compositionToExport, null, 2);
     const fileName = `music-notation-${compositionToExport.name.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.txt`;
 
@@ -4374,35 +4380,7 @@ const confirmClearScore = () => {
   }
 };
 
-// Add this function to detect if musical symbols are properly displayed
-const usesFallbackSymbols = ref(false);
-
-// Check if the device needs fallback symbols
-onMounted(() => {
-  // Try to detect iOS
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-
-  // Default to fallback symbols on iOS
-  usesFallbackSymbols.value = isIOS;
-
-  // Additional check: try to measure a rendered symbol
-  const testElement = document.createElement('span');
-  testElement.style.fontFamily = 'Bravura, serif';
-  testElement.style.fontSize = '20px';
-  testElement.style.visibility = 'hidden';
-  testElement.innerText = '♩'; // Test with a quarter note
-  document.body.appendChild(testElement);
-
-  // If the width is too small, it's likely showing a square or placeholder
-  const width = testElement.offsetWidth;
-  if (width < 5) {
-    usesFallbackSymbols.value = true;
-  }
-
-  document.body.removeChild(testElement);
-});
-
-// Add a new ref for the current lyric input
+// Add this ref for the current lyric input
 const currentLyric = ref('');
 
 // Add a function to set lyrics for the selected note
@@ -4452,29 +4430,6 @@ const handleLyricInputKeypress = (event: KeyboardEvent) => {
     event.preventDefault();
   }
 };
-
-
-
-// Add this computed property to get the active voice layer
-// const activeVoice = computed(() => {
-//   return voiceLayers.value.find(layer => layer.id === activeVoiceId.value) || voiceLayers.value[0];
-// });
-
-
-// Update the existing notes ref to use the active voice's notes
-// This is a computed property with a getter and setter
-// const notes = computed({
-//   get: () => {
-//     return activeVoice.value.notes;
-//   },
-//   set: (newNotes) => {
-//     // Find the active voice and update its notes
-//     const voiceIndex = voiceLayers.value.findIndex(v => v.id === activeVoiceId.value);
-//     if (voiceIndex !== -1) {
-//       voiceLayers.value[voiceIndex].notes = newNotes;
-//     }
-//   }
-// });
 
 // Add a function to switch between voice layers
 const switchActiveVoice = (voiceIdToActivate: string) => {
@@ -4633,7 +4588,6 @@ const assignVoiceToStaff = (voiceId: string, newStaffId: string) => {
 
   if (voice && staffExists) {
     voice.staffId = newStaffId;
-    console.log(`Voice ${voice.name} assigned to staff ${newStaffId}`);
     // If this voice was active, ensure the activeStaffId is also updated
     if (voice.active) {
       activeStaffId.value = newStaffId;
@@ -4655,7 +4609,6 @@ const removeTimeSignatureChange = (timeChangeId: string) => {
     if (confirm(`Remove time signature change ${change.numerator}/${change.denominator} at measure ${change.measure}?`)) {
       timeSignatureChanges.value.splice(index, 1);
       saveToLocalStorage();
-      console.log(`Removed time signature change at measure ${change.measure}`);
     }
   }
 };
@@ -4671,18 +4624,15 @@ const removeKeySignatureChange = (keyChangeId: string) => {
       keySignatureChanges.value.splice(index, 1);
       clearKeySignatureCache(); // Clear cache since we removed a key signature change
       saveToLocalStorage();
-      console.log(`Removed key signature change at measure ${change.measure}`);
     }
   }
 };
 
 // End of your script section with watches
 watch(allVisibleNotes, (newNotes) => {
-  console.log('All visible notes changed:', newNotes.length);
 }, { deep: true });
 
 watch(voiceLayers, () => {
-  console.log('Voice layers changed');
 }, { deep: true });
 
 // existing code...
@@ -4858,53 +4808,10 @@ const createTripletGroup = (notes: NoteWithVoiceInfo[], tripletGroups: TripletGr
   });
 };
 
-// Add these functions to save and load compositions from localStorage
-
-// Save compositions to localStorage
-const saveCompositionsToStorage = () => {
-  try {
-    const compositionsJson = JSON.stringify(savedCompositions.value);
-    localStorage.setItem('stCeciliaCompositions', compositionsJson);
-    console.log('Compositions saved to localStorage');
-  } catch (error) {
-    console.error('Error saving compositions to localStorage:', error);
-  }
-};
-
-// Load compositions from localStorage
-const loadCompositionsFromStorage = () => {
-  try {
-    const compositionsJson = localStorage.getItem('stCeciliaCompositions');
-    if (compositionsJson) {
-      const loadedCompositions = JSON.parse(compositionsJson);
-      savedCompositions.value = loadedCompositions;
-      console.log('Compositions loaded from localStorage');
-    }
-  } catch (error) {
-    console.error('Error loading compositions from localStorage:', error);
-  }
-};
-
-// Then, in your onMounted lifecycle hook, load compositions from localStorage
-onMounted(() => {
-  // Other initialization code...
-
-  // Load saved compositions from localStorage
-  loadCompositionsFromStorage();
-
-  // Other setup code...
-});
-
-// Additionally, we can setup a watch to auto-save whenever compositions change
+// Watch compositions and auto-save whenever they change
 watch(savedCompositions, () => {
-  saveCompositionsToStorage();
+  saveToLocalStorage();
 }, { deep: true });
-
-// Function to change the key signature (this is the handler for the event)
-// const changeKeySignatureDirectly = (key: string) => {
-//   keySignature.value = key;
-//   // Potentially other logic that was in the original changeKeySignature if it did more than set the ref
-// };
 
 // Add a function to handle the clearOrRestart emit from PlaybackControls
 const handleClearOrRestart = () => {
@@ -4939,14 +4846,8 @@ const handleSaveRename = (id: string, newName: string) => {
   alert('Composition renamed successfully!');
 };
 
-// The toggleDottedNote function is simple enough to be emitted directly
-// or handled by v-model:isDottedNote if NoteInputControls uses it.
-// For now, if NoteInputControls emits 'toggleDottedNote', this existing function will handle it.
-
 const setLyricForNoteHandler = (noteId: string, lyric: string) => {
   setLyricForNote(noteId, lyric); // Call the existing function
-  // currentLyric.value = ''; // LyricsControls now uses v-model, so parent doesn't need to clear it.
-  // The setLyricForNote function itself should clear currentLyric if that's the desired UX.
 };
 
 const updateVoiceLayerSelection = (voiceId: string, selected: boolean) => {
@@ -4984,8 +4885,6 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
     return;
   }
 
-  console.log(`Combining ${compositionsToCombine.length} compositions. Preserve staves: ${preserveStaves}`);
-
   stopPlayback(); // Stop any current playback
 
   // Create a new base composition structure
@@ -5012,7 +4911,6 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
   const voiceIdMap: Record<string, string> = {}; // Maps old voice IDs to new voice IDs
 
   compositionsToCombine.forEach((comp, compIndex) => {
-    console.log(`Processing composition: ${comp.name}`, comp);
     const compStaves = comp.staves || [];
     const compVoiceLayers = comp.voiceLayers || [];
 
@@ -5027,7 +4925,6 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
           order: newComposition.staves!.length
         };
         newComposition.staves!.push(newStaff);
-        console.log(`Created new staff ${newStaff.id} with clef ${newStaff.clef} from old staff ${oldStaff.id}`);
       });
 
       compVoiceLayers.forEach(oldVoice => {
@@ -5052,7 +4949,6 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
             volume: oldVoice.volume !== undefined ? oldVoice.volume : 100, // Convert or default volume
           };
           newComposition.voiceLayers!.push(newVoice);
-          console.log(`Added voice ${newVoice.id} to staff ${newVoice.staffId}`);
         } else if (newStaffIdForVoice) {
           const newVoice: VoiceLayer = {
             ...oldVoice,
@@ -5065,7 +4961,6 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
             volume: oldVoice.volume !== undefined ? oldVoice.volume : 100, // Convert or default volume
           };
           newComposition.voiceLayers!.push(newVoice);
-          console.log(`Added voice ${newVoice.id} to staff ${newVoice.staffId}`);
         } else {
           console.error(`Could not find a staff for voice ${oldVoice.name} from ${comp.name}. Skipping voice.`);
         }
@@ -5087,7 +4982,6 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
         newComposition.staves!.push(newStaffForComp);
         compSpecificNewStaffIds.push(newStaffId);
         staffIdMap[`${comp.id}_defaultStaff`] = newStaffId; // Generic mapping for this comp's voices
-        console.log(`Created merged staff ${newStaffId} with clef ${firstOldStaffClef} for composition ${comp.name}`);
       } else {
         // If the old composition had no staves defined, create a default treble staff for its voices
         const newStaffId = generateId();
@@ -5101,7 +4995,6 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
         newComposition.staves!.push(newStaffForComp);
         compSpecificNewStaffIds.push(newStaffId);
         staffIdMap[`${comp.id}_defaultStaff`] = newStaffId;
-        console.log(`Created default staff ${newStaffId} with clef treble for composition ${comp.name} (had no staves)`);
       }
 
       const targetStaffIdForCompVoices = compSpecificNewStaffIds[0] || (newComposition.staves!.length > 0 ? newComposition.staves![0].id : undefined);
@@ -5130,7 +5023,6 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
       // Handle 'flat notes' if they exist on the old composition (legacy)
       // These notes need to be assigned to a voice on the new staff for this composition.
       if ((comp as any).notes && (comp as any).notes.length > 0) {
-        console.log(`Migrating ${comp.notes.length} flat notes from ${comp.name}`);
         let defaultVoiceForFlatNotes = newComposition.voiceLayers!.find(
           vl => vl.staffId === targetStaffIdForCompVoices && vl.name?.includes('(from ${comp.name})')
         );
@@ -5148,7 +5040,6 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
             staffId: targetStaffIdForCompVoices,
           };
           newComposition.voiceLayers!.push(defaultVoiceForFlatNotes);
-          console.log(`Created default voice ${defaultVoiceForFlatNotes.id} for flat notes from ${comp.name} on staff ${targetStaffIdForCompVoices}`);
         }
         (comp as any).notes.forEach((note: any) => {
           const { voiceId, voiceColor, ...restOfNote } = note;
@@ -5163,11 +5054,9 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
 
   // Final cleanup and loading
   if (newComposition.staves!.length === 0) {
-    console.warn("Combined composition resulted in no staves. Adding a default staff.");
     newComposition.staves!.push({ id: generateId(), name: "Default Combined Staff", clef: 'treble', order: 0, isCollapsed: false });
   }
   if (newComposition.voiceLayers!.length === 0 && newComposition.staves!.length > 0) {
-    console.warn("Combined composition resulted in no voice layers. Adding a default voice.");
     newComposition.voiceLayers!.push({
       id: generateId(), name: "Default Combined Voice", color: getRandomColor(), staffId: newComposition.staves![0].id,
       visible: true, active: true, selected: true, volume: 100, notes: [] // Default to 100%
@@ -5197,7 +5086,6 @@ const addSection = (sectionData: Omit<Section, 'id'>) => {
   };
 
   sections.value.push(newSection);
-  console.log(`Added section "${newSection.name}" from measure ${newSection.startMeasure} to ${newSection.endMeasure}`);
 };
 
 // Add a function to delete a section
@@ -5205,7 +5093,6 @@ const deleteSection = (sectionId: string) => {
   const index = sections.value.findIndex(section => section.id === sectionId);
   if (index !== -1) {
     const deletedSection = sections.value.splice(index, 1)[0];
-    console.log(`Deleted section "${deletedSection.name}"`);
   }
 };
 
@@ -5219,7 +5106,6 @@ const playSection = (section: Section) => {
   playbackEndMeasure.value = section.endMeasure;
 
   // Start playback
-  console.log(`Playing section "${section.name}" (measures ${section.startMeasure} to ${section.endMeasure})`);
   playComposition();
 };
 
@@ -5237,8 +5123,6 @@ const jumpToSection = (section: Section) => {
   // Scroll to that position
   scrollPosition.value = Math.max(0, measureStart - 100); // 100px padding at left
   updateStaffScroll();
-
-  console.log(`Jumped to section "${section.name}" (measure ${section.startMeasure})`);
 };
 
 // Add this function to calculate the position of a section marker
@@ -5261,8 +5145,6 @@ const playingSequenceSectionId = ref<string | null>(null);
 
 // Add this function to play a sequence of sections
 const playSequence = (sequence: SequenceItem[]) => {
-  console.log('playSequence called with sequence:', sequence);
-
   if (sequence.length === 0) {
     alert('Playback sequence is empty. Please add sections to the sequence.');
     return;
@@ -5276,8 +5158,6 @@ const playSequence = (sequence: SequenceItem[]) => {
   currentSequenceIndex.value = 0;
   isPlayingSequence.value = true;
 
-  console.log('About to play sequence with', sequence.length, 'sections. First section ID:', sequence[0].sectionId);
-
   // Play the first section in the sequence
   playNextInSequence();
 };
@@ -5289,7 +5169,6 @@ const playNextInSequence = () => {
     isPlayingSequence.value = false;
     currentSequenceIndex.value = 0;
     playingSequenceSectionId.value = null;
-    console.log('Sequence playback completed');
     return;
   }
 
@@ -5298,13 +5177,10 @@ const playNextInSequence = () => {
   const section = sections.value.find(s => s.id === sequenceItem.sectionId);
 
   if (!section) {
-    console.error(`Section with ID ${sequenceItem.sectionId} not found, skipping`);
     currentSequenceIndex.value++;
     setTimeout(() => playNextInSequence(), 100);
     return;
   }
-
-  console.log(`Playing sequence part ${currentSequenceIndex.value + 1}/${currentSequence.value.length}: ${section.name}`);
 
   // Update UI to highlight the current section
   playingSequenceSectionId.value = section.id;
@@ -6711,7 +6587,7 @@ const addKeySignatureChange = (event: MouseEvent, staffId: string) => {
     console.log(`🔄 Updating existing key change at measure ${measureNumber}: ${existingChange.keySignature} → ${newKeySignature.value}`);
     existingChange.keySignature = newKeySignature.value;
   } else {
-    // Create new change  
+    // Create new change only if there isn't an existing one
     const newChange: KeySignatureChange = {
       id: generateId(),
       measure: measureNumber,
@@ -6719,8 +6595,6 @@ const addKeySignatureChange = (event: MouseEvent, staffId: string) => {
       position: initialPosition + ((measureNumber - 1) * measureWidth) + 5 // Small offset from measure line
     };
     console.log(`➕ Creating NEW key signature change: ${newKeySignature.value} at measure ${measureNumber}, position ${newChange.position}`);
-    console.log(`Current global key signature: ${keySignature.value}`);
-    console.log(`Measure width: ${measureWidth}, Initial position: ${initialPosition}`);
     keySignatureChanges.value.push(newChange);
   }
   
@@ -6774,28 +6648,58 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
 
   console.log(`Playing note ${noteToPlay.pitch} with total tied duration: ${totalTiedDuration} beats (${totalDurationInSeconds.toFixed(2)}s)`);
 
-  // For playback, apply the key signature at the note's position
+  // For playback, apply the key signature and handle clef changes at the note's position
   let pitchToPlay = noteToPlay.pitch;
   
-    // Handle notes that may have been stored with old key signature system
-  if (pitchToPlay && !noteToPlay.explicitNatural) {
-    const effectiveKey = getEffectiveKeySignatureAtPosition(noteToPlay.position * 25);
-    const globalKey = keySignature.value;
+  // Get the staff ID for this note through the voice
+  const staffId = voice?.staffId;
+  if (staffId) {
+    // Get the effective clef at this position
+    const effectiveClef = getEffectiveClefAtPosition(noteToPlay.position * 25, staffId);
+    const staff = staves.value.find(s => s.id === staffId);
+    const originalClef = staff?.clef || 'treble';
     
-    console.log(`🔍 PLAYBACK: Position ${noteToPlay.position}, Stored: "${pitchToPlay}", Global: ${globalKey}, Effective: ${effectiveKey}`);
-    
-    // Always get the natural form first
-    const naturalPitch = reverseKeySignature(pitchToPlay, globalKey);
-    
-    // Then apply the effective key signature
-    const convertedPitch = getModifiedPitchForKeySignature(naturalPitch, false, noteToPlay.position);
-    
-    if (convertedPitch !== pitchToPlay) {
-      console.log(`🎵 Applied effective key: "${pitchToPlay}" → "${convertedPitch}" (${effectiveKey})`);
-      pitchToPlay = convertedPitch;
-    } else if (effectiveKey !== globalKey) {
-      console.log(`🎵 Key change keeps note natural: "${pitchToPlay}" stays "${convertedPitch}" (${effectiveKey} has no ${pitchToPlay.charAt(0)} accidental)`);
+    // If the clef has changed, we need to adjust the pitch
+    if (effectiveClef !== originalClef) {
+
+      
+      // Extract the note letter and octave
+      const noteLetter = pitchToPlay.charAt(0);
+      const hasAccidental = pitchToPlay.includes('#') || pitchToPlay.includes('b');
+      const accidental = hasAccidental ? pitchToPlay.charAt(1) : '';
+      const octave = parseInt(pitchToPlay.slice(hasAccidental ? -1 : -1));
+      
+      // Adjust octave based on clef change
+      let newOctave = octave;
+      if (originalClef === 'treble' && effectiveClef === 'bass') {
+        newOctave = octave - 2; // Move down two octaves for treble to bass
+      } else if (originalClef === 'bass' && effectiveClef === 'treble') {
+        newOctave = octave + 2; // Move up two octaves for bass to treble
+      }
+      
+      // Reconstruct the pitch with the new octave
+      pitchToPlay = `${noteLetter}${accidental}${newOctave}`;
+      console.log(`🎵 Adjusted pitch for clef change: "${noteToPlay.pitch}" → "${pitchToPlay}"`);
     }
+  }
+  
+  // Handle key signature changes
+  const effectiveKey = getEffectiveKeySignatureAtPosition(noteToPlay.position * 25);
+  const globalKey = keySignature.value;
+  
+  console.log(`🔍 PLAYBACK: Position ${noteToPlay.position}, Stored: "${pitchToPlay}", Global: ${globalKey}, Effective: ${effectiveKey}`);
+  
+  // Always get the natural form first
+  const naturalPitch = reverseKeySignature(pitchToPlay, globalKey);
+  
+  // Then apply the effective key signature
+  const convertedPitch = getModifiedPitchForKeySignature(naturalPitch, false, noteToPlay.position);
+  
+  if (convertedPitch !== pitchToPlay) {
+    console.log(`🎵 Applied effective key: "${pitchToPlay}" → "${convertedPitch}" (${effectiveKey})`);
+    pitchToPlay = convertedPitch;
+  } else if (effectiveKey !== globalKey) {
+    console.log(`🎵 Key change keeps note natural: "${pitchToPlay}" stays "${convertedPitch}" (${effectiveKey} has no ${pitchToPlay.charAt(0)} accidental)`);
   }
 
   // Use custom duration for tied notes, otherwise use original duration
@@ -6941,6 +6845,105 @@ const getTieSlurColor = (tieSlur: TieSlur): string => {
   return tieSlur.type === 'tie' ? '#2196F3' : '#4CAF50';
 };
 
+// Add clef change state and functions
+const isAddingClefChange = ref(false);
+const newClef = ref<'treble' | 'bass'>('treble');
+const clefChanges = ref<ClefChange[]>([]);
+
+// Add this function to toggle clef change mode
+const toggleClefChangeMode = () => {
+  isAddingClefChange.value = !isAddingClefChange.value;
+  // Reset other modes
+  isInsertingSpace.value = false;
+  isDeletingSpace.value = false;
+  isSelectingRange.value = false;
+  isPasting.value = false;
+  isCreatingTieSlur.value = false;
+  tieSlurStartNote.value = null;
+  isAddingKeySignatureChange.value = false;
+  isAddingTimeSignatureChange.value = false;
+};
+
+// Add this function to remove a clef change
+const removeClefChange = (changeId: string) => {
+  if (readOnlyMode.value) return;
+
+  const index = clefChanges.value.findIndex(change => change.id === changeId);
+  if (index !== -1) {
+    const change = clefChanges.value[index];
+    if (confirm(`Remove clef change to ${change.clef} clef at measure ${change.measure}?`)) {
+      clefChanges.value.splice(index, 1);
+      saveToLocalStorage();
+      console.log(`Removed clef change at measure ${change.measure}`);
+    }
+  }
+};
+
+// Add this function to add a clef change
+const addClefChange = (event: MouseEvent, staffId: string) => {
+  if (readOnlyMode.value || !isAddingClefChange.value) return;
+
+  const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX - staffRect.left;
+  
+  // Calculate which measure was clicked
+  const measureWidth = measureWidthByTimeSignature.value;
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20;
+  
+  const relativePosition = x - initialPosition;
+  const measureNumber = Math.floor(relativePosition / measureWidth) + 1;
+  
+  // Don't allow clef change in measure 1 (use staff clef setting instead)
+  if (measureNumber < 2) {
+    alert('Clef changes cannot be placed in measure 1. Use the staff clef setting instead.');
+    return;
+  }
+  
+  // Check if there's already a clef change at this measure for this staff
+  const existingChange = clefChanges.value.find(change => 
+    change.measure === measureNumber && change.staffId === staffId
+  );
+  
+  if (existingChange) {
+    // Update existing change
+    console.log(`🔄 Updating existing clef change at measure ${measureNumber}: ${existingChange.clef} → ${newClef.value}`);
+    existingChange.clef = newClef.value;
+  } else {
+    // Create new change
+    const newChange: ClefChange = {
+      id: generateId(),
+      measure: measureNumber,
+      clef: newClef.value,
+      position: initialPosition + ((measureNumber - 1) * measureWidth) + 5,
+      staffId: staffId
+    };
+    console.log(`➕ Creating NEW clef change: ${newClef.value} at measure ${measureNumber}, position ${newChange.position}`);
+    clefChanges.value.push(newChange);
+  }
+  
+  // Sort clef changes by measure
+  clefChanges.value.sort((a, b) => a.measure - b.measure);
+  
+  // Exit clef change mode
+  isAddingClefChange.value = false;
+  saveToLocalStorage();
+  
+  console.log(`Added clef change to ${newClef.value} at measure ${measureNumber}`);
+};
+
+// Add this function to get the effective clef at a specific position for a staff
+const getEffectiveClefAtPosition = (position: number, staffId: string): 'treble' | 'bass' => {
+  const staff = staves.value.find(s => s.id === staffId);
+  if (!staff) return 'treble';
+
+  // Find the most recent clef change at or before this position
+  const applicableChanges = clefChanges.value
+    .filter(change => change.staffId === staffId && change.position <= position)
+    .sort((a, b) => b.position - a.position);
+
+  return applicableChanges.length > 0 ? applicableChanges[0].clef : staff.clef;
+};
 
 </script>
 
@@ -7169,6 +7172,7 @@ const getTieSlurColor = (tieSlur: TieSlur): string => {
   z-index: 15;
   pointer-events: all;
   min-width: 60px;
+  transform: translateX(70px); /* Move key changes to the right of clef changes */
 }
 
 .key-signature-change.clickable {
@@ -7256,5 +7260,109 @@ const getTieSlurColor = (tieSlur: TieSlur): string => {
   transition: none; /* Prevent animation lag during scrolling */
 }
 
+/* Clef change button styling */
+.clef-change-btn {
+  padding: 8px 16px;
+  background-color: #9C27B0;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.clef-change-btn.active {
+  background-color: #7B1FA2;
+}
+
+.clef-change-btn:hover {
+  opacity: 0.9;
+}
+
+.clef-change-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.clef-change-controls select {
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.clef-change-info {
+  color: #666;
+  font-style: italic;
+}
+
+/* Clef change visual styling */
+.clef-change {
+  position: absolute;
+  top: 20px; /* Position above the staff */
+  left: 0;
+  z-index: 15;
+  pointer-events: all;
+  min-width: 60px;
+}
+
+.clef-change.clickable {
+  cursor: pointer;
+}
+
+.clef-change-marker {
+  background: linear-gradient(135deg, #9C27B0, #BA68C8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  border: 2px solid #9C27B0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 50px;
+}
+
+.clef-change-icon {
+  font-size: 16px;
+  margin-bottom: 2px;
+}
+
+.clef-change-text {
+  font-size: 9px;
+  line-height: 1;
+}
+
+.clef-change.clickable:hover .clef-change-marker {
+  transform: scale(1.05);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+}
+
+.clef-change.clickable:hover::after {
+  content: '×';
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  font-size: 16px;
+  color: #f44336;
+  background: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  pointer-events: none;
+  font-weight: bold;
+}
 
 </style>

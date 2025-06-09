@@ -76,6 +76,14 @@ export interface TimeSignatureChange {
   position: number;
 }
 
+export interface ClefChange {
+  id: string;
+  measure: number;
+  clef: 'treble' | 'bass';
+  position: number;
+  staffId: string;
+}
+
 export interface CompositionData {
   id: string;
   name: string;
@@ -90,6 +98,7 @@ export interface CompositionData {
   tiesSlurs?: TieSlur[];
   keySignatureChanges?: KeySignatureChange[];
   timeSignatureChanges?: TimeSignatureChange[];
+  clefChanges?: ClefChange[];
   activeVoiceId?: string;
   staffWidth?: number;
   selectedDuration?: string;
