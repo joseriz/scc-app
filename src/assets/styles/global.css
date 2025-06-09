@@ -2085,7 +2085,7 @@
   /* Add measure number styling */
   .measure-number {
     position: absolute;
-    top: 75px; /* Position above the staff */
+    top: -25px; /* Position above each staff */
     left: -8px; /* Center with the barline */
     font-size: 12px;
     color: #666;

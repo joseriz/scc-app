@@ -321,8 +321,8 @@
                   </div>
                 </template>
 
-                <!-- Add measure number (only show if showMeasureNumbers is true and on the first staff) -->
-                <div v-if="staveIndex === 0 && showMeasureNumbers && barline.measureNumber > 0" class="measure-number">
+                <!-- Add measure number (only show if showMeasureNumbers is true) -->
+                <div v-if="showMeasureNumbers && barline.measureNumber > 0" class="measure-number">
                   {{ barline.measureNumber }}
                 </div>
               </div>
@@ -1528,7 +1528,7 @@ const getModifiedPitchForKeySignature = (pitch: string, isExplicitNatural = fals
 };
 
 // Refine the playNoteSound function for robustness
-const playNoteSound = (pitch: string, duration = "8n", isDotted = false, volumePercent = 100, explicitNatural = false, isTriplet = false, position?: number) => {
+const playNoteSound = (pitch: string, duration = "8n", isDotted = false, volumePercent = 100, explicitNatural = false, isTriplet = false, position?: number, durationModifier = 1.0) => {
   let pitchToPlay = pitch;
   let noteDuration = duration;
   
@@ -1581,10 +1581,13 @@ const playNoteSound = (pitch: string, duration = "8n", isDotted = false, volumeP
       }
       
       // Then apply dotted timing
-    if (isDotted) {
-      durationInSeconds *= 1.5;
+      if (isDotted) {
+        durationInSeconds *= 1.5;
+      }
     }
-    }
+    
+    // Apply duration modifier (for slurred notes)
+    durationInSeconds *= durationModifier;
     
     if (durationInSeconds <= 0) {
       durationInSeconds = 0.5;
@@ -1598,8 +1601,6 @@ const playNoteSound = (pitch: string, duration = "8n", isDotted = false, volumeP
     // Convert volumePercent (0-100) to velocity (0.0-1.0)
     // Ensure velocity is clamped between 0 and 1.
     const velocity = Math.max(0, Math.min(1, volumePercent / 100));
-
-
 
     // Use the piano synth to play the note if available, otherwise use basic synth
     if (pianoSynth && pianoSynth.loaded) {
@@ -2725,7 +2726,7 @@ const loadComposition = (compositionId) => {
               return restOfNote;
             }),
             active: vl.active || false, // Ensure active is boolean
-            volume: vl.volume !== undefined ? vl.volume : 100, // Load volume, default to 100%
+            volume: vl.volume !== undefined ? vl.volume : 100, // Load volume, default to 100% for imported old flat notes
           });
         });
       } else if (compositionToLoad.notes && compositionToLoad.notes.length > 0) {
@@ -3757,21 +3758,46 @@ const getTempoForMeasure = (measureNumber: number): number => {
 };
 
 // Function to check if a note is tied and get its total duration including tied notes
-const getTotalTiedDuration = (note: NoteWithVoiceInfo): number => {
+const getTotalTiedDuration = (note: NoteWithVoiceInfo, processedNotes = new Set<string>()): number => {
+  // Prevent infinite recursion by tracking processed notes
+  if (processedNotes.has(note.id)) return 0;
+  processedNotes.add(note.id);
+
   const measureNumber = getNotesMeasure(note);
   let totalDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet, measureNumber);
   
-  // Find all ties starting from this note
-  const ties = tiesSlurs.value.filter(ts => 
+  // Find all ties connected to this note (both starting and ending)
+  const tiesFromThis = tiesSlurs.value.filter(ts => 
     ts.type === 'tie' && 
     ts.startNoteId === note.id
   );
   
-  // Recursively add durations of tied notes
-  ties.forEach(tie => {
-    const tiedNote = allVisibleNotes.value.find(n => n.id === tie.endNoteId);
-    if (tiedNote) {
-      totalDuration += getTotalTiedDuration(tiedNote);
+  const tiesToThis = tiesSlurs.value.filter(ts => 
+    ts.type === 'tie' && 
+    ts.endNoteId === note.id
+  );
+
+  // Process ties starting from this note
+  tiesFromThis.forEach(tie => {
+    const nextNote = allVisibleNotes.value.find(n => n.id === tie.endNoteId);
+    if (nextNote && nextNote.pitch === note.pitch) {
+      // Add duration of the next note in the tie chain
+      const nextNoteMeasure = getNotesMeasure(nextNote);
+      totalDuration += getNoteDurationInBeats(nextNote.duration, nextNote.dotted, nextNote.triplet, nextNoteMeasure);
+      // Recursively add durations of any subsequent tied notes
+      totalDuration += getTotalTiedDuration(nextNote, processedNotes);
+    }
+  });
+
+  // Process ties ending at this note
+  tiesToThis.forEach(tie => {
+    const prevNote = allVisibleNotes.value.find(n => n.id === tie.startNoteId);
+    if (prevNote && prevNote.pitch === note.pitch && !processedNotes.has(prevNote.id)) {
+      // Add duration of the previous note in the tie chain
+      const prevNoteMeasure = getNotesMeasure(prevNote);
+      totalDuration += getNoteDurationInBeats(prevNote.duration, prevNote.dotted, prevNote.triplet, prevNoteMeasure);
+      // Recursively add durations of any previous tied notes
+      totalDuration += getTotalTiedDuration(prevNote, processedNotes);
     }
   });
   
@@ -3780,10 +3806,32 @@ const getTotalTiedDuration = (note: NoteWithVoiceInfo): number => {
 
 // Function to check if a note should be silent (it's the end of a tie)
 const isNoteTiedFrom = (note: NoteWithVoiceInfo): boolean => {
-  return tiesSlurs.value.some(ts => 
+  // Find any tie that ends at this note
+  const tie = tiesSlurs.value.find(ts => 
     ts.type === 'tie' && 
     ts.endNoteId === note.id
   );
+  
+  if (!tie) return false;
+  
+  // Find the start note of the tie
+  const startNote = allVisibleNotes.value.find(n => n.id === tie.startNoteId);
+  if (!startNote || startNote.pitch !== note.pitch) return false;
+  
+  // Check if the notes are consecutive in their voice
+  const startPos = Math.min(note.position, startNote.position);
+  const endPos = Math.max(note.position, startNote.position);
+  
+  // Look for any notes between these positions in the same voice
+  const hasNotesBetween = allVisibleNotes.value.some(n => 
+    n.voiceId === note.voiceId && // Only check notes in the same voice
+    n.position > startPos && 
+    n.position < endPos && 
+    n.type === 'note'
+  );
+  
+  // Only silence the note if it's part of a tie with the same pitch
+  return !hasNotesBetween;
 };
 
 // Function to get the time signature duration in quarter note beats
@@ -6197,14 +6245,14 @@ const handleRangeSelection = (event: MouseEvent, staffId: string) => {
   }
 };
 
-// Add function to get selected notes
-const getSelectedNotes = (): NoteWithVoiceInfo[] => {
-  if (!selectionStart.value || !selectionEnd.value) return [];
+// Add function to get selected notes and related elements
+const getSelectedNotes = (): { notes: NoteWithVoiceInfo[]; tiesSlurs: TieSlur[]; clefChanges: ClefChange[]; } => {
+  if (!selectionStart.value || !selectionEnd.value) return { notes: [], tiesSlurs: [], clefChanges: [] };
 
   // Only select notes if the selection starts and ends on the same staff
   if (selectionStart.value.staffId !== selectionEnd.value.staffId) {
     alert('Selection must be within the same staff');
-    return [];
+    return { notes: [], tiesSlurs: [], clefChanges: [] };
   }
 
   const startPos = Math.min(selectionStart.value.position, selectionEnd.value.position);
@@ -6234,25 +6282,53 @@ const getSelectedNotes = (): NoteWithVoiceInfo[] => {
     selectedNotes = [...selectedNotes, ...notesInRange];
   });
 
-  return selectedNotes;
+  // Get all ties and slurs that involve the selected notes
+  const selectedTiesSlurs = tiesSlurs.value.filter(ts => {
+    const startNote = selectedNotes.find(n => n.id === ts.startNoteId);
+    const endNote = selectedNotes.find(n => n.id === ts.endNoteId);
+    // Include if both notes are in the selection
+    return startNote && endNote;
+  }).map(ts => ({
+    ...ts,
+    originalStartNoteId: ts.startNoteId,
+    originalEndNoteId: ts.endNoteId
+  }));
+
+  // Get clef changes within the selected range
+  const selectedClefChanges = clefChanges.value
+    .filter(cc => cc.staffId === targetStaffId && cc.position >= startPos && cc.position <= endPos)
+    .map(cc => ({
+      ...cc,
+      relativePosition: cc.position - startPos
+    }));
+
+  return {
+    notes: selectedNotes,
+    tiesSlurs: selectedTiesSlurs,
+    clefChanges: selectedClefChanges
+  };
 };
 
 // Add these refs for lyrics-only copy/paste
 const isLyricsCopyMode = ref(false);
 const copiedLyrics = ref<Array<{ position: number; lyric: string; }>>([]);
 
-// Modify the copySelectedNotes function to handle lyrics-only copying
+// Add refs for copied elements
+const copiedTiesSlurs = ref<(TieSlur & { originalStartNoteId: string; originalEndNoteId: string; })[]>([]);
+const copiedClefChanges = ref<(ClefChange & { relativePosition: number; })[]>([]);
+
+// Modify the copySelectedNotes function to handle lyrics-only copying and additional elements
 const copySelectedNotes = (lyricsOnly = false) => {
-  const selectedNotes = getSelectedNotes();
-  if (selectedNotes.length === 0) {
+  const selected = getSelectedNotes();
+  if (selected.notes.length === 0) {
     alert('No notes selected');
     return;
   }
 
   if (lyricsOnly) {
     // Store only the positions and lyrics
-    const minPosition = Math.min(...selectedNotes.map(n => n.position));
-    copiedLyrics.value = selectedNotes
+    const minPosition = Math.min(...selected.notes.map(n => n.position));
+    copiedLyrics.value = selected.notes
       .filter(note => note.lyric) // Only copy notes that have lyrics
       .map(note => ({
         position: note.position - minPosition, // Store relative position
@@ -6268,12 +6344,30 @@ const copySelectedNotes = (lyricsOnly = false) => {
 
     alert(`Copied ${copiedLyrics.value.length} lyrics. Click to paste or press Escape to cancel.`);
   } else {
-    // Original note copying logic
-    const minPosition = Math.min(...selectedNotes.map(n => n.position));
-    copiedNotes.value = selectedNotes.map(note => ({
+    // Copy notes with relative positions
+    const minPosition = Math.min(...selected.notes.map(n => n.position));
+    copiedNotes.value = selected.notes.map(note => ({
       ...note,
       relativePosition: note.position - minPosition
-    } as NoteWithVoiceInfo & { relativePosition: number }));
+    }));
+
+    // Copy ties and slurs with all required properties
+    const selectionStaffId = selectionStart.value?.staffId || '';
+    copiedTiesSlurs.value = selected.tiesSlurs.map(ts => ({
+      ...ts,
+      originalStartNoteId: ts.startNoteId,
+      originalEndNoteId: ts.endNoteId,
+      staffId: selectionStaffId,
+      curvature: ts.curvature || 'above'
+    }));
+
+    // Copy clef changes with all required properties
+    copiedClefChanges.value = selected.clefChanges.map(cc => ({
+      ...cc,
+      relativePosition: cc.position - minPosition,
+      measure: Math.floor(cc.position / 4), // Calculate measure number based on position
+      staffId: selectionStaffId
+    }));
 
     // Clear selection and enable paste mode
     selectionStart.value = null;
@@ -6282,7 +6376,7 @@ const copySelectedNotes = (lyricsOnly = false) => {
     isPasting.value = true;
     isLyricsCopyMode.value = false;
 
-    alert(`Copied ${selectedNotes.length} notes. Click to paste or press Escape to cancel.`);
+    alert(`Copied ${selected.notes.length} notes, ${selected.tiesSlurs.length} ties/slurs, and ${selected.clefChanges.length} clef changes. Click to paste or press Escape to cancel.`);
   }
 };
 
@@ -6348,13 +6442,19 @@ const pasteNotes = (event: MouseEvent, targetStaffId: string) => {
       return;
     }
 
+    // Create a map to track old note IDs to new note IDs for ties/slurs
+    const noteIdMap = new Map<string, string>();
+
     // Add all notes to the active voice layer
     copiedNotes.value.forEach(note => {
+      const newId = generateId();
+      noteIdMap.set(note.id, newId);
+      
       const newNote = {
         ...note,
-        id: generateId(),
-        // For exact positioning where clicked
-        position: Math.floor(pastePosition) + (note.position - Math.floor(note.position)),
+        id: newId,
+        // Use the relative position from the paste point
+        position: pastePosition + (note.relativePosition || 0),
         voiceId: activeVoiceLayer.id,
         staffId: activeVoiceLayer.staffId,
         staffClef: targetStaff.clef,
@@ -6367,9 +6467,40 @@ const pasteNotes = (event: MouseEvent, targetStaffId: string) => {
       activeVoiceLayer.notes.push(newNote);
     });
 
+    // Add ties and slurs with updated note IDs
+    copiedTiesSlurs.value.forEach(ts => {
+      const newStartNoteId = noteIdMap.get(ts.originalStartNoteId);
+      const newEndNoteId = noteIdMap.get(ts.originalEndNoteId);
+      
+      if (newStartNoteId && newEndNoteId) {
+        tiesSlurs.value.push({
+          id: generateId(),
+          type: ts.type,
+          startNoteId: newStartNoteId,
+          endNoteId: newEndNoteId,
+          staffId: targetStaffId,
+          curvature: ts.curvature || 'above'
+        });
+      }
+    });
+
+    // Add clef changes
+    copiedClefChanges.value.forEach(cc => {
+      const newPosition = pastePosition + cc.relativePosition;
+      clefChanges.value.push({
+        id: generateId(),
+        staffId: targetStaffId,
+        position: newPosition,
+        clef: cc.clef,
+        measure: Math.floor(newPosition / 4) // Calculate measure number based on position
+      });
+    });
+
     // Exit paste mode
     isPasting.value = false;
     copiedNotes.value = [];
+    copiedTiesSlurs.value = [];
+    copiedClefChanges.value = [];
     saveToLocalStorage();
   }
 };
@@ -6618,8 +6749,6 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
     
     // If the clef has changed, we need to adjust the pitch
     if (effectiveClef !== originalClef) {
-
-      
       // Extract the note letter and octave
       const noteLetter = pitchToPlay.charAt(0);
       const hasAccidental = pitchToPlay.includes('#') || pitchToPlay.includes('b');
@@ -6659,6 +6788,15 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
     console.log(`🎵 Key change keeps note natural: "${pitchToPlay}" stays "${convertedPitch}" (${effectiveKey} has no ${pitchToPlay.charAt(0)} accidental)`);
   }
 
+  // Check if this note is part of a slur
+  const slur = tiesSlurs.value.find(ts => 
+    ts.type === 'slur' && 
+    (ts.startNoteId === noteToPlay.id || ts.endNoteId === noteToPlay.id)
+  );
+
+  // Check if this is the last note in a slur (for slightly softer volume)
+  const isLastInSlur = slur && slur.endNoteId === noteToPlay.id;
+
   // Use custom duration for tied notes, otherwise use original duration
   if (totalTiedDuration !== getNoteDurationInBeats(noteToPlay.duration, noteToPlay.dotted, noteToPlay.triplet)) {
     // This note is tied - play for the total tied duration
@@ -6666,18 +6804,21 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
       pitchToPlay,
       `${totalDurationInSeconds}s`, // Use seconds duration for tied notes
       false, // Don't apply dotted modifier as it's already included in total duration
-      currentVoiceVolumePercent,
-      noteToPlay.explicitNatural
+      isLastInSlur ? currentVoiceVolumePercent * 0.8 : currentVoiceVolumePercent, // Slightly softer for last note in slur
+      noteToPlay.explicitNatural,
+      noteToPlay.triplet,
+      noteToPlay.position
     );
     return { isPlaying: true, totalDurationMs };
   } else {
-    // This note is not tied - play normally
+        // This note is not tied - play normally
     const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
+      
     playNoteSound(
       pitchToPlay,
       toneDuration,
       noteToPlay.dotted,
-      currentVoiceVolumePercent,
+      isLastInSlur ? currentVoiceVolumePercent * 0.8 : currentVoiceVolumePercent, // Slightly softer for last note in slur
       noteToPlay.explicitNatural,
       noteToPlay.triplet,
       noteToPlay.position
