@@ -43,10 +43,16 @@
         <label for="time-signature">Time:</label>
         <div class="custom-select compact">
           <select :disabled="readOnlyMode" id="time-signature" :value="timeSignature" @change="onTimeSignatureChange">
-            <option value="4/4">4/4</option>
-            <option value="3/4">3/4</option>
+            <option value="4/4">4/4 (Common Time)</option>
+            <option value="2/2">2/2 (Cut Time)</option>
             <option value="2/4">2/4</option>
+            <option value="3/4">3/4</option>
+            <option value="3/8">3/8</option>
+            <option value="5/4">5/4</option>
+            <option value="5/8">5/8</option>
             <option value="6/8">6/8</option>
+            <option value="7/4">7/4</option>
+            <option value="7/8">7/8</option>
             <option value="9/8">9/8</option>
             <option value="12/8">12/8</option>
           </select>

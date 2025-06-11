@@ -48,6 +48,8 @@
           </button>
           <button v-if="staves.length > 1 && !readOnlyMode" @click="removeStaff(stave.id)"
             class="remove-staff-btn">Remove Staff</button>
+          <button v-if="!readOnlyMode" @click="duplicateStaff(stave)" 
+            class="duplicate-staff-btn">Duplicate Staff</button>
         </div>
 
         <!-- Update the space controls in the template -->
@@ -134,12 +136,15 @@
                 <option value="2">2</option>
                 <option value="3">3</option>
                 <option value="4">4</option>
+                <option value="5">5</option>
                 <option value="6">6</option>
+                <option value="7">7</option>
                 <option value="9">9</option>
                 <option value="12">12</option>
               </select>
               <span>/</span>
               <select v-model="newTimeSignatureDenominator" class="time-sig-select">
+                <option value="2">2</option>
                 <option value="4">4</option>
                 <option value="8">8</option>
               </select>
@@ -595,7 +600,8 @@
 
     <PlaybackSettings v-model:playbackStartMeasure="playbackStartMeasure"
       v-model:playbackEndMeasure="playbackEndMeasure" :maxMeasures="barlines.length"
-      v-model:autoScrollToPlayingNote="autoScrollToPlayingNote" v-model:showMeasureNumbers="showMeasureNumbers" />
+      v-model:autoScrollToPlayingNote="autoScrollToPlayingNote" v-model:showMeasureNumbers="showMeasureNumbers"
+      v-model:lyricsEditMode="lyricsEditMode" />
 
     <!-- Mobile-optimized note controls with tabs -->
     <div class="mobile-tabs">
@@ -619,7 +625,8 @@
           :usesFallbackSymbols="usesFallbackSymbols" v-model:selectedAccidental="selectedAccidental"
           :availableAccidentals="availableAccidentals" v-model:selectedOctave="selectedOctave"
           @toggleDottedNote="toggleDottedNote" @toggleTripletNote="toggleTripletNote" />
-        <LyricsControls v-model="currentLyric" :selectedNoteId="selectedNoteId" @setLyric="setLyricForNoteHandler" />
+        <LyricsControls v-model="currentLyric" :selectedNoteId="selectedNoteId" @setLyric="setLyricForNoteHandler"
+          :lyricsEditMode="lyricsEditMode" />
       </div>
       <div v-else class="read-only-message-container">
         <div class="read-only-message">
@@ -3730,9 +3737,8 @@ const getNoteDurationInBeats = (duration: string, isDotted = false, isTriplet = 
     // Convert beats based on time signature denominator
     if (timeSignature.denominator === 8) {
       beats *= 0.5; // Convert to eighth note beats
-    } else if (timeSignature.denominator === 2) {
-      beats *= 2; // Convert to half note beats
     }
+    // We don't adjust for denominator === 2 (cut time) since we're already doubling the tempo
   }
   
   return beats;
@@ -3863,8 +3869,6 @@ const getTotalNoteDurationInMeasure = (measureNumber: number, voiceNotes: Import
       // Convert beats based on time signature denominator
       if (timeSignature.denominator === 8) {
         beats *= 0.5; // Convert to eighth note beats
-      } else if (timeSignature.denominator === 2) {
-        beats *= 2; // Convert to half note beats
       }
       
       return total + beats;
@@ -3875,8 +3879,6 @@ const getTotalNoteDurationInMeasure = (measureNumber: number, voiceNotes: Import
   // Convert total beats to quarter note beats for consistent comparison
   if (timeSignature.denominator === 8) {
     totalBeats *= 2; // Convert from eighth note beats to quarter note beats
-  } else if (timeSignature.denominator === 2) {
-    totalBeats *= 0.5; // Convert from half note beats to quarter note beats
   }
   
   return totalBeats;
@@ -4207,6 +4209,9 @@ const autoScrollToNote = (note: ImportedNote) => {
 
 // Add this ref for measure visibility
 const showMeasureNumbers = ref(true); // Default to shown
+
+// Add a ref for lyrics edit mode
+const lyricsEditMode = ref(false); // Default to disabled
 
 // Add a ref to track if playback is paused
 const isPaused = ref(false);
@@ -5585,6 +5590,107 @@ const initializeDefaultStaffAndVoice = () => {
     const activeV = voiceLayers.value.find(v => v.id === activeVoiceId.value);
     if (activeV) activeV.active = true;
   }
+};
+
+// Function to duplicate a staff with all its settings and notes
+const duplicateStaff = (staffToDuplicate: Stave) => {
+  if (readOnlyMode.value) {
+    console.log("Read-only mode active - can't duplicate staff");
+    return;
+  }
+
+  const newStaffId = generateId();
+  const newStaffOrder = staves.value.length;
+  
+  // Create new staff with copied settings
+  const newStaff = {
+    id: newStaffId,
+    clef: staffToDuplicate.clef,
+    order: newStaffOrder,
+    name: `${staffToDuplicate.name} (Copy)`,
+    isCollapsed: false
+  };
+  staves.value.push(newStaff);
+  
+  // Find and duplicate all voice layers associated with the original staff
+  const originalVoiceLayers = voiceLayers.value.filter(vl => vl.staffId === staffToDuplicate.id);
+  originalVoiceLayers.forEach(originalVoice => {
+    const newVoiceId = generateId();
+    const newVoice = {
+      ...originalVoice,
+      id: newVoiceId,
+      staffId: newStaffId,
+      name: `${originalVoice.name} (Copy)`,
+      // Deep copy notes and assign new IDs
+      notes: originalVoice.notes.map(note => ({
+        ...note,
+        id: generateId(),
+        voiceId: newVoiceId
+      }))
+    };
+    voiceLayers.value.push(newVoice);
+  });
+
+  // Duplicate any staff-specific changes
+  const duplicateChanges = (changes: any[], staffId: string) => {
+    const staffChanges = changes.filter(change => change.staffId === staffId);
+    return staffChanges.map(change => ({
+      ...change,
+      id: generateId(),
+      staffId: newStaffId
+    }));
+  };
+
+  // Duplicate key signature changes
+  const newKeySignatureChanges = duplicateChanges(keySignatureChanges.value, staffToDuplicate.id);
+  keySignatureChanges.value.push(...newKeySignatureChanges);
+
+  // Duplicate time signature changes
+  const newTimeSignatureChanges = duplicateChanges(timeSignatureChanges.value, staffToDuplicate.id);
+  timeSignatureChanges.value.push(...newTimeSignatureChanges);
+
+  // Duplicate clef changes
+  const newClefChanges = duplicateChanges(clefChanges.value, staffToDuplicate.id);
+  clefChanges.value.push(...newClefChanges);
+
+  // Create a mapping of old note IDs to new note IDs for ties/slurs
+  const noteIdMapping = new Map();
+  voiceLayers.value.forEach(voice => {
+    if (voice.staffId === newStaffId) {
+      // Find the original voice this was copied from
+      const originalVoice = originalVoiceLayers.find(ov => ov.name === voice.name.replace(' (Copy)', ''));
+      if (originalVoice) {
+        // Map original note IDs to new note IDs
+        originalVoice.notes.forEach((originalNote, index) => {
+          noteIdMapping.set(originalNote.id, voice.notes[index].id);
+        });
+      }
+    }
+  });
+
+  // Duplicate ties and slurs
+  const staffTiesSlurs = tiesSlurs.value.filter(ts => ts.staffId === staffToDuplicate.id);
+  const newTiesSlurs = staffTiesSlurs.map(ts => ({
+    id: generateId(),
+    type: ts.type,
+    startNoteId: noteIdMapping.get(ts.startNoteId),
+    endNoteId: noteIdMapping.get(ts.endNoteId),
+    staffId: newStaffId,
+    curvature: ts.curvature
+  })).filter(ts => ts.startNoteId && ts.endNoteId); // Only keep ties/slurs where both notes were mapped
+  tiesSlurs.value.push(...newTiesSlurs);
+
+  // Make the new staff active
+  activeStaffId.value = newStaffId;
+  
+  // Make the first voice of the new staff active
+  const firstNewVoice = voiceLayers.value.find(vl => vl.staffId === newStaffId);
+  if (firstNewVoice) {
+    switchActiveVoice(firstNewVoice.id);
+  }
+
+  console.log(`Duplicated staff ${staffToDuplicate.id} to new staff ${newStaffId}`);
+  saveToLocalStorage();
 };
 
 // Function to add a new staff
@@ -7493,6 +7599,21 @@ const getEffectiveClefAtPosition = (position: number, staffId: string): 'treble'
   outline-offset: 3px;
   border-radius: 4px;
   box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
+}
+
+.duplicate-staff-btn {
+  background-color: #4a90e2;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 8px;
+  font-size: 0.9em;
+}
+
+.duplicate-staff-btn:hover {
+  background-color: #357abd;
 }
 
 </style>

@@ -51,6 +51,16 @@
         />
         <label for="show-measures-input">Show measure numbers</label>
       </div>
+
+      <div class="lyrics-edit-toggle">
+        <input
+          type="checkbox"
+          id="lyrics-edit-mode-input"
+          :checked="lyricsEditMode"
+          @change="$emit('update:lyricsEditMode', ($event.target as HTMLInputElement).checked)"
+        />
+        <label for="lyrics-edit-mode-input">Lyrics Edit Mode</label>
+      </div>
     </div>
   </div>
 </template>
@@ -64,6 +74,7 @@ defineProps<{
   maxMeasures: number;
   autoScrollToPlayingNote: boolean;
   showMeasureNumbers: boolean;
+  lyricsEditMode: boolean;
 }>();
 
 defineEmits<{
@@ -71,6 +82,7 @@ defineEmits<{
   (e: 'update:playbackEndMeasure', value: number): void;
   (e: 'update:autoScrollToPlayingNote', value: boolean): void;
   (e: 'update:showMeasureNumbers', value: boolean): void;
+  (e: 'update:lyricsEditMode', value: boolean): void;
 }>();
 </script>
 
@@ -137,7 +149,8 @@ defineEmits<{
 }
 
 .auto-scroll-toggle,
-.measure-visibility-toggle {
+.measure-visibility-toggle,
+.lyrics-edit-toggle {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -145,7 +158,8 @@ defineEmits<{
 }
 
 .auto-scroll-toggle input[type="checkbox"],
-.measure-visibility-toggle input[type="checkbox"] {
+.measure-visibility-toggle input[type="checkbox"],
+.lyrics-edit-toggle input[type="checkbox"] {
   margin: 0;
   width: 16px;
   height: 16px;
