@@ -1,6 +1,9 @@
 <template>
   <div class="app-header">
-    <img src="@/assets/st-cecilia-logo.png" alt="St Cecilia's Songbook" class="app-logo">
+    <div class="header-main">
+      <img src="@/assets/st-cecilia-logo.png" alt="St Cecilia's Songbook" class="app-logo">
+      <NavBar />
+    </div>
 
     <!-- Musical settings in a compact row -->
     <div class="musical-settings">
@@ -59,28 +62,57 @@
           <div class="select-icon">▼</div>
         </div>
       </div>
+
+      <div class="setting-item">
+        <label for="tempo">Tempo:</label>
+        <div class="tempo-input">
+          <input
+            type="number"
+            id="tempo"
+            v-model.number="localTempo"
+            min="40"
+            max="208"
+            step="1"
+            @input="updateTempo"
+          />
+          <span class="tempo-unit">BPM</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits } from 'vue';
+import { defineProps, defineEmits, ref, watch } from 'vue';
+import NavBar from './NavBar.vue';
 
-defineProps<{
+const props = defineProps<{
   readOnlyMode: boolean;
   selectedClef: string;
   keySignature: string;
   timeSignature: string;
+  tempo: number;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:selectedClef', value: string): void;
   (e: 'update:keySignature', value: string): void;
   (e: 'update:timeSignature', value: string): void;
+  (e: 'update:tempo', value: number): void;
   (e: 'clefChange', value: string): void; // For immediate handling if needed
   (e: 'keySignatureChange', value: string): void; // For immediate handling
   (e: 'timeSignatureChange', value: string): void; // For immediate handling
 }>();
+
+const localTempo = ref(props.tempo);
+
+watch(() => props.tempo, (newValue) => {
+  localTempo.value = newValue;
+});
+
+const updateTempo = () => {
+  emit('update:tempo', localTempo.value);
+};
 
 const onClefChange = (event: Event) => {
   const target = event.target as HTMLSelectElement;
@@ -105,18 +137,24 @@ const onTimeSignatureChange = (event: Event) => {
 /* Styles specific to AppHeader, can be copied from global.css or NotationEditorView.vue <style> block */
 .app-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 1rem;
   padding: 8px;
   background: linear-gradient(135deg, rgba(255,240,245,0.2), rgba(240,248,255,0.2));
   border-radius: 8px;
   margin-bottom: 10px;
 }
 
+.header-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
 .app-logo {
   height: 100px; /* As per global.css */
   width: auto;
-  margin-right: 15px; /* As per global.css */
 }
 
 .musical-settings {
@@ -181,20 +219,52 @@ const onTimeSignatureChange = (event: Event) => {
   color: #666; /* From global.css */
 }
 
+.tempo-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tempo-input input {
+  width: 60px;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.tempo-input input:hover {
+  border-color: #2196F3;
+}
+
+.tempo-input input:focus {
+  border-color: #2196F3;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.tempo-unit {
+  font-size: 14px;
+  color: #666;
+}
+
 @media (max-width: 600px) {
-  .app-header {
+  .header-main {
     flex-direction: column;
     align-items: center;
-    gap: 15px; /* From global.css */
+    gap: 1rem;
   }
+  
   .app-logo {
-    margin-right: 0;
-    margin-bottom: 10px; /* From global.css */
+    margin-bottom: 0;
   }
+  
   .musical-settings {
     justify-content: center;
     width: 100%;
   }
+  
   .setting-item {
     min-width: 45%;
     justify-content: center;

@@ -1,13 +1,14 @@
 <template>
   <div class="app">
-    <!-- <header>
-      <h1>Music Notation App</h1>
-    </header> -->
     <main>
       <RouterView />
     </main>
   </div>
 </template>
+
+<script setup>
+import { RouterView } from 'vue-router';
+</script>
 
 <style scoped>
 .app {
@@ -24,5 +25,9 @@ header {
 
 h1 {
   color: #2c3e50;
+}
+
+main {
+  margin-top: 1rem;
 }
 </style>

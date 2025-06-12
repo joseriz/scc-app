@@ -1,9 +1,9 @@
 <template>
   <!-- Add responsive meta tag -->
   <div class="notation-editor">
-    <AppHeader v-model:keySignature="keySignature" v-model:timeSignature="timeSignature" :readOnlyMode="readOnlyMode"
-      :selectedClef="staves.length > 0 ? staves[0].clef : 'treble'" @keySignatureChange="changeKeySignatureDirectly"
-      @timeSignatureChange="updateTimeSignature" />
+    <AppHeader v-model:keySignature="keySignature" v-model:timeSignature="timeSignature" v-model:tempo="tempo"
+      :readOnlyMode="readOnlyMode" :selectedClef="staves.length > 0 ? staves[0].clef : 'treble'"
+      @keySignatureChange="changeKeySignatureDirectly" @timeSignatureChange="updateTimeSignature" />
 
     <!-- Read-only toggle moved to the top -->
     <div class="read-only-toggle">
@@ -20,8 +20,6 @@
     <div @click="showHelp = true" class="floating-help-btn">
       ?
     </div>
-
-    <TempoControl v-model="tempo" />
 
     <!-- Button to add a new staff -->
     <div class="add-staff-controls" v-if="!readOnlyMode">
@@ -696,7 +694,6 @@ import * as Tone from 'tone';
 import { useNotationStore } from '@/stores/notation';
 import HelpGuide from '@/components/HelpGuide.vue';
 import AppHeader from '@/components/AppHeader.vue';
-import TempoControl from '@/components/TempoControl.vue';
 import PlaybackControls from '@/components/PlaybackControls.vue';
 import NoteInputControls from '@/components/NoteInputControls.vue';
 import SavedCompositionsPanel from '@/components/SavedCompositionsPanel.vue';
