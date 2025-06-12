@@ -961,6 +961,10 @@ interface Composition {
   chordSymbols?: ImportedChordSymbol[]; // Use aliased import
   activeVoiceId?: string;
   staffWidth?: number;
+  tiesSlurs?: TieSlur[];
+  keySignatureChanges?: KeySignatureChange[];
+  timeSignatureChanges?: TimeSignatureChange[];
+  clefChanges?: ClefChange[];
 }
 
 // Add window property declarations
@@ -3086,6 +3090,10 @@ const exportCurrentComposition = async () => {
       isDottedNote: isDottedNote.value,
       sections: sections.value ? JSON.parse(JSON.stringify(sections.value)) : [],
       sequenceItems: sequenceItems.value ? JSON.parse(JSON.stringify(sequenceItems.value)) : [],
+      tiesSlurs: JSON.parse(JSON.stringify(tiesSlurs.value)),
+      keySignatureChanges: JSON.parse(JSON.stringify(keySignatureChanges.value)),
+      timeSignatureChanges: JSON.parse(JSON.stringify(timeSignatureChanges.value)),
+      clefChanges: JSON.parse(JSON.stringify(clefChanges.value)),
     };
 
     if (exportOnlySelectedVoices.value) {
