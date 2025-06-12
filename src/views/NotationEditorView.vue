@@ -769,6 +769,9 @@ const getRandomColor = (): string => {
 // Default to one voice with a random color
 const voiceLayers = ref<VoiceLayer[]>([]); // Explicitly type voiceLayers
 
+// Store original volumes for muted voices
+const voiceVolumeBeforeMute = ref<Record<string, number>>({});
+
 // Track the currently active voice layer
 const activeVoiceId = ref(''); // Still defaults to the first voice
 
@@ -4865,7 +4868,21 @@ const setLyricForNoteHandler = (noteId: string, lyric: string) => {
 const updateVoiceLayerSelection = (voiceId: string, selected: boolean) => {
   const voice = voiceLayers.value.find(v => v.id === voiceId);
   if (voice) {
-    voice.selected = selected; // This is where the magic happens!
+    voice.selected = selected;
+    
+    if (selected) {
+      // Unmuting - restore the previous volume if it exists
+      if (voiceVolumeBeforeMute.value[voiceId] !== undefined) {
+        voice.volume = voiceVolumeBeforeMute.value[voiceId];
+        delete voiceVolumeBeforeMute.value[voiceId];
+      }
+    } else {
+      // Muting - store the current volume and set it to 0
+      voiceVolumeBeforeMute.value[voiceId] = voice.volume;
+      voice.volume = 0;
+    }
+    
+    saveToLocalStorage();
   }
 };
 
@@ -5857,13 +5874,7 @@ const cancelEditStaffName = (stave: Stave, event: Event) => {
 // existing code...
 
 const toggleStaffCollapse = (stave: Stave) => {
-  if (readOnlyMode.value) {
-    console.log("Read-only mode active - can't toggle staff collapse");
-    return; // Exit early if in read-only mode
-  }
-
   stave.isCollapsed = !stave.isCollapsed;
-  saveToLocalStorage(); // Save the change
 };
 
 // ... existing code ...
