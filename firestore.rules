@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /compositions/{compositionId} {
+      allow read: if 
+        // Public compositions can be read by anyone
+        resource.data.visibility == 'public' ||
+        // Private compositions can only be read by their owner
+        request.auth != null && (
+          resource.data.submittedBy == request.auth.uid ||
+          // Or if the user is in the sharedWith list
+          resource.data.visibility == 'shared' &&
+          resource.data.sharedWith[request.auth.email] != null
+        );
+        
+      allow create: if
+        // Must be authenticated
+        request.auth != null &&
+        // Required fields must be present and have correct types
+        request.resource.data.name is string &&
+        request.resource.data.id is string &&
+        request.resource.data.submittedBy == request.auth.uid &&
+        request.resource.data.submittedByEmail == request.auth.token.email;
+        
+      allow update: if
+        request.auth != null && (
+          // Owner can update
+          resource.data.submittedBy == request.auth.uid ||
+          // Or user has write permission in sharedWith
+          resource.data.visibility == 'shared' &&
+          resource.data.sharedWith[request.auth.email] != null &&
+          resource.data.sharedWith[request.auth.email].permission == 'write'
+        ) &&
+        // Ensure submittedBy and dateCreated are not modified
+        request.resource.data.submittedBy == resource.data.submittedBy &&
+        request.resource.data.dateCreated == resource.data.dateCreated;
+        
+      allow delete: if
+        // Only the owner can delete
+        request.auth != null && resource.data.submittedBy == request.auth.uid;
+    }
+  }
+} 

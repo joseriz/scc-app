@@ -24,7 +24,18 @@
     <!-- Button to add a new staff -->
     <div class="add-staff-controls" v-if="!readOnlyMode">
       <button @click="addNewStaff" class="add-staff-btn">Add New Staff</button>
+      <button @click="isSaveToCloudModalVisible = true" class="save-cloud-btn">Save to Cloud</button>
+      <button @click="isLoadFromCloudVisible = true" class="load-cloud-btn">Load from Cloud</button>
     </div>
+
+    <SaveToCloudModal v-if="isSaveToCloudModalVisible" @close="isSaveToCloudModalVisible = false"
+      @save="handleSaveToCloud" />
+
+    <CloudCompositionsBrowser 
+      v-if="isLoadFromCloudVisible" 
+      @load-composition="handleLoadFromCloud"
+      @close="isLoadFromCloudVisible = false"
+    />
 
     <!-- Staves container -->
     <div class="staves-wrapper">
@@ -706,6 +717,9 @@ import FirstTimeInstructionModal from '@/components/FirstTimeInstructionModal.vu
 import { useDebug } from '@/composables/useDebug';
 import SectionsPanel from '@/components/SectionsPanel.vue';
 import { generateId } from '@/utils/idGenerator'; // Make sure this import path is correct
+import SaveToCloudModal from '@/components/SaveToCloudModal.vue';
+import CloudCompositionsBrowser from '@/components/CloudCompositionsBrowser.vue';
+import { db, auth } from '@/firebase';
 
 // Import types
 import type {
@@ -724,6 +738,253 @@ import type {
 
 // Store
 const notationStore = useNotationStore();
+
+// Cloud Modal states
+const isSaveToCloudModalVisible = ref(false);
+const isLoadFromCloudVisible = ref(false);
+
+interface SaveDetails {
+  title: string;
+  author?: string;
+  arrangedBy?: string;
+  visibility: 'public' | 'private' | 'shared';
+  sharedWith?: Array<{ email: string; permission: 'read' | 'write' }>;
+}
+
+const handleSaveToCloud = (details: SaveDetails) => {
+  try {
+    // Set the composition name before preparing the data
+    compositionName.value = details.title;
+    
+    // Prepare the composition data (this will include the updated name)
+    let compositionData = prepareCompositionData();
+    
+    // Log the composition data for debugging with full details
+    console.log('Composition data before cloud save:', JSON.parse(JSON.stringify(compositionData)));
+    
+    // Create a clean version of the data for Firestore
+    // Get the current user
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('You must be logged in to save compositions');
+    }
+
+    const dataToSave = {
+      ...JSON.parse(JSON.stringify(compositionData)), // Deep clone to remove any non-serializable data
+      author: details.author || 'Anonymous',
+      arrangedBy: details.arrangedBy || null,
+      dateCreated: Date.now(),
+      lastModified: Date.now(),
+      visibility: details.visibility,
+      sharedWith: details.visibility === 'shared' ? details.sharedWith : [],
+      // Add user information
+      submittedBy: currentUser.uid,
+      submittedByEmail: currentUser.email,
+      submittedByName: currentUser.displayName,
+      modifiedBy: currentUser.uid,
+      modifiedByEmail: currentUser.email,
+      modifiedByName: currentUser.displayName
+    };
+    
+    // Log the final data being saved with full details
+    console.log('Data being saved to cloud:', JSON.parse(JSON.stringify(dataToSave)));
+    
+    // Validate the data structure
+    if (!dataToSave.id || !dataToSave.name) {
+      throw new Error('Missing required fields: id or name');
+    }
+    
+    if (!Array.isArray(dataToSave.staves)) {
+      throw new Error('Invalid staves data: expected an array');
+    }
+    
+    if (!Array.isArray(dataToSave.voiceLayers)) {
+      throw new Error('Invalid voiceLayers data: expected an array');
+    }
+
+    // Try to save to Firestore
+    db.collection('compositions').add(dataToSave).then((docRef) => {
+      console.log('Successfully saved to Firestore with ID:', docRef.id);
+      alert(`Composition saved successfully with ID: ${docRef.id}`);
+      isSaveToCloudModalVisible.value = false;
+    }).catch((error) => {
+      // Log the detailed error
+      console.error("Error saving to Firestore:", {
+        code: error.code,
+        message: error.message,
+        details: error
+      });
+      
+      // Provide a more helpful error message
+      let errorMessage = "Failed to save composition to cloud. ";
+      if (error.code === 'permission-denied') {
+        errorMessage += "You don't have permission to save compositions.";
+      } else if (error.code === 'invalid-argument') {
+        errorMessage += "The composition data contains invalid values.";
+      } else {
+        errorMessage += error.message || "Please try again.";
+      }
+      
+      alert(errorMessage);
+    });
+  } catch (error) {
+    // Log the detailed error
+    console.error("Error preparing composition data:", {
+      error,
+      stage: 'preparing'
+    });
+    
+    alert(`Failed to prepare composition data: ${error.message}`);
+  }
+};
+
+// Handle loading a composition from cloud
+const handleLoadFromCloud = (compositionToLoad: any) => {
+  try {
+    stopPlayback();
+
+    // Clear current state
+    voiceLayers.value = [];
+    staves.value = [];
+    chordSymbols.value = [];
+    sections.value = [];
+    sequenceItems.value = [];
+    timeSignatureChanges.value = [];
+    clefChanges.value = [];
+    keySignatureChanges.value = [];
+
+    // Set basic metadata
+    compositionName.value = compositionToLoad.name || 'Untitled';
+    tempo.value = Number(compositionToLoad.tempo) || 120;
+    keySignature.value = compositionToLoad.keySignature || 'C';
+    timeSignature.value = compositionToLoad.timeSignature || '4/4';
+
+    // Load time signature changes
+    if (compositionToLoad.timeSignatureChanges) {
+      timeSignatureChanges.value = JSON.parse(JSON.stringify(compositionToLoad.timeSignatureChanges));
+    }
+
+    // Load clef changes
+    if (compositionToLoad.clefChanges) {
+      clefChanges.value = JSON.parse(JSON.stringify(compositionToLoad.clefChanges));
+    }
+
+    // Load key signature changes
+    if (compositionToLoad.keySignatureChanges) {
+      keySignatureChanges.value = JSON.parse(JSON.stringify(compositionToLoad.keySignatureChanges));
+    }
+
+    // Use staffSettings if available, otherwise staffWidth
+    if (compositionToLoad.staffSettings) {
+      staffWidth.value = compositionToLoad.staffSettings.width || 2000;
+      scrollPosition.value = compositionToLoad.staffSettings.scrollPosition || 0;
+    } else {
+      staffWidth.value = compositionToLoad.staffWidth || 2000;
+      scrollPosition.value = 0;
+    }
+
+    // Load editor state
+    selectedDuration.value = compositionToLoad.selectedDuration || 'quarter';
+    selectedNoteType.value = compositionToLoad.selectedNoteType || 'note';
+    selectedAccidental.value = compositionToLoad.selectedAccidental !== undefined ? compositionToLoad.selectedAccidental : null;
+    selectedOctave.value = compositionToLoad.selectedOctave || 4;
+    isDottedNote.value = compositionToLoad.isDottedNote || false;
+    isTripletNote.value = compositionToLoad.isTripletNote || false;
+
+    // Load Staves
+    if (compositionToLoad.staves && compositionToLoad.staves.length > 0) {
+      // Ensure staves have id, clef, order, name
+      staves.value = JSON.parse(JSON.stringify(compositionToLoad.staves)).map((s: any, index: number) => ({
+        id: s.id || generateId(),
+        clef: s.clef || 'treble',
+        order: s.order !== undefined ? s.order : index,
+        name: s.name || `Staff ${index + 1}`,
+        isCollapsed: typeof s.isCollapsed === 'boolean' ? s.isCollapsed : false
+      }));
+    } else {
+      const defaultStaffId = generateId();
+      staves.value = [{ id: defaultStaffId, clef: 'treble', order: 0, name: 'Staff 1', isCollapsed: false }];
+    }
+    activeStaffId.value = staves.value.length > 0 ? staves.value[0].id : null;
+
+    // Load Voice Layers
+    if (compositionToLoad.voiceLayers && compositionToLoad.voiceLayers.length > 0) {
+      const tempVoiceLayers = JSON.parse(JSON.stringify(compositionToLoad.voiceLayers));
+
+      voiceLayers.value = tempVoiceLayers.map((vl: any) => {
+        let staffIdForVoice = vl.staffId;
+        
+        // If no staffId or invalid staffId, assign to first staff
+        if (!staffIdForVoice || !staves.value.some(s => s.id === staffIdForVoice)) {
+          staffIdForVoice = staves.value[0].id;
+        }
+
+        return {
+          ...vl,
+          staffId: staffIdForVoice,
+          notes: (vl.notes || []).map((note: any) => {
+            const { voiceId, voiceColor, ...restOfNote } = note;
+            return restOfNote;
+          }),
+          active: vl.active || false,
+          volume: vl.volume !== undefined ? vl.volume : 100
+        };
+      });
+    }
+
+    // If no voice layers, create a default one
+    if (voiceLayers.value.length === 0 && staves.value.length > 0) {
+      const defaultVoiceId = generateId();
+      voiceLayers.value.push({
+        id: defaultVoiceId,
+        name: 'Default Voice',
+        color: getRandomColor(),
+        visible: true,
+        active: true,
+        selected: true,
+        volume: 100,
+        notes: [],
+        staffId: staves.value[0].id
+      });
+      activeVoiceId.value = defaultVoiceId;
+    }
+
+    // Load additional elements
+    chordSymbols.value = compositionToLoad.chordSymbols ? JSON.parse(JSON.stringify(compositionToLoad.chordSymbols)) : [];
+    tiesSlurs.value = compositionToLoad.tiesSlurs ? JSON.parse(JSON.stringify(compositionToLoad.tiesSlurs)) : [];
+    sections.value = compositionToLoad.sections ? JSON.parse(JSON.stringify(compositionToLoad.sections)) : [];
+    sequenceItems.value = compositionToLoad.sequenceItems ? JSON.parse(JSON.stringify(compositionToLoad.sequenceItems)) : [];
+
+    // Set active voice and staff
+    if (compositionToLoad.activeVoiceId && voiceLayers.value.some(v => v.id === compositionToLoad.activeVoiceId)) {
+      activeVoiceId.value = compositionToLoad.activeVoiceId;
+    } else if (voiceLayers.value.length > 0) {
+      activeVoiceId.value = voiceLayers.value[0].id;
+    }
+
+    if (activeVoiceId.value) {
+      const currentActiveVoice = voiceLayers.value.find(v => v.id === activeVoiceId.value);
+      if (currentActiveVoice) {
+        voiceLayers.value.forEach(v => v.active = (v.id === activeVoiceId.value));
+        activeStaffId.value = currentActiveVoice.staffId;
+      }
+    }
+
+    // Update UI
+    nextTick(() => {
+      updateStaffScroll();
+    });
+
+    // Close the modal
+    isLoadFromCloudVisible.value = false;
+
+    // Show success message
+    alert('Composition loaded successfully!');
+  } catch (error: any) {
+    console.error('Error loading composition:', error);
+    alert('Failed to load composition: ' + error.message);
+  }
+};
 
 // --- CONSOLIDATED INTERFACE DEFINITIONS ---
 // All interface definitions (Note, ChordSymbol, VoiceLayer, CompositionData, NoteWithVoiceInfo)
@@ -2674,11 +2935,11 @@ const loadComposition = (compositionId) => {
       }
 
       // Use staffSettings if available, otherwise staffWidth
-      if (compositionToLoad.staffSettings) {
-        staffWidth.value = compositionToLoad.staffSettings.width || 2000;
-        scrollPosition.value = compositionToLoad.staffSettings.scrollPosition || 0;
+      if ((compositionToLoad as any).staffSettings) {
+        staffWidth.value = (compositionToLoad as any).staffSettings.width || 2000;
+        scrollPosition.value = (compositionToLoad as any).staffSettings.scrollPosition || 0;
       } else {
-        staffWidth.value = compositionToLoad.staffWidth || 2000;
+        staffWidth.value = (compositionToLoad as any).staffWidth || 2000;
         scrollPosition.value = 0;
       }
 
@@ -2717,7 +2978,7 @@ const loadComposition = (compositionId) => {
           // Attempt to find staffId using the old voiceLayerIds structure on staves
           if (!vl.staffId) {
             for (const staff of staves.value) {
-              if (staff.voiceLayerIds && staff.voiceLayerIds.includes(vl.id)) {
+              if ((staff as any).voiceLayerIds && (staff as any).voiceLayerIds.includes(vl.id)) {
                 staffIdForVoice = staff.id;
                 break;
               }
@@ -2758,7 +3019,7 @@ const loadComposition = (compositionId) => {
 
         // Group notes by their original voiceId from the flat array
         const notesByOldVoiceId = {};
-        compositionToLoad.notes.forEach(note => {
+        (compositionToLoad as any).notes.forEach(note => {
           const { voiceId, voiceColor, ...restOfNote } = note; // note is already any here due to source
           if (!notesByOldVoiceId[voiceId]) {
             notesByOldVoiceId[voiceId] = [];
@@ -2784,11 +3045,11 @@ const loadComposition = (compositionId) => {
       voiceLayers.value = loadedVoiceLayers;
 
       // Migrate Lyrics from old structure if present
-      if (compositionToLoad.lyrics) {
-        for (const voiceIdWithLyrics in compositionToLoad.lyrics) {
+      if ((compositionToLoad as any).lyrics) {
+        for (const voiceIdWithLyrics in (compositionToLoad as any).lyrics) {
           const voiceLayer = voiceLayers.value.find(vl => vl.id === voiceIdWithLyrics);
           if (voiceLayer) {
-            const lyricEntries = compositionToLoad.lyrics[voiceIdWithLyrics];
+            const lyricEntries = (compositionToLoad as any).lyrics[voiceIdWithLyrics];
             if (Array.isArray(lyricEntries)) {
               lyricEntries.forEach(lyricEntry => {
                 const noteToUpdate = voiceLayer.notes.find(n => n.id === lyricEntry.noteId);
@@ -2802,7 +3063,7 @@ const loadComposition = (compositionId) => {
       }
 
       // Clean up temporary voiceLayerIds from staves object
-      staves.value.forEach(s => delete s.voiceLayerIds);
+      staves.value.forEach(s => delete (s as any).voiceLayerIds);
 
 
       // Set active voice and staff
@@ -2858,11 +3119,11 @@ const loadComposition = (compositionId) => {
 };
 
 // Update the updateStaffDisplay function to accept an optional width parameter
-const updateStaffDisplay = (width) => {
+const updateStaffDisplay = (width?: number) => {
   document.querySelectorAll('.staff').forEach(staffElement => {
     if (staffElement) {
       const displayWidth = width || staffWidth.value;
-      staffElement.style.width = `${displayWidth}px`;
+      (staffElement as HTMLElement).style.width = `${displayWidth}px`;
     }
   });
 };
@@ -6481,7 +6742,7 @@ const copySelectedNotes = (lyricsOnly = false) => {
       relativePosition: note.position - minPosition
     }));
 
-    // Copy ties and slurs with all required properties
+    // Copy ties and slurs with updated note IDs
     const selectionStaffId = selectionStart.value?.staffId || '';
     copiedTiesSlurs.value = selected.tiesSlurs.map(ts => ({
       ...ts,
@@ -6491,7 +6752,7 @@ const copySelectedNotes = (lyricsOnly = false) => {
       curvature: ts.curvature || 'above'
     }));
 
-    // Copy clef changes with all required properties
+    // Copy clef changes
     copiedClefChanges.value = selected.clefChanges.map(cc => ({
       ...cc,
       relativePosition: cc.position - minPosition,
@@ -6584,7 +6845,7 @@ const pasteNotes = (event: MouseEvent, targetStaffId: string) => {
         ...note,
         id: newId,
         // Use the relative position from the paste point
-        position: pastePosition + (note.relativePosition || 0),
+        position: pastePosition + ((note as any).relativePosition || 0),
         voiceId: activeVoiceLayer.id,
         staffId: activeVoiceLayer.staffId,
         staffClef: targetStaff.clef,
@@ -6738,7 +6999,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
         alert('Time signature change mode activated. Click on a measure to insert time change. Press "m" again to cancel.');
       }
     } else if (event.key === 'c' && isSelectingRange.value) {
-      copySelectedNotes();
+      copySelectedNotes(false);
     }
   }
 };
@@ -7622,6 +7883,35 @@ const getEffectiveClefAtPosition = (position: number, staffId: string): 'treble'
 
 .duplicate-staff-btn:hover {
   background-color: #357abd;
+}
+
+.save-cloud-btn {
+  margin-left: 10px;
+}
+
+/* Cloud buttons styling */
+.save-cloud-btn, .load-cloud-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 8px;
+  color: white;
+}
+
+.save-cloud-btn {
+  background-color: #4CAF50;
+}
+
+.load-cloud-btn {
+  background-color: #2196F3;
+}
+
+.save-cloud-btn:hover, .load-cloud-btn:hover {
+  opacity: 0.9;
 }
 
 </style>

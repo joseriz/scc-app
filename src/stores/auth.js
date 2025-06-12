@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { auth } from '../firebase/config';
+import { auth } from '@/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
 export const useAuthStore = defineStore('auth', () => {
@@ -22,4 +22,10 @@ export const useAuthStore = defineStore('auth', () => {
     initialize,
     isAuthenticated
   };
-}); 
+});
+
+export function useAuth() {
+  return {
+    user
+  };
+} 

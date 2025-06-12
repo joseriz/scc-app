@@ -16,7 +16,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
-import { auth } from '../firebase/config';
+import { auth } from '@/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import LoginButton from './LoginButton.vue';
 import { useAuth } from '../firebase/auth';
