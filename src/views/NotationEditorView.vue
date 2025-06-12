@@ -1011,14 +1011,18 @@ let pianoSynth: Tone.Sampler | null = null;
 // Define the missing initializeToneJs function
 const initializeToneJs = async () => {
   try {
-    // Do not start Tone.js here - only set up the synths
-    console.log('Setting up Tone.js components...');
+
+    // Set higher master volume for mobile devices
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      Tone.Destination.volume.value = 6; // Increase volume by 6dB on mobile
+    }
 
     // Initialize any samplers or synthesizers if needed
     if (!pianoSynth) {
       // If there's already a pianoSynth defined elsewhere, this won't override it
-      console.log('Creating piano sampler...');
       try {
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         pianoSynth = new Tone.Sampler({
           urls: {
             'C4': 'C4.mp3',
@@ -1030,6 +1034,9 @@ const initializeToneJs = async () => {
           baseUrl: '/audio/',
           onload: () => {
             console.log('Piano samples loaded successfully');
+            if (isMobile) {
+              pianoSynth.volume.value = 3; // Boost sampler volume by 3dB on mobile
+            }
           }
         }).toDestination();
       } catch (error) {
@@ -1039,7 +1046,6 @@ const initializeToneJs = async () => {
 
     if (!noteSynth) {
       // Create a basic synth as fallback
-      console.log('Creating basic synth...');
       try {
         noteSynth = new Tone.Synth({
           oscillator: {
@@ -1074,14 +1080,12 @@ onMounted(async () => {
     const staffContainer = document.querySelector('.staff-scroll-container');
     if (staffContainer) {
       visibleStaffWidth.value = staffContainer.clientWidth;
-      console.log(`Visible staff width: ${visibleStaffWidth.value}px`);
     }
 
     // Make sure the staff is wide enough
     const staffElement = document.querySelector('.staff');
     if (staffElement) {
       (staffElement as HTMLElement).style.width = `${staffWidth.value}px`;
-      console.log(`Staff width set to: ${staffWidth.value}px`);
     }
 
     // Add window resize listener
@@ -1331,7 +1335,6 @@ const addTimeSignatureChange = (event: MouseEvent, staffId: string) => {
   isAddingTimeSignatureChange.value = false;
   saveToLocalStorage();
   
-  console.log(`Added time signature change to ${newTimeSignatureNumerator.value}/${newTimeSignatureDenominator.value} at measure ${measureNumber}`);
 };
 
 // Function to get accidentals for a specific key signature
@@ -1606,8 +1609,15 @@ const playNoteSound = (pitch: string, duration = "8n", isDotted = false, volumeP
     }
 
     // Convert volumePercent (0-100) to velocity (0.0-1.0)
-    // Ensure velocity is clamped between 0 and 1.
-    const velocity = Math.max(0, Math.min(1, volumePercent / 100));
+    // On mobile, use a non-linear scaling to make quieter notes more audible
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    let velocity;
+    if (isMobile) {
+      // Use a square root curve for better volume scaling on mobile
+      velocity = Math.sqrt(volumePercent / 100);
+    } else {
+      velocity = Math.max(0, Math.min(1, volumePercent / 100));
+    }
 
     // Use the piano synth to play the note if available, otherwise use basic synth
     if (pianoSynth && pianoSynth.loaded) {
@@ -1676,7 +1686,6 @@ const handleStaffClick = (event, staffId: string) => {
 
   const targetStaff = staves.value.find(s => s.id === staffId);
   if (!targetStaff) {
-    console.error("Clicked on a non-existent staff:", staffId);
     return;
   }
   const currentClef = targetStaff.clef;
@@ -1692,7 +1701,6 @@ const handleStaffClick = (event, staffId: string) => {
 
   if (!targetVoiceForInput) {
     alert("No voice layer available on this staff. Please add or activate a voice for this staff.");
-    console.warn(`No suitable voice layer found for staff ${staffId} to add/modify note.`);
     return;
   }
 
@@ -4038,9 +4046,9 @@ const playScore = () => {
       const compressedDuration = longestDuration * voiceTimingFactor;
       
       // Log voice-specific compression when significant
-      if (Math.abs(voiceTimingFactor - 1) > 0.01) {
-        console.log(`Voice ${voice.name}: Measure ${measureNumber}, compression factor ${voiceTimingFactor.toFixed(3)} (${longestDuration}→${compressedDuration.toFixed(3)} beats)`);
-      }
+      // if (Math.abs(voiceTimingFactor - 1) > 0.01) {
+      //   console.log(`Voice ${voice.name}: Measure ${measureNumber}, compression factor ${voiceTimingFactor.toFixed(3)} (${longestDuration}→${compressedDuration.toFixed(3)} beats)`);
+      // }
 
       // Calculate the wait duration in seconds for this voice
     const secondsPerBeat = 60 / tempo.value;
@@ -5307,9 +5315,9 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
       const compressedDuration = longestDuration * voiceTimingFactor;
       
       // Log voice-specific compression when significant
-      if (Math.abs(voiceTimingFactor - 1) > 0.01) {
-        console.log(`Voice ${voice.name}: Measure ${measureNumber}, compression factor ${voiceTimingFactor.toFixed(3)} (${longestDuration}→${compressedDuration.toFixed(3)} beats)`);
-      }
+      // if (Math.abs(voiceTimingFactor - 1) > 0.01) {
+      //   console.log(`Voice ${voice.name}: Measure ${measureNumber}, compression factor ${voiceTimingFactor.toFixed(3)} (${longestDuration}→${compressedDuration.toFixed(3)} beats)`);
+      // }
 
       // Calculate the wait duration in seconds for this voice
     const secondsPerBeat = 60 / tempo.value;
@@ -6778,7 +6786,6 @@ const addKeySignatureChange = (event: MouseEvent, staffId: string) => {
   const existingChange = keySignatureChanges.value.find(change => change.measure === measureNumber);
   if (existingChange) {
     // Update existing change
-    console.log(`🔄 Updating existing key change at measure ${measureNumber}: ${existingChange.keySignature} → ${newKeySignature.value}`);
     existingChange.keySignature = newKeySignature.value;
   } else {
     // Create new change only if there isn't an existing one
@@ -6788,7 +6795,6 @@ const addKeySignatureChange = (event: MouseEvent, staffId: string) => {
       keySignature: newKeySignature.value,
       position: initialPosition + ((measureNumber - 1) * measureWidth) + 5 // Small offset from measure line
     };
-    console.log(`➕ Creating NEW key signature change: ${newKeySignature.value} at measure ${measureNumber}, position ${newChange.position}`);
     keySignatureChanges.value.push(newChange);
   }
   
@@ -6802,7 +6808,6 @@ const addKeySignatureChange = (event: MouseEvent, staffId: string) => {
   isAddingKeySignatureChange.value = false;
   saveToLocalStorage();
   
-  console.log(`Added key signature change to ${newKeySignature.value} at measure ${measureNumber}`);
 };
 
 // Helper function to handle tied note playback
@@ -6811,7 +6816,6 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
   
   // Check if this note is tied from another note (should be silent)
   if (isNoteTiedFrom(noteToPlay)) {
-    console.log(`Note ${noteToPlay.pitch} at position ${noteToPlay.position} is tied from another note - silent`);
     return { isPlaying: false, totalDurationMs: 0 }; // Skip playing this note as it's tied from a previous note
   }
 
@@ -6839,8 +6843,6 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
   const totalDurationMs = totalDurationInSeconds * 1000;
   
   const currentVoiceVolumePercent = voice ? voice.volume : 100;
-
-  console.log(`Playing note ${noteToPlay.pitch} with total tied duration: ${totalTiedDuration} beats (${totalDurationInSeconds.toFixed(2)}s)`);
 
   // For playback, apply the key signature and handle clef changes at the note's position
   let pitchToPlay = noteToPlay.pitch;
@@ -6871,15 +6873,12 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
       
       // Reconstruct the pitch with the new octave
       pitchToPlay = `${noteLetter}${accidental}${newOctave}`;
-      console.log(`🎵 Adjusted pitch for clef change: "${noteToPlay.pitch}" → "${pitchToPlay}"`);
     }
   }
   
   // Handle key signature changes
   const effectiveKey = getEffectiveKeySignatureAtPosition(noteToPlay.position * 25);
   const globalKey = keySignature.value;
-  
-  console.log(`🔍 PLAYBACK: Position ${noteToPlay.position}, Stored: "${pitchToPlay}", Global: ${globalKey}, Effective: ${effectiveKey}`);
   
   // Always get the natural form first
   const naturalPitch = reverseKeySignature(pitchToPlay, globalKey);
@@ -6888,10 +6887,8 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
   const convertedPitch = getModifiedPitchForKeySignature(naturalPitch, false, noteToPlay.position);
   
   if (convertedPitch !== pitchToPlay) {
-    console.log(`🎵 Applied effective key: "${pitchToPlay}" → "${convertedPitch}" (${effectiveKey})`);
     pitchToPlay = convertedPitch;
   } else if (effectiveKey !== globalKey) {
-    console.log(`🎵 Key change keeps note natural: "${pitchToPlay}" stays "${convertedPitch}" (${effectiveKey} has no ${pitchToPlay.charAt(0)} accidental)`);
   }
 
   // Check if this note is part of a slur
@@ -6978,7 +6975,6 @@ const determineCurvature = (startNote: NoteWithVoiceInfo, endNote: NoteWithVoice
   
   // If there are notes in the path, curve above them to avoid overlap
   if (notesInPath.length > 0) {
-    console.log(`Found ${notesInPath.length} notes in path between positions ${startPos} and ${endPos}, curving above`);
     return 'above';
   }
   
@@ -6986,7 +6982,6 @@ const determineCurvature = (startNote: NoteWithVoiceInfo, endNote: NoteWithVoice
   const averagePosition = (startNote.verticalPosition + endNote.verticalPosition) / 2;
   const staffCenter = 145; // Middle line of staff
   const result = averagePosition < staffCenter ? 'below' : 'above';
-  console.log(`No notes in path, average position: ${averagePosition}, staff center: ${staffCenter}, curving: ${result}`);
   return result;
 };
 
@@ -7078,7 +7073,6 @@ const removeClefChange = (changeId: string) => {
     if (confirm(`Remove clef change to ${change.clef} clef at measure ${change.measure}?`)) {
       clefChanges.value.splice(index, 1);
       saveToLocalStorage();
-      console.log(`Removed clef change at measure ${change.measure}`);
     }
   }
 };
@@ -7111,7 +7105,6 @@ const addClefChange = (event: MouseEvent, staffId: string) => {
   
   if (existingChange) {
     // Update existing change
-    console.log(`🔄 Updating existing clef change at measure ${measureNumber}: ${existingChange.clef} → ${newClef.value}`);
     existingChange.clef = newClef.value;
   } else {
     // Create new change
@@ -7133,7 +7126,6 @@ const addClefChange = (event: MouseEvent, staffId: string) => {
   isAddingClefChange.value = false;
   saveToLocalStorage();
   
-  console.log(`Added clef change to ${newClef.value} at measure ${measureNumber}`);
 };
 
 // Add this function to get the effective clef at a specific position for a staff

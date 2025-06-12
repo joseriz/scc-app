@@ -2292,6 +2292,10 @@
     border: 1px solid #ccc;
     border-radius: 4px;
     font-size: 14px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
   }
 
   .add-lyric-btn {
@@ -3917,4 +3921,18 @@ input:checked+.toggle-slider:before {
   font-size: 0.9em;
   color: #2196F3;
   font-style: italic;
+}
+
+.lyrics-control-section.draggable {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.lyrics-control-section.draggable .lyric-input {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
 }

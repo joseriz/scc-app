@@ -26,6 +26,7 @@
         :disabled="!selectedNoteId"
         @keypress="handleKeypress"
         class="lyric-input"
+        @mousedown.stop
       />
       <button
         @click="addLyric"
@@ -42,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits, ref, onMounted, onUnmounted, watch } from 'vue';
+import { defineProps, defineEmits, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 
 const props = defineProps<{
   modelValue: string;
@@ -61,16 +62,23 @@ const dragOffset = ref({ x: 0, y: 0 });
 const dragHandle = ref<HTMLElement | null>(null);
 const lyricInput = ref<HTMLInputElement | null>(null);
 
-// Watch for changes in selectedNoteId and lyricsEditMode
-watch([() => props.selectedNoteId, () => props.lyricsEditMode], ([newNoteId, editMode]) => {
-  if (newNoteId && editMode && lyricInput.value) {
-    // Focus the input when a note is selected and we're in edit mode
-    lyricInput.value.focus();
+// Watch for changes in selectedNoteId and focus the input when a note is selected
+watch(() => props.selectedNoteId, (newNoteId) => {
+  if (newNoteId && lyricInput.value) {
+    // Use nextTick to ensure the input is enabled before focusing
+    nextTick(() => {
+      lyricInput.value?.focus();
+    });
   }
 });
 
 const handleMouseDown = (event: MouseEvent) => {
-  if (!props.lyricsEditMode) return;
+  // Only allow dragging from the drag handle or the header
+  const target = event.target as HTMLElement;
+  const isDragHandle = target.closest('.drag-handle') !== null;
+  const isHeader = target.tagName === 'H4';
+  
+  if (!props.lyricsEditMode || (!isDragHandle && !isHeader)) return;
   
   isDragging.value = true;
   
