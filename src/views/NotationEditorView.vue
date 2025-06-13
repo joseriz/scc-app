@@ -21,19 +21,19 @@
       ?
     </div>
 
-    <!-- Button to add a new staff -->
-    <div class="add-staff-controls" v-if="!readOnlyMode">
+    <!-- Top controls bar -->
+    
+    <!-- Staff Controls -->
+    <div class="staff-controls" v-if="!readOnlyMode">
       <button @click="addNewStaff" class="add-staff-btn">Add New Staff</button>
-      <button @click="isSaveToCloudModalVisible = true" class="save-cloud-btn">Save to Cloud</button>
-      <button @click="isLoadFromCloudVisible = true" class="load-cloud-btn">Load from Cloud</button>
     </div>
 
     <SaveToCloudModal v-if="isSaveToCloudModalVisible" @close="isSaveToCloudModalVisible = false"
       @save="handleSaveToCloud" />
 
-    <CloudCompositionsBrowser 
+    <LoadCompositionModal
       v-if="isLoadFromCloudVisible" 
-      @load-composition="handleLoadFromCloud"
+      @load="handleLoadFromCloud"
       @close="isLoadFromCloudVisible = false"
     />
 
@@ -699,7 +699,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, reactive, watch, type ComputedRef } from 'vue';
+import { ref, computed, onMounted, onUnmounted, onBeforeUnmount, nextTick, reactive, watch, type ComputedRef } from 'vue';
 import '@/assets/styles/global.css';
 import * as Tone from 'tone';
 import { useNotationStore } from '@/stores/notation';
@@ -718,8 +718,12 @@ import { useDebug } from '@/composables/useDebug';
 import SectionsPanel from '@/components/SectionsPanel.vue';
 import { generateId } from '@/utils/idGenerator'; // Make sure this import path is correct
 import SaveToCloudModal from '@/components/SaveToCloudModal.vue';
-import CloudCompositionsBrowser from '@/components/CloudCompositionsBrowser.vue';
+import LoadCompositionModal from '@/components/LoadCompositionModal.vue';
 import { db, auth } from '@/firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import UserMenu from '@/components/UserMenu.vue';
+import { useCloudStore } from '@/stores/cloud';
+import { storeToRefs } from 'pinia';
 
 // Import types
 import type {
@@ -739,9 +743,48 @@ import type {
 // Store
 const notationStore = useNotationStore();
 
-// Cloud Modal states
-const isSaveToCloudModalVisible = ref(false);
-const isLoadFromCloudVisible = ref(false);
+// Cloud Modal visibility comes from the shared cloud store so that components
+// like NavBar.vue can trigger these modals without reaching into this view
+// directly.
+const cloudStore = useCloudStore();
+const { isSaveToCloudModalVisible, isLoadFromCloudVisible } = storeToRefs(cloudStore);
+
+// Mobile detection
+const isMobileView = ref(false);
+
+// Update mobile state on mount and resize
+const updateMobileState = () => {
+  isMobileView.value = window.innerWidth <= 768;
+};
+
+onMounted(() => {
+  updateMobileState();
+  window.addEventListener('resize', updateMobileState);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateMobileState);
+});
+
+// Google Sign In
+const signInWithGoogle = async () => {
+  try {
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    console.error('Error signing in with Google:', error);
+  }
+};
+
+// Handle logout
+const handleLogout = async () => {
+  try {
+    await auth.signOut();
+    // Redirect to login or home page if needed
+  } catch (error) {
+    console.error('Error logging out:', error);
+  }
+};
 
 interface SaveDetails {
   title: string;
@@ -1515,10 +1558,12 @@ const getEffectiveKeySignatureAtMeasure = (measureNumber: number): string => {
     .filter(change => change.measure <= measureNumber)
     .sort((a, b) => b.measure - a.measure); // Sort by measure descending
   
-  // If there's a key signature change, use it; otherwise use the global key signature
-  const result = applicableChanges.length > 0 ? applicableChanges[0].keySignature : keySignature.value;
+  if (applicableChanges.length > 0) {
+    return applicableChanges[0].keySignature;
+  }
   
-  return result;
+  // If no changes, use the global key signature
+  return keySignature.value;
 };
 
 // Function to get the effective time signature at a specific measure
@@ -3037,7 +3082,7 @@ const loadComposition = (compositionId) => {
             active: index === 0, // Make first imported voice active
             selected: true,
             volume: 100, // Default to 100% for imported old flat notes
-            notes: notesInVoice.map(n => { const { originalVoiceId, originalVoiceColor, ...rest } = n; return rest; }),
+            notes: (notesInVoice as any[]).map(n => { const { originalVoiceId, originalVoiceColor, ...rest } = n; return rest; }),
             staffId: firstStaffId
           });
         });
@@ -7914,4 +7959,74 @@ const getEffectiveClefAtPosition = (position: number, staffId: string): 'treble'
   opacity: 0.9;
 }
 
+/* Auth container and Google sign in */
+.auth-container {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+}
+
+.google-signin-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+  transition: background-color 0.2s;
+}
+
+.google-signin-btn:hover {
+  background-color: #f8f9fa;
+}
+
+.google-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.staff-controls {
+  margin: 16px;
+  display: flex;
+  gap: 10px;
+}
+
+.add-staff-btn {
+  padding: 8px 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.add-staff-btn:hover {
+  background-color: #45a049;
+}
+
+@media (max-width: 768px) {
+  .auth-container {
+    top: 8px;
+    right: 8px;
+  }
+  
+  .google-signin-btn {
+    padding: 6px 12px;
+  }
+  
+  .staff-controls {
+    margin: 8px;
+  }
+  
+  .add-staff-btn {
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+}
 </style>
