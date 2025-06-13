@@ -35,6 +35,11 @@
           </div>
           <button type="button" @click="addShare">Add person</button>
         </div>
+        <div v-if="compositionDetails.visibility === 'public'" class="form-group">
+          <label>
+            <input type="checkbox" v-model="compositionDetails.allowPublicWrite" /> Allow anyone to edit (public write access)
+          </label>
+        </div>
         <div class="modal-actions">
           <button type="submit" class="save-btn">Save</button>
           <button type="button" @click="$emit('close')" class="cancel-btn">Cancel</button>
@@ -55,6 +60,7 @@ const compositionDetails = ref({
   arrangedBy: '',
   visibility: 'private',
   sharedWith: [] as { email: string, access: 'read' | 'write' }[],
+  allowPublicWrite: false,
 });
 
 const addShare = () => {

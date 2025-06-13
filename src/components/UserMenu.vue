@@ -19,6 +19,16 @@
           Load from Cloud
         </button>
         <div class="menu-divider"></div>
+        <router-link 
+          v-if="isAdmin"
+          to="/admin" 
+          class="menu-item admin"
+          @click="isMenuOpen = false"
+        >
+          <i class="fas fa-shield-alt"></i>
+          Admin Dashboard
+        </router-link>
+        <div v-if="isAdmin" class="menu-divider"></div>
         <button @click="handleLogout" class="menu-item logout">
           <i class="fas fa-sign-out-alt"></i>
           Logout
@@ -42,6 +52,18 @@ const emit = defineEmits(['save', 'load', 'logout']);
 const isMenuOpen = ref(false);
 const avatarRef = ref<HTMLElement | null>(null);
 const dropdownPosition = ref({});
+
+// List of admin email addresses
+const ADMIN_EMAILS = [
+  'joserizc@gmail.com'
+  // Add your admin email addresses here
+];
+
+// Check if current user is admin
+const isAdmin = computed(() => {
+  const user = auth.currentUser;
+  return user ? ADMIN_EMAILS.includes(user.email || '') : false;
+});
 
 const userPhotoURL = computed(() => {
   const user: any = auth.currentUser;
@@ -271,5 +293,17 @@ onUnmounted(() => {
   .user-menu:not(.is-mobile) .user-name {
     display: none;
   }
+}
+
+.admin {
+  color: #2196F3;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin:hover {
+  background-color: #E3F2FD;
 }
 </style> 

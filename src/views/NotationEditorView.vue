@@ -8,7 +8,7 @@
     <!-- Read-only toggle moved to the top -->
     <div class="read-only-toggle">
       <label class="toggle-switch">
-        <input type="checkbox" v-model="readOnlyMode">
+        <input type="checkbox" v-model="readOnlyMode" :disabled="readOnlyLocked">
         <span class="toggle-slider"></span>
       </label>
       <span class="toggle-label">
@@ -645,15 +645,6 @@
       </div>
     </div>
 
-    <!-- <div v-if="activeTab === 'settings'">
-      <SettingsPanel
-        :debugMode="debugMode"
-        @showChordInput="showChordInput = true"
-        @addExampleChords="addExampleChords"
-        @toggleDebugMode="toggleDebugMode"
-      />
-      </div> -->
-
     <DebugPanel :debugMode="debugMode" :showNotePositions="showNotePositions" :lastClickY="lastClickY"
       :selectedOctave="selectedOctave" :notesForDebug="notes" :needsLedgerLines="needsLedgerLinesForDebugPanel"
       :getLedgerLines="getLedgerLinesForDebugPanel" @toggleShowNotePositions="showNotePositions = !showNotePositions"
@@ -713,7 +704,7 @@ import LyricsControls from '@/components/LyricsControls.vue';
 import VoiceLayersPanel from '@/components/VoiceLayersPanel.vue';
 import SettingsPanel from '@/components/SettingsPanel.vue';
 import DebugPanel from '@/components/DebugPanel.vue';
-import FirstTimeInstructionModal from '@/components/FirstTimeInstructionModal.vue'; // Import the new component
+import FirstTimeInstructionModal from '@/components/FirstTimeInstructionModal.vue';
 import { useDebug } from '@/composables/useDebug';
 import SectionsPanel from '@/components/SectionsPanel.vue';
 import { generateId } from '@/utils/idGenerator'; // Make sure this import path is correct
@@ -724,6 +715,7 @@ import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import UserMenu from '@/components/UserMenu.vue';
 import { useCloudStore } from '@/stores/cloud';
 import { storeToRefs } from 'pinia';
+import type { SaveDetails } from '@/types/SaveDetails';
 
 // Import types
 import type {
@@ -748,6 +740,35 @@ const notationStore = useNotationStore();
 // directly.
 const cloudStore = useCloudStore();
 const { isSaveToCloudModalVisible, isLoadFromCloudVisible } = storeToRefs(cloudStore);
+
+// Document ID of the composition currently loaded from Firestore (if any)
+const currentCloudDocId = ref<string | null>(null);
+
+// ---- Access Control ----
+// When true, user is forced into read-only mode and cannot toggle editing.
+const readOnlyLocked = ref(false);
+
+// Determine if the current user has write permission for a composition
+function determineWriteAccess(comp: any): boolean {
+  const user = auth.currentUser;
+  if (!user) return false;
+
+  // Owner can always write
+  if (comp.submittedBy === user.uid) return true;
+
+  // Shared visibility: check sharedWith array
+  if (comp.visibility === 'shared' && Array.isArray(comp.sharedWith)) {
+    const entry = comp.sharedWith.find((e: any) => e.email === user.email);
+    if (entry && entry.permission === 'write') return true;
+  }
+
+  // Public visibility: optional allowPublicWrite flag
+  if (comp.visibility === 'public') {
+    return !!comp.allowPublicWrite;
+  }
+
+  return false;
+}
 
 // Mobile detection
 const isMobileView = ref(false);
@@ -786,14 +807,6 @@ const handleLogout = async () => {
   }
 };
 
-interface SaveDetails {
-  title: string;
-  author?: string;
-  arrangedBy?: string;
-  visibility: 'public' | 'private' | 'shared';
-  sharedWith?: Array<{ email: string; permission: 'read' | 'write' }>;
-}
-
 const handleSaveToCloud = (details: SaveDetails) => {
   try {
     // Set the composition name before preparing the data
@@ -820,13 +833,15 @@ const handleSaveToCloud = (details: SaveDetails) => {
       lastModified: Date.now(),
       visibility: details.visibility,
       sharedWith: details.visibility === 'shared' ? details.sharedWith : [],
+      sharedWithEmails: details.visibility === 'shared' ? (details.sharedWith?.map((p: any) => p.email) || []) : [],
       // Add user information
       submittedBy: currentUser.uid,
       submittedByEmail: currentUser.email,
       submittedByName: currentUser.displayName,
       modifiedBy: currentUser.uid,
       modifiedByEmail: currentUser.email,
-      modifiedByName: currentUser.displayName
+      modifiedByName: currentUser.displayName,
+      allowPublicWrite: details.allowPublicWrite || false
     };
     
     // Log the final data being saved with full details
@@ -845,10 +860,21 @@ const handleSaveToCloud = (details: SaveDetails) => {
       throw new Error('Invalid voiceLayers data: expected an array');
     }
 
-    // Try to save to Firestore
-    db.collection('compositions').add(dataToSave).then((docRef) => {
-      console.log('Successfully saved to Firestore with ID:', docRef.id);
-      alert(`Composition saved successfully with ID: ${docRef.id}`);
+    // Decide whether to create a new document or update an existing one
+    const compositionsCol = db.collection('compositions');
+    const savePromise = (currentCloudDocId.value && dataToSave.submittedBy === currentUser.uid)
+      ? compositionsCol.doc(currentCloudDocId.value).set(dataToSave, { merge: true })
+      : compositionsCol.add(dataToSave);
+
+    savePromise.then((result) => {
+      // For .add we get a DocumentReference, for .set we don't; unify message
+      const savedId = (result && 'id' in result) ? result.id : currentCloudDocId.value;
+      // If we just added a new document, update currentCloudDocId so further saves update
+      if (savedId) {
+        currentCloudDocId.value = savedId;
+      }
+      console.log('Successfully saved to Firestore with ID:', savedId);
+      alert(`Composition saved successfully${savedId ? ` with ID: ${savedId}` : ''}`);
       isSaveToCloudModalVisible.value = false;
     }).catch((error) => {
       // Log the detailed error
@@ -884,6 +910,9 @@ const handleSaveToCloud = (details: SaveDetails) => {
 // Handle loading a composition from cloud
 const handleLoadFromCloud = (compositionToLoad: any) => {
   try {
+    // store the Firestore document ID so we can update later if needed
+    currentCloudDocId.value = compositionToLoad.id || null;
+    
     stopPlayback();
 
     // Clear current state
@@ -1023,6 +1052,12 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
 
     // Show success message
     alert('Composition loaded successfully!');
+
+    // Determine write permissions and lock state
+    readOnlyLocked.value = !determineWriteAccess(compositionToLoad);
+    if (readOnlyLocked.value) {
+      readOnlyMode.value = true; // force read-only
+    }
   } catch (error: any) {
     console.error('Error loading composition:', error);
     alert('Failed to load composition: ' + error.message);
@@ -3732,6 +3767,8 @@ const animateButton = (event) => {
 };
 
 // Add these reactive variables
+const forceStaffRedraw = ref(false);
+const lastUIUpdateTimestamp = ref(Date.now());
 const timeSignature = ref('4/4');
 const timeSignatureNumerator = computed(() => parseInt(timeSignature.value.split('/')[0]) || 4);
 const timeSignatureDenominator = computed(() => parseInt(timeSignature.value.split('/')[1]) || 4);
@@ -4791,7 +4828,7 @@ const changeVoiceColor = (voiceId, newColor) => {
 };
 
 // Helper function to get default voice color
-const getDefaultVoiceColor = (voiceId: string): string => { // Added type annotations
+const getDefaultVoiceColor = (voiceId: string): string => { // Added type annotation
   const colorMap: { [key: string]: string; } = { // Added type annotation
     'voice1': '#1976D2', // Blue
     'voice2': '#E91E63', // Pink
@@ -5391,7 +5428,7 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
   if (newComposition.voiceLayers!.length === 0 && newComposition.staves!.length > 0) {
     newComposition.voiceLayers!.push({
       id: generateId(), name: "Default Combined Voice", color: getRandomColor(), staffId: newComposition.staves![0].id,
-      visible: true, active: true, selected: true, volume: 100, notes: [] // Default to 100%
+      visible: true, active: true, selected: true, volume: 100 // Default to 100%
     });
   }
 
@@ -6365,7 +6402,6 @@ const deleteNote = (noteToRemove: ImportedNote | NoteWithVoiceInfo) => {
 // existing code...
 
 // Add this with your other refs
-const lastUIUpdateTimestamp = ref(Date.now());
 
 // const allNotesWithVoiceInfo = computed(() => {
 //   // Force computed property to re-evaluate when lastUIUpdateTimestamp changes
@@ -6389,37 +6425,6 @@ const lastUIUpdateTimestamp = ref(Date.now());
 //   });
 //   return result;
 // });
-
-// Add this with your other refs (if not already there)
-const forceStaffRedraw = ref(false);
-
-// --- DELETE THE FOLLOWING BLOCK ---
-// This block starting with "if (noteDeleted)" is incorrectly placed here
-// and is causing the "noteDeleted is not defined" error at line ~5030.
-// The correct logic is already inside your `deleteNote` function.
-
-/*
-if (noteDeleted) { // THIS IS THE LINE CAUSING THE ERROR
-  if (selectedNoteId.value === noteToRemove.id) {
-    selectedNoteId.value = null;
-    currentLyric.value = '';
-  }
-  
-  // Force a complete redraw of the staff
-  forceStaffRedraw.value = true;
-  nextTick(() => {
-    lastUIUpdateTimestamp.value = Date.now();
-    // Reset the flag after a brief delay to allow the DOM to update
-    setTimeout(() => {
-      forceStaffRedraw.value = false;
-    }, 50);
-  });
-} else {
-  console.error(`Failed to delete note ${noteToRemove.id}. Note not found in any voice layer.`);
-}
-*/
-// --- END OF BLOCK TO DELETE ---
-
 
 // Add this watcher to trigger manual redraw for custom rendering
 watch([forceStaffRedraw, lastUIUpdateTimestamp], ([force, timestamp], [oldForce, oldTimestamp]) => {

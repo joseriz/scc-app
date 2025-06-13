@@ -1,16 +1,25 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'joserizc@gmail.com';
+    }
+
     match /compositions/{compositionId} {
       allow read: if 
+        // Admin can read all compositions
+        isAdmin() ||
         // Public compositions can be read by anyone
         resource.data.visibility == 'public' ||
         // Private compositions can only be read by their owner
         request.auth != null && (
+          // Check both UID and email for ownership
           resource.data.submittedBy == request.auth.uid ||
+          resource.data.submittedByEmail == request.auth.token.email ||
           // Or if the user is in the sharedWith list
           resource.data.visibility == 'shared' &&
-          resource.data.sharedWith[request.auth.email] != null
+          resource.data.sharedWith[request.auth.token.email] != null
         );
         
       allow create: if
@@ -23,21 +32,31 @@ service cloud.firestore {
         request.resource.data.submittedByEmail == request.auth.token.email;
         
       allow update: if
+        // Admin can update all compositions
+        isAdmin() ||
         request.auth != null && (
-          // Owner can update
+          // Owner can update - check both UID and email
           resource.data.submittedBy == request.auth.uid ||
+          resource.data.submittedByEmail == request.auth.token.email ||
           // Or user has write permission in sharedWith
           resource.data.visibility == 'shared' &&
-          resource.data.sharedWith[request.auth.email] != null &&
-          resource.data.sharedWith[request.auth.email].permission == 'write'
+          resource.data.sharedWith[request.auth.token.email] != null &&
+          resource.data.sharedWith[request.auth.token.email].permission == 'write'
         ) &&
-        // Ensure submittedBy and dateCreated are not modified
-        request.resource.data.submittedBy == resource.data.submittedBy &&
-        request.resource.data.dateCreated == resource.data.dateCreated;
+        // Ensure submittedBy and dateCreated are not modified unless admin
+        (isAdmin() || (
+          request.resource.data.submittedBy == resource.data.submittedBy &&
+          request.resource.data.dateCreated == resource.data.dateCreated
+        ));
         
       allow delete: if
-        // Only the owner can delete
-        request.auth != null && resource.data.submittedBy == request.auth.uid;
+        // Admin can delete all compositions
+        isAdmin() ||
+        // Only the owner can delete - check both UID and email
+        request.auth != null && (
+          resource.data.submittedBy == request.auth.uid ||
+          resource.data.submittedByEmail == request.auth.token.email
+        );
     }
   }
 } 

@@ -231,7 +231,7 @@ watch(() => props.savedCompositions, () => {
 // Add this method to handle the load click with read-only mode
 const handleLoadClick = (compositionId) => {
   // Emit load composition event with a flag to enable read-only mode
-  emit('loadComposition', compositionId, true); // true = enable read-only mode
+  emit('loadComposition', compositionId, true); // true = enable read-only mode, false = enable read-only locked
 };
 
 // Add method to handle exiting edit mode
