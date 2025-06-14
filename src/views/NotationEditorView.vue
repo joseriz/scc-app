@@ -686,6 +686,11 @@
       <!-- Your existing staff rendering code -->
       <!-- This could be a v-for loop of notes, or a custom canvas rendering, etc. -->
     </div>
+
+    <!-- Cloud loading overlay -->
+    <div v-if="isCloudLoading" class="loading-overlay">
+      <div class="spinner"></div>
+    </div>
   </div>
 </template>
 
@@ -769,6 +774,9 @@ function determineWriteAccess(comp: any): boolean {
 
   return false;
 }
+
+// Global loading indicator when compositions are being fetched from cloud
+const isCloudLoading = ref(false);
 
 // Mobile detection
 const isMobileView = ref(false);
@@ -909,6 +917,9 @@ const handleSaveToCloud = (details: SaveDetails) => {
 
 // Handle loading a composition from cloud
 const handleLoadFromCloud = (compositionToLoad: any) => {
+  // Show loading overlay and close the modal immediately
+  isCloudLoading.value = true;
+  isLoadFromCloudVisible.value = false;
   try {
     // store the Firestore document ID so we can update later if needed
     currentCloudDocId.value = compositionToLoad.id || null;
@@ -1047,11 +1058,11 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
       updateStaffScroll();
     });
 
-    // Close the modal
-    isLoadFromCloudVisible.value = false;
-
     // Show success message
     alert('Composition loaded successfully!');
+
+    // Hide loading overlay
+    isCloudLoading.value = false;
 
     // Determine write permissions and lock state
     readOnlyLocked.value = !determineWriteAccess(compositionToLoad);
@@ -1061,6 +1072,7 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
   } catch (error: any) {
     console.error('Error loading composition:', error);
     alert('Failed to load composition: ' + error.message);
+    isCloudLoading.value = false; // Ensure overlay is hidden on error
   }
 };
 
@@ -8032,6 +8044,38 @@ const getEffectiveClefAtPosition = (position: number, staffId: string): 'treble'
   .add-staff-btn {
     padding: 6px 12px;
     font-size: 14px;
+  }
+}
+
+/* Cloud loading overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.spinner {
+  border: 6px solid #f3f3f3;
+  border-top: 6px solid #3498db;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
   }
 }
 </style>
