@@ -1,6 +1,6 @@
 import { auth } from '@/firebase';
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signInWithCredential, signOut, getRedirectResult } from 'firebase/auth';
-import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { SocialLogin } from '@capgo/capacitor-social-login';
 import { Capacitor } from '@capacitor/core';
 import { logger } from '@/utils/logger';
 
@@ -12,25 +12,29 @@ export const useAuth = () => {
         logger.info('Attempting native Google sign-in...');
         
         try {
-          // Initialize GoogleAuth with configuration
-          await GoogleAuth.initialize({
-            clientId: '377945407536-65mcijb46gdkdf5crhn8va8sq79vobi2.apps.googleusercontent.com',
-            scopes: ['profile', 'email'],
-            grantOfflineAccess: true
+          // Initialize SocialLogin with Google configuration
+          await SocialLogin.initialize({
+            google: {
+              webClientId: '377945407536-65mcijb46gdkdf5crhn8va8sq79vobi2.apps.googleusercontent.com',
+              mode: 'online'
+            }
           });
-          logger.info('GoogleAuth initialized successfully');
+          logger.info('SocialLogin initialized successfully');
           
-          // Try to sign in
-          const result = await GoogleAuth.signIn();
+          // Try to sign in - remove custom scopes to avoid MainActivity requirement
+          const result = await SocialLogin.login({
+            provider: 'google',
+            options: {}
+          });
           logger.info('Native Google sign-in successful:', result);
 
-          // Validate the result structure
-          if (!result || !result.authentication || !result.authentication.idToken) {
+          // Validate the result structure - new plugin structure
+          if (!result || !result.result || !result.result.idToken) {
             throw new Error('Invalid authentication result from native Google Auth');
           }
 
           // Create Firebase credential from the result
-          const credential = GoogleAuthProvider.credential(result.authentication.idToken);
+          const credential = GoogleAuthProvider.credential(result.result.idToken);
           const firebaseResult = await signInWithCredential(auth, credential);
           
           logger.info('Firebase authentication successful:', firebaseResult.user.email);
@@ -83,7 +87,7 @@ export const useAuth = () => {
   const signOutUser = async () => {
     try {
       if (Capacitor.isNativePlatform()) {
-        await GoogleAuth.signOut();
+        await SocialLogin.logout({ provider: 'google' });
       }
       await signOut(auth);
     } catch (error) {
