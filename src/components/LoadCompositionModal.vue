@@ -20,6 +20,14 @@
         </button>
       </div>
 
+      <div class="search-bar">
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Search by title, author, arranged by, or posted by..."
+        />
+      </div>
+
       <div class="modal-body">
         <div class="tabs">
           <button 
@@ -37,12 +45,18 @@
         </div>
 
         <div class="compositions-list" v-if="filteredCompositions.length > 0">
+          <div v-if="isLoadingCompositions" class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <p>Loading compositions...</p>
+          </div>
           <div v-for="comp in filteredCompositions" :key="comp.docId" class="composition-item">
             <!-- Display mode -->
             <template v-if="editingCompositionId !== comp.docId">
               <div class="composition-info">
                 <h3 class="comp-title">{{ comp.name }}</h3>
-                <p class="author">By {{ comp.submittedByName || comp.submittedByEmail }}</p>
+                <p class="author">Posted By {{ comp.submittedByName || comp.submittedByEmail }}</p>
+                <p v-if="comp.author" class="author">Author: {{ comp.author }}</p>
+                <p v-if="comp.arrangedBy" class="author">Arranged By: {{ comp.arrangedBy }}</p>
                 <p class="details">
                   <span>Created: {{ formatDate(comp.dateCreated) }}</span>
                   <span>Modified: {{ formatDate(comp.lastModified) }}</span>
@@ -55,11 +69,12 @@
                 <p class="visibility">Visibility: {{ comp.visibility }}</p>
               </div>
               <div class="composition-actions">
-                <button @click="loadComposition(comp)" class="load-btn">
+                <button @click="loadComposition(comp)" class="load-btn" :disabled="isLoadingComposition">
+                  <div v-if="isLoadingComposition" class="button-spinner"></div>
                   <i class="fas fa-cloud-download-alt"></i>
-                  Load
+                  {{ isLoadingComposition ? 'Loading...' : 'Load' }}
                 </button>
-                <button v-if="canDelete(comp)" @click="startEdit(comp)" class="edit-btn">
+                <button v-if="canDelete(comp)" @click="startEdit(comp)" class="edit-btn" :disabled="isLoadingComposition">
                   <i class="fas fa-edit"></i>
                   Edit
                 </button>
@@ -67,6 +82,7 @@
                   v-if="canDelete(comp)" 
                   @click="deleteComposition(comp.docId)" 
                   class="delete-btn"
+                  :disabled="isLoadingComposition"
                 >
                   <i class="fas fa-trash-alt"></i>
                   Delete
@@ -98,15 +114,19 @@
                   </select>
                 </div>
                 <div class="edit-actions">
-                  <button @click="saveEdit(comp.docId)" class="save-edit-btn">Save</button>
+                  <button @click="saveEdit(comp.docId)" class="save-edit-btn" :disabled="isLoadingComposition">Save</button>
                   <button @click="cancelEdit" class="cancel-edit-btn">Cancel</button>
                 </div>
               </div>
             </template>
           </div>
         </div>
-        <div v-else class="no-compositions">
+        <div v-else-if="!isLoadingCompositions" class="no-compositions">
           No compositions found
+        </div>
+        <div v-else class="loading-compositions">
+          <div class="loading-spinner"></div>
+          <p>Loading compositions...</p>
         </div>
       </div>
     </div>
@@ -115,7 +135,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { auth, db } from '@/firebase';
+import { auth, db, nativeFirestore } from '@/firebase';
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 
 const props = defineProps<{ currentComposition?: any }>();
@@ -124,6 +144,8 @@ const emit = defineEmits(['close', 'load', 'saveCurrent']);
 
 const activeTab = ref('my');
 const compositions = ref<any[]>([]);
+const isLoadingCompositions = ref(false);
+const isLoadingComposition = ref(false);
 
 // Inline editing state
 const editingCompositionId = ref<string | null>(null);
@@ -133,6 +155,8 @@ const editForm = ref<{ title: string; author?: string; arrangedBy?: string; visi
   arrangedBy: '',
   visibility: 'private'
 });
+
+const searchQuery = ref('');
 
 const startEdit = (comp: any) => {
   editingCompositionId.value = comp.docId;
@@ -154,7 +178,8 @@ const saveEdit = async (compId: string) => {
     const sharedEmails = Array.isArray(target?.sharedWith)
       ? (target!.sharedWith as any[]).map((s: any) => s.email)
       : target?.sharedWithEmails || [];
-    await updateDoc(doc(db, 'compositions', compId), {
+    
+    const updateData = {
       name: editForm.value.title,
       author: editForm.value.author,
       arrangedBy: editForm.value.arrangedBy,
@@ -164,7 +189,13 @@ const saveEdit = async (compId: string) => {
       modifiedBy: auth.currentUser?.uid || null,
       modifiedByEmail: auth.currentUser?.email || null,
       modifiedByName: auth.currentUser?.displayName || null
-    });
+    };
+    
+    if (nativeFirestore) {
+      await nativeFirestore.updateComposition('compositions', compId, updateData);
+    } else {
+      await updateDoc(doc(db, 'compositions', compId), updateData);
+    }
     // Refresh list
     await loadCompositions();
     editingCompositionId.value = null;
@@ -175,16 +206,42 @@ const saveEdit = async (compId: string) => {
 };
 
 const filteredCompositions = computed(() => {
+  let comps = [];
   if (activeTab.value === 'my') {
-    return compositions.value;
+    comps = compositions.value.slice();
+  } else if (activeTab.value === 'shared') {
+    const userEmail = auth.currentUser?.email;
+    comps = compositions.value.filter(comp => Array.isArray(comp.sharedWith) && comp.sharedWith.some((entry: any) => entry.email === userEmail));
+  } else {
+    comps = compositions.value.slice();
   }
-  const userEmail = auth.currentUser?.email;
-  if (activeTab.value === 'shared') {
-    // only keep those where sharedWith contains the user email
-    return compositions.value.filter(comp => Array.isArray(comp.sharedWith) && comp.sharedWith.some((entry: any) => entry.email === userEmail));
-  }
-  // public tab – compositions list already limited to public ones
-  return compositions.value;
+  // Always sort alphabetically by title (name)
+  comps.sort((a, b) => {
+    const nameA = (a.name || '').toLowerCase();
+    const nameB = (b.name || '').toLowerCase();
+    if (nameA < nameB) return -1;
+    if (nameA > nameB) return 1;
+    return 0;
+  });
+  if (!searchQuery.value.trim()) return comps;
+  const q = searchQuery.value.trim().toLowerCase();
+  return comps
+    .filter(comp => {
+      return (
+        (comp.name && comp.name.toLowerCase().includes(q)) ||
+        (comp.author && comp.author.toLowerCase().includes(q)) ||
+        (comp.arrangedBy && comp.arrangedBy.toLowerCase().includes(q)) ||
+        (comp.submittedByName && comp.submittedByName.toLowerCase().includes(q)) ||
+        (comp.submittedByEmail && comp.submittedByEmail.toLowerCase().includes(q))
+      );
+    })
+    .sort((a, b) => {
+      const nameA = (a.name || '').toLowerCase();
+      const nameB = (b.name || '').toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
+    });
 });
 
 const loadCompositions = async () => {
@@ -192,32 +249,62 @@ const loadCompositions = async () => {
   if (!user && activeTab.value !== 'public') return;
 
   compositions.value = [];
+  isLoadingCompositions.value = true;
 
   try {
-    let q;
-    switch (activeTab.value) {
-      case 'my':
-        q = query(collection(db, 'compositions'), where('submittedBy', '==', user!.uid));
-        break;
-      case 'shared':
-        q = query(collection(db, 'compositions'), where('sharedWithEmails', 'array-contains', user.email));
-        break;
-      case 'public':
-        q = query(collection(db, 'compositions'), where('visibility', '==', 'public'));
-        break;
-    }
+    // Use native wrapper if available (Android/iOS), otherwise use regular Firestore
+    if (nativeFirestore) {
+      console.log('[LoadCompositions] Using native Firestore wrapper');
+      let filters: any[] = [];
+      
+      switch (activeTab.value) {
+        case 'my':
+          filters = [{ field: 'submittedBy', value: user!.uid }];
+          break;
+        case 'shared':
+          filters = [{ field: 'sharedWithEmails', value: user!.email }];
+          break;
+        case 'public':
+          filters = [{ field: 'visibility', value: 'public' }];
+          break;
+      }
+      
+      compositions.value = await nativeFirestore.getCompositions('compositions', filters);
+    } else {
+      // Web platform - use regular Firestore
+      console.log('[LoadCompositions] Using web Firestore');
+      let q;
+      switch (activeTab.value) {
+        case 'my':
+          q = query(collection(db, 'compositions'), where('submittedBy', '==', user!.uid));
+          break;
+        case 'shared':
+          q = query(collection(db, 'compositions'), where('sharedWithEmails', 'array-contains', user!.email));
+          break;
+        case 'public':
+          q = query(collection(db, 'compositions'), where('visibility', '==', 'public'));
+          break;
+      }
 
-    if (q) {
-      const snap = await getDocs(q);
-      compositions.value = snap.docs.map(d => ({ docId: d.id, ...(d.data() as any) }));
+      if (q) {
+        const snap = await getDocs(q);
+        compositions.value = snap.docs.map(d => ({ docId: d.id, ...(d.data() as any) }));
+      }
     }
   } catch (error) {
     console.error('Error loading compositions:', error);
+  } finally {
+    isLoadingCompositions.value = false;
   }
 };
 
 const loadComposition = (composition: any) => {
-  emit('load', composition);
+  isLoadingComposition.value = true;
+  // Add a small delay to show the loading state
+  setTimeout(() => {
+    isLoadingComposition.value = false;
+    emit('load', composition);
+  }, 100);
 };
 
 const canDelete = (composition: any) => {
@@ -231,7 +318,11 @@ const deleteComposition = async (compositionId: string) => {
   if (!confirm('Are you sure you want to delete this composition?')) return;
 
   try {
-    await deleteDoc(doc(db, 'compositions', compositionId));
+    if (nativeFirestore) {
+      await nativeFirestore.deleteComposition('compositions', compositionId);
+    } else {
+      await deleteDoc(doc(db, 'compositions', compositionId));
+    }
     compositions.value = compositions.value.filter(comp => comp.docId !== compositionId);
   } catch (error: any) {
     // Provide clearer feedback when security rules block the action
@@ -510,6 +601,66 @@ watch(activeTab, () => {
   color: #666;
 }
 
+.loading-compositions {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #2196F3;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+
+.button-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.load-btn:disabled,
+.edit-btn:disabled,
+.delete-btn:disabled,
+.save-edit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.load-btn:disabled .fas,
+.edit-btn:disabled .fas,
+.delete-btn:disabled .fas {
+  opacity: 0.5;
+}
+
 @media (max-width: 768px) {
   .modal-content {
     width: 95%;
@@ -526,5 +677,20 @@ watch(activeTab, () => {
     width: 100%;
     justify-content: flex-end;
   }
+}
+
+.search-bar {
+  margin: 12px 0 8px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.search-bar input {
+  width: 100%;
+  max-width: 350px;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
 }
 </style> 

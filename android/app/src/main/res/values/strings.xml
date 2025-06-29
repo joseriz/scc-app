@@ -4,4 +4,5 @@
     <string name="title_activity_main">St Cecilia\'s Songbook</string>
     <string name="package_name">com.stcecilia.songbook</string>
     <string name="custom_url_scheme">com.stcecilia.songbook</string>
+    <string name="server_client_id">377945407536-65mcijb46gdkdf5crhn8va8sq79vobi2.apps.googleusercontent.com</string>
 </resources>

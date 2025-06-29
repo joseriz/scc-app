@@ -15,6 +15,10 @@ app.use(router)
 
 // Initialize auth store
 const authStore = useAuthStore(pinia)
-authStore.initialize()
+
+// Initialize auth in the background
+authStore.initialize().catch(error => {
+  console.error('Failed to initialize auth:', error);
+});
 
 app.mount('#app') 

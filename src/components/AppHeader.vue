@@ -5,6 +5,10 @@
       <NavBar />
     </div>
 
+    <div class="composition-title">
+      {{ compositionName || 'Untitled' }}
+    </div>
+
     <!-- Musical settings in a compact row -->
     <div class="musical-settings">
       <!-- <div class="setting-item">
@@ -92,6 +96,7 @@ const props = defineProps<{
   keySignature: string;
   timeSignature: string;
   tempo: number;
+  compositionName?: string;
 }>();
 
 const emit = defineEmits<{
@@ -150,6 +155,18 @@ const onTimeSignatureChange = (event: Event) => {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+}
+
+.composition-title {
+  text-align: center;
+  font-size: 1.2em;
+  font-weight: bold;
+  color: #333;
+  margin: 8px 0;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .app-logo {
@@ -258,6 +275,11 @@ const onTimeSignatureChange = (event: Event) => {
   
   .app-logo {
     margin-bottom: 0;
+  }
+  
+  .composition-title {
+    font-size: 1.1em;
+    margin: 4px 0;
   }
   
   .musical-settings {

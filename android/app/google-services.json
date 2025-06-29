@@ -1,0 +1,43 @@
+{
+  "project_info": {
+    "project_number": "377945407536",
+    "project_id": "academic-ratio-261512",
+    "storage_bucket": "academic-ratio-261512.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:377945407536:android:ea9f6474c2e9695ce86df5",
+        "android_client_info": {
+          "package_name": "com.stcecilia.songbook"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "377945407536-vag281kc3q780jap06up6egdu6qsufqa.apps.googleusercontent.com",
+          "client_type": 1
+        },
+        {
+          "client_id": "377945407536-65mcijb46gdkdf5crhn8va8sq79vobi2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAAIOv76XHOpCCskFQM9pIRGkYbgEMm9x4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "377945407536-65mcijb46gdkdf5crhn8va8sq79vobi2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+} 

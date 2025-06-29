@@ -24,9 +24,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { auth } from '@/firebase';
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import UserMenu from './UserMenu.vue';
 import { useCloudStore } from '@/stores/cloud';
+import { useAuth } from '@/firebase/auth';
 
 const currentUser = ref(null);
 const isMobileView = ref(false);
@@ -41,8 +42,8 @@ const updateMobileState = () => {
 
 const signInWithGoogle = async () => {
   try {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    const { googleSignIn } = useAuth();
+    await googleSignIn();
   } catch (error) {
     console.error('Error signing in with Google:', error);
   }

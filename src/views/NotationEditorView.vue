@@ -3,6 +3,7 @@
   <div class="notation-editor">
     <AppHeader v-model:keySignature="keySignature" v-model:timeSignature="timeSignature" v-model:tempo="tempo"
       :readOnlyMode="readOnlyMode" :selectedClef="staves.length > 0 ? staves[0].clef : 'treble'"
+      :compositionName="compositionName"
       @keySignatureChange="changeKeySignatureDirectly" @timeSignatureChange="updateTimeSignature" />
 
     <!-- Read-only toggle moved to the top -->
@@ -715,13 +716,14 @@ import SectionsPanel from '@/components/SectionsPanel.vue';
 import { generateId } from '@/utils/idGenerator'; // Make sure this import path is correct
 import SaveToCloudModal from '@/components/SaveToCloudModal.vue';
 import LoadCompositionModal from '@/components/LoadCompositionModal.vue';
-import { db, auth } from '@/firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import UserMenu from '@/components/UserMenu.vue';
 import { useCloudStore } from '@/stores/cloud';
 import { storeToRefs } from 'pinia';
 import type { SaveDetails } from '@/types/SaveDetails';
-
+import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
+import { auth, db, nativeFirestore, logFirestoreCall } from '@/firebase';
+import { Capacitor } from '@capacitor/core';
 // Import types
 import type {
   Note as ImportedNote, // Alias the import
@@ -868,11 +870,24 @@ const handleSaveToCloud = (details: SaveDetails) => {
       throw new Error('Invalid voiceLayers data: expected an array');
     }
 
-    // Decide whether to create a new document or update an existing one
-    const compositionsCol = db.collection('compositions');
-    const savePromise = (currentCloudDocId.value && dataToSave.submittedBy === currentUser.uid)
-      ? compositionsCol.doc(currentCloudDocId.value).set(dataToSave, { merge: true })
-      : compositionsCol.add(dataToSave);
+    // Use native wrapper for native platforms, modular SDK for web
+    let savePromise;
+    
+    if (Capacitor.isNativePlatform() && nativeFirestore) {
+      logFirestoreCall('saveComposition (native)', { docId: currentCloudDocId.value });
+      savePromise = nativeFirestore.saveComposition('compositions', dataToSave, currentCloudDocId.value || undefined);
+    } else {
+      // Modular Firestore API for web
+      const compositionsCol = collection(db, 'compositions');
+      if (currentCloudDocId.value && dataToSave.submittedBy === currentUser.uid) {
+        const docRef = doc(db, 'compositions', currentCloudDocId.value);
+        logFirestoreCall('setDoc (web)', { docId: currentCloudDocId.value });
+        savePromise = setDoc(docRef, dataToSave, { merge: true });
+      } else {
+        logFirestoreCall('addDoc (web)');
+        savePromise = addDoc(compositionsCol, dataToSave);
+      }
+    }
 
     savePromise.then((result) => {
       // For .add we get a DocumentReference, for .set we don't; unify message
