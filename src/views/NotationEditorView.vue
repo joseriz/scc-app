@@ -4,7 +4,10 @@
     <AppHeader v-model:keySignature="keySignature" v-model:timeSignature="timeSignature" v-model:tempo="tempo"
       :readOnlyMode="readOnlyMode" :selectedClef="staves.length > 0 ? staves[0].clef : 'treble'"
       :compositionName="compositionName"
-      @keySignatureChange="changeKeySignatureDirectly" @timeSignatureChange="updateTimeSignature" />
+      :hasUnsavedChanges="hasUnsavedChanges"
+      :isSaving="isSavingToCloud"
+      @keySignatureChange="changeKeySignatureDirectly" @timeSignatureChange="updateTimeSignature"
+      @quickSave="quickSave" />
 
     <!-- Read-only toggle moved to the top -->
     <div class="read-only-toggle">
@@ -691,6 +694,13 @@
     <!-- Cloud loading overlay -->
     <div v-if="isCloudLoading" class="loading-overlay">
       <div class="spinner"></div>
+      <p>Loading composition...</p>
+    </div>
+
+    <!-- Saving overlay -->
+    <div v-if="isSavingToCloud" class="loading-overlay">
+      <div class="spinner"></div>
+      <p>Saving to cloud...</p>
     </div>
   </div>
 </template>
@@ -751,6 +761,15 @@ const { isSaveToCloudModalVisible, isLoadFromCloudVisible } = storeToRefs(cloudS
 // Document ID of the composition currently loaded from Firestore (if any)
 const currentCloudDocId = ref<string | null>(null);
 
+// Track dirty state and original source for quick save functionality
+const hasUnsavedChanges = ref(false);
+const originalSource = ref<'cloud' | 'local' | null>(null); // Where the composition was loaded from
+const originalCloudData = ref<any>(null); // Store original cloud composition data for permission checking
+const lastSavedStateHash = ref<string | null>(null);
+
+// Track saving state for loading overlay
+const isSavingToCloud = ref(false);
+
 // ---- Access Control ----
 // When true, user is forced into read-only mode and cannot toggle editing.
 const readOnlyLocked = ref(false);
@@ -775,6 +794,189 @@ function determineWriteAccess(comp: any): boolean {
   }
 
   return false;
+}
+
+// Generate a hash of the current composition state for dirty tracking
+function generateStateHash(): string {
+  const state = {
+    name: compositionName.value,
+    tempo: tempo.value,
+    keySignature: keySignature.value,
+    timeSignature: timeSignature.value,
+    staves: staves.value,
+    voiceLayers: voiceLayers.value.map(vl => ({
+      ...vl,
+      notes: vl.notes.map(n => ({ ...n }))
+    })),
+    chordSymbols: chordSymbols.value,
+    sections: sections.value,
+    sequenceItems: sequenceItems.value,
+    tiesSlurs: tiesSlurs.value,
+    keySignatureChanges: keySignatureChanges.value,
+    timeSignatureChanges: timeSignatureChanges.value,
+    clefChanges: clefChanges.value
+  };
+  return JSON.stringify(state);
+}
+
+// Update dirty state
+function updateDirtyState() {
+  const currentHash = generateStateHash();
+  hasUnsavedChanges.value = lastSavedStateHash.value !== null && currentHash !== lastSavedStateHash.value;
+}
+
+// Mark as saved (reset dirty state)
+function markAsSaved() {
+  lastSavedStateHash.value = generateStateHash();
+  hasUnsavedChanges.value = false;
+}
+
+// Quick save function - saves back to original source
+async function quickSave() {
+  if (!hasUnsavedChanges.value) return;
+
+  try {
+    if (originalSource.value === 'cloud' && currentCloudDocId.value) {
+      isSavingToCloud.value = true;
+      await quickSaveToCloud();
+    } else if (originalSource.value === 'local' && currentCompositionId.value) {
+      await quickSaveToLocal();
+    } else {
+      // No original source, open appropriate save modal
+      if (auth.currentUser) {
+        isSaveToCloudModalVisible.value = true;
+      } else {
+        saveComposition();
+      }
+    }
+  } catch (error) {
+    console.error('Quick save failed:', error);
+    alert('Quick save failed: ' + error.message);
+  } finally {
+    isSavingToCloud.value = false;
+  }
+}
+
+// Quick save to cloud (overwrite existing)
+async function quickSaveToCloud() {
+  if (!currentCloudDocId.value || !originalCloudData.value) {
+    throw new Error('No cloud composition to overwrite');
+  }
+
+  // Check write permissions
+  if (!determineWriteAccess(originalCloudData.value)) {
+    throw new Error('You do not have permission to edit this composition');
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('You must be logged in to save to cloud');
+  }
+
+  // Prepare composition data
+  const compositionData = prepareCompositionData();
+  const dataToSave = {
+    ...JSON.parse(JSON.stringify(compositionData)),
+    // Preserve original metadata
+    author: originalCloudData.value.author,
+    arrangedBy: originalCloudData.value.arrangedBy,
+    dateCreated: originalCloudData.value.dateCreated,
+    visibility: originalCloudData.value.visibility,
+    sharedWith: originalCloudData.value.sharedWith || [],
+    sharedWithEmails: originalCloudData.value.sharedWithEmails || [],
+    submittedBy: originalCloudData.value.submittedBy,
+    submittedByEmail: originalCloudData.value.submittedByEmail,
+    submittedByName: originalCloudData.value.submittedByName,
+    allowPublicWrite: originalCloudData.value.allowPublicWrite || false,
+    // Update modification info
+    lastModified: Date.now(),
+    modifiedBy: currentUser.uid,
+    modifiedByEmail: currentUser.email,
+    modifiedByName: currentUser.displayName
+  };
+
+  // Save to cloud
+  if (Capacitor.isNativePlatform() && nativeFirestore) {
+    await nativeFirestore.saveComposition('compositions', dataToSave, currentCloudDocId.value);
+  } else {
+    const docRef = doc(db, 'compositions', currentCloudDocId.value);
+    await setDoc(docRef, dataToSave, { merge: true });
+  }
+
+  markAsSaved();
+  console.log('Quick saved to cloud successfully');
+  
+  // Show brief success message
+  alert('Composition saved successfully!');
+}
+
+// Quick save to local storage (overwrite existing)
+async function quickSaveToLocal() {
+  if (!currentCompositionId.value) {
+    throw new Error('No local composition to overwrite');
+  }
+
+  const compositionIndex = savedCompositions.value.findIndex(comp => comp.id === currentCompositionId.value);
+  if (compositionIndex === -1) {
+    throw new Error('Local composition not found');
+  }
+
+  // Create the updated composition object
+  const updatedData = prepareCompositionData();
+  // Preserve the original ID and creation date
+  updatedData.id = savedCompositions.value[compositionIndex].id;
+  updatedData.dateCreated = savedCompositions.value[compositionIndex].dateCreated;
+
+  // Replace the old composition data with the new data
+  savedCompositions.value.splice(compositionIndex, 1, updatedData);
+
+  // Save to localStorage
+  saveToLocalStorage();
+
+  markAsSaved();
+  console.log('Quick saved to local storage successfully');
+}
+
+// Reset to new composition state
+function resetToNewComposition() {
+  // Clear all composition data
+  compositionName.value = '';
+  currentCompositionId.value = '';
+  currentCloudDocId.value = null;
+  originalSource.value = null;
+  originalCloudData.value = null;
+  
+  // Clear music data
+  voiceLayers.value = [];
+  staves.value = [];
+  chordSymbols.value = [];
+  sections.value = [];
+  sequenceItems.value = [];
+  timeSignatureChanges.value = [];
+  clefChanges.value = [];
+  keySignatureChanges.value = [];
+  tiesSlurs.value = [];
+  
+  // Reset settings to defaults
+  tempo.value = 120;
+  keySignature.value = 'C';
+  timeSignature.value = '4/4';
+  selectedDuration.value = 'quarter';
+  selectedNoteType.value = 'note';
+  selectedAccidental.value = null;
+  selectedOctave.value = 4;
+  isDottedNote.value = false;
+  isTripletNote.value = false;
+  
+  // Initialize default staff and voice
+  initializeDefaultStaffAndVoice();
+  
+  // For new compositions, start in edit mode (not read-only)
+  readOnlyMode.value = false;
+  readOnlyLocked.value = false;
+  
+  // Mark as clean (no unsaved changes)
+  markAsSaved();
 }
 
 // Global loading indicator when compositions are being fetched from cloud
@@ -819,6 +1021,9 @@ const handleLogout = async () => {
 
 const handleSaveToCloud = (details: SaveDetails) => {
   try {
+    // Show loading overlay
+    isSavingToCloud.value = true;
+    
     // Set the composition name before preparing the data
     compositionName.value = details.title;
     
@@ -879,12 +1084,23 @@ const handleSaveToCloud = (details: SaveDetails) => {
     } else {
       // Modular Firestore API for web
       const compositionsCol = collection(db, 'compositions');
-      if (currentCloudDocId.value && dataToSave.submittedBy === currentUser.uid) {
+      
+      // Debug logging to understand save decision
+      console.log('Save decision debug:', {
+        currentCloudDocId: currentCloudDocId.value,
+        hasOriginalData: !!originalCloudData.value,
+        hasWriteAccess: originalCloudData.value ? determineWriteAccess(originalCloudData.value) : false,
+        willUpdate: !!(currentCloudDocId.value && originalCloudData.value && determineWriteAccess(originalCloudData.value))
+      });
+      
+      if (currentCloudDocId.value && originalCloudData.value && determineWriteAccess(originalCloudData.value)) {
         const docRef = doc(db, 'compositions', currentCloudDocId.value);
         logFirestoreCall('setDoc (web)', { docId: currentCloudDocId.value });
+        console.log('UPDATING existing composition with ID:', currentCloudDocId.value);
         savePromise = setDoc(docRef, dataToSave, { merge: true });
       } else {
         logFirestoreCall('addDoc (web)');
+        console.log('CREATING new composition (no valid cloud ID to update)');
         savePromise = addDoc(compositionsCol, dataToSave);
       }
     }
@@ -899,6 +1115,17 @@ const handleSaveToCloud = (details: SaveDetails) => {
       console.log('Successfully saved to Firestore with ID:', savedId);
       alert(`Composition saved successfully${savedId ? ` with ID: ${savedId}` : ''}`);
       isSaveToCloudModalVisible.value = false;
+      
+      // Mark as saved and update source tracking
+      markAsSaved();
+      originalSource.value = 'cloud';
+      originalCloudData.value = {
+        ...dataToSave,
+        id: savedId
+      };
+      
+      // Hide loading overlay
+      isSavingToCloud.value = false;
     }).catch((error) => {
       // Log the detailed error
       console.error("Error saving to Firestore:", {
@@ -918,6 +1145,9 @@ const handleSaveToCloud = (details: SaveDetails) => {
       }
       
       alert(errorMessage);
+      
+      // Hide loading overlay on error
+      isSavingToCloud.value = false;
     });
   } catch (error) {
     // Log the detailed error
@@ -927,6 +1157,9 @@ const handleSaveToCloud = (details: SaveDetails) => {
     });
     
     alert(`Failed to prepare composition data: ${error.message}`);
+    
+    // Hide loading overlay on error
+    isSavingToCloud.value = false;
   }
 };
 
@@ -937,7 +1170,19 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
   isLoadFromCloudVisible.value = false;
   try {
     // store the Firestore document ID so we can update later if needed
-    currentCloudDocId.value = compositionToLoad.id || null;
+    currentCloudDocId.value = compositionToLoad.docId || compositionToLoad.id || null;
+    
+    // Debug logging to help track the ID
+    console.log('Loading composition from cloud:', {
+      name: compositionToLoad.name,
+      docId: compositionToLoad.docId,
+      id: compositionToLoad.id,
+      finalCloudDocId: currentCloudDocId.value
+    });
+    
+    // Track original source and data for quick save
+    originalSource.value = 'cloud';
+    originalCloudData.value = JSON.parse(JSON.stringify(compositionToLoad));
     
     stopPlayback();
 
@@ -1073,17 +1318,21 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
       updateStaffScroll();
     });
 
-    // Show success message
-    alert('Composition loaded successfully!');
-
     // Hide loading overlay
     isCloudLoading.value = false;
 
     // Determine write permissions and lock state
     readOnlyLocked.value = !determineWriteAccess(compositionToLoad);
-    if (readOnlyLocked.value) {
-      readOnlyMode.value = true; // force read-only
-    }
+    
+    // Always start in read-only mode when loading any composition for safety
+    readOnlyMode.value = true;
+
+    // Show success message with access info
+    const accessType = readOnlyLocked.value ? 'read-only access' : 'edit access';
+    alert(`Composition loaded successfully! Started in safe read-only mode (you have ${accessType}).`);
+
+    // Mark as saved since we just loaded it
+    markAsSaved();
   } catch (error: any) {
     console.error('Error loading composition:', error);
     alert('Failed to load composition: ' + error.message);
@@ -2999,6 +3248,12 @@ const saveComposition = () => {
   // Update currentCompositionId to the newly saved composition
   currentCompositionId.value = newComposition.id;
 
+  // Set source tracking and mark as saved
+  originalSource.value = 'local';
+  originalCloudData.value = null;
+  currentCloudDocId.value = null;
+  markAsSaved();
+
   // Provide user feedback
   alert(`Composition "${compositionName.value}" saved successfully!`);
 };
@@ -3022,6 +3277,11 @@ const loadComposition = (compositionId) => {
 
       currentCompositionId.value = compositionToLoad.id;
       compositionName.value = compositionToLoad.name;
+      
+      // Track original source for quick save
+      originalSource.value = 'local';
+      originalCloudData.value = null;
+      currentCloudDocId.value = null;
       tempo.value = Number(compositionToLoad.tempo) || 120; // Ensure tempo is a number
       keySignature.value = compositionToLoad.keySignature || 'C';
       timeSignature.value = compositionToLoad.timeSignature || '4/4';
@@ -3216,6 +3476,16 @@ const loadComposition = (compositionId) => {
       });
 
       saveToLocalStorage();
+      
+      // Always start in read-only mode when loading any composition for safety
+      readOnlyMode.value = true;
+      readOnlyLocked.value = false; // Local compositions are never locked
+      
+      // Show success message
+      alert('Local composition loaded successfully! Started in safe read-only mode.');
+      
+      // Mark as saved since we just loaded it
+      markAsSaved();
 
     } catch (error) {
       alert(`Error loading composition: ${error instanceof Error ? error.message : String(error)}`);
@@ -3294,6 +3564,9 @@ onMounted(async () => {
     // Set up the initial display
     updateStaffDisplay();
 
+    // Mark initial state as saved (clean)
+    markAsSaved();
+
   } catch (error) {
     console.error('Error during component initialization:', error);
   }
@@ -3322,6 +3595,7 @@ watch(allVisibleNotes, (newNotes) => {
 
 // Or alternatively, watch the voiceLayers directly
 watch(voiceLayers, () => {
+  updateDirtyState();
 }, { deep: true });
 
 // Add variables for tracking the current composition and renaming state
@@ -3352,6 +3626,9 @@ const updateComposition = (id) => {
 
   // Save to localStorage
   saveToLocalStorage();
+  
+  // Mark as saved since we just updated it
+  markAsSaved();
 
   alert('Composition updated successfully!');
 };
@@ -7495,6 +7772,22 @@ const getEffectiveClefAtPosition = (position: number, staffId: string): 'treble'
   return applicableChanges.length > 0 ? applicableChanges[0].clef : staff.clef;
 };
 
+// Watch for changes to track dirty state (placed after all variable declarations)
+watch([
+  compositionName,
+  tempo,
+  keySignature,
+  timeSignature,
+  staves,
+  chordSymbols,
+  sections,
+  sequenceItems,
+  tiesSlurs,
+  keySignatureChanges,
+  timeSignatureChanges,
+  clefChanges
+], updateDirtyState, { deep: true });
+
 </script>
 
 <style scoped>
@@ -8071,9 +8364,17 @@ const getEffectiveClefAtPosition = (position: number, staffId: string): 'treble'
   height: 100%;
   background: rgba(255, 255, 255, 0.7);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 2000;
+}
+
+.loading-overlay p {
+  margin-top: 16px;
+  font-size: 16px;
+  color: #333;
+  font-weight: 500;
 }
 
 .spinner {

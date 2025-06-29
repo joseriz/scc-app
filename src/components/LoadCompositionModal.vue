@@ -53,7 +53,13 @@
             <!-- Display mode -->
             <template v-if="editingCompositionId !== comp.docId">
               <div class="composition-info">
-                <h3 class="comp-title">{{ comp.name }}</h3>
+                <h3 class="comp-title">
+                  {{ comp.name }}
+                  <span :class="['access-tag', getAccessInfo(comp).class]">
+                    <i :class="getAccessIcon(comp)"></i>
+                    {{ getAccessInfo(comp).text }}
+                  </span>
+                </h3>
                 <p class="author">Posted By {{ comp.submittedByName || comp.submittedByEmail }}</p>
                 <p v-if="comp.author" class="author">Author: {{ comp.author }}</p>
                 <p v-if="comp.arrangedBy" class="author">Arranged By: {{ comp.arrangedBy }}</p>
@@ -113,6 +119,24 @@
                     <option value="shared">Shared</option>
                   </select>
                 </div>
+                <div v-if="editForm.visibility === 'shared'" class="form-group sharing-section">
+                  <label>Share with (email addresses)</label>
+                  <div v-for="(share, index) in editForm.sharedWith" :key="index" class="share-entry">
+                    <input type="email" placeholder="email@example.com" v-model="share.email">
+                    <select v-model="share.permission">
+                      <option value="read">Read-only</option>
+                      <option value="write">Read/Write</option>
+                    </select>
+                    <button type="button" @click="removeShare(index)" class="remove-share-btn">Remove</button>
+                  </div>
+                  <button type="button" @click="addShare" class="add-share-btn">Add person</button>
+                </div>
+                <div v-if="editForm.visibility === 'public'" class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" v-model="editForm.allowPublicWrite" />
+                    Allow anyone to edit (public write access)
+                  </label>
+                </div>
                 <div class="edit-actions">
                   <button @click="saveEdit(comp.docId)" class="save-edit-btn" :disabled="isLoadingComposition">Save</button>
                   <button @click="cancelEdit" class="cancel-edit-btn">Cancel</button>
@@ -149,11 +173,20 @@ const isLoadingComposition = ref(false);
 
 // Inline editing state
 const editingCompositionId = ref<string | null>(null);
-const editForm = ref<{ title: string; author?: string; arrangedBy?: string; visibility: 'public' | 'private' | 'shared'; }>({
+const editForm = ref<{ 
+  title: string; 
+  author?: string; 
+  arrangedBy?: string; 
+  visibility: 'public' | 'private' | 'shared';
+  sharedWith: Array<{ email: string; permission: 'read' | 'write' }>;
+  allowPublicWrite: boolean;
+}>({
   title: '',
   author: '',
   arrangedBy: '',
-  visibility: 'private'
+  visibility: 'private',
+  sharedWith: [],
+  allowPublicWrite: false
 });
 
 const searchQuery = ref('');
@@ -164,7 +197,12 @@ const startEdit = (comp: any) => {
     title: comp.name,
     author: comp.author || '',
     arrangedBy: comp.arrangedBy || '',
-    visibility: comp.visibility || 'private'
+    visibility: comp.visibility || 'private',
+    sharedWith: Array.isArray(comp.sharedWith) ? comp.sharedWith.map((s: any) => ({
+      email: s.email || '',
+      permission: s.permission || 'read'
+    })) : [],
+    allowPublicWrite: comp.allowPublicWrite || false
   };
 };
 
@@ -172,19 +210,24 @@ const cancelEdit = () => {
   editingCompositionId.value = null;
 };
 
+const addShare = () => {
+  editForm.value.sharedWith.push({ email: '', permission: 'read' });
+};
+
+const removeShare = (index: number) => {
+  editForm.value.sharedWith.splice(index, 1);
+};
+
 const saveEdit = async (compId: string) => {
   try {
-    const target = compositions.value.find(c => c.docId === compId);
-    const sharedEmails = Array.isArray(target?.sharedWith)
-      ? (target!.sharedWith as any[]).map((s: any) => s.email)
-      : target?.sharedWithEmails || [];
-    
     const updateData = {
       name: editForm.value.title,
       author: editForm.value.author,
       arrangedBy: editForm.value.arrangedBy,
       visibility: editForm.value.visibility,
-      sharedWithEmails: sharedEmails,
+      sharedWith: editForm.value.visibility === 'shared' ? editForm.value.sharedWith : [],
+      sharedWithEmails: editForm.value.visibility === 'shared' ? editForm.value.sharedWith.map(s => s.email) : [],
+      allowPublicWrite: editForm.value.visibility === 'public' ? editForm.value.allowPublicWrite : false,
       lastModified: Date.now(),
       modifiedBy: auth.currentUser?.uid || null,
       modifiedByEmail: auth.currentUser?.email || null,
@@ -309,6 +352,60 @@ const loadComposition = (composition: any) => {
 
 const canDelete = (composition: any) => {
   return composition.submittedBy === auth.currentUser?.uid;
+};
+
+// Determine if the current user has write permission for a composition
+const determineWriteAccess = (comp: any): boolean => {
+  const user = auth.currentUser;
+  if (!user) return false;
+
+  // Owner can always write
+  if (comp.submittedBy === user.uid) return true;
+
+  // Shared visibility: check sharedWith array
+  if (comp.visibility === 'shared' && Array.isArray(comp.sharedWith)) {
+    const entry = comp.sharedWith.find((e: any) => e.email === user.email);
+    if (entry && entry.permission === 'write') return true;
+  }
+
+  // Public visibility: optional allowPublicWrite flag
+  if (comp.visibility === 'public') {
+    return !!comp.allowPublicWrite;
+  }
+
+  return false;
+};
+
+// Get access level text and styling
+const getAccessInfo = (comp: any) => {
+  const user = auth.currentUser;
+  if (!user) return { text: 'Read Only', class: 'access-read' };
+  
+  if (comp.submittedBy === user.uid) {
+    return { text: 'Owner', class: 'access-owner' };
+  }
+  
+  if (determineWriteAccess(comp)) {
+    return { text: 'Can Edit', class: 'access-write' };
+  }
+  
+  return { text: 'Read Only', class: 'access-read' };
+};
+
+// Get appropriate icon for access level
+const getAccessIcon = (comp: any) => {
+  const user = auth.currentUser;
+  if (!user) return 'fas fa-eye';
+  
+  if (comp.submittedBy === user.uid) {
+    return 'fas fa-crown';
+  }
+  
+  if (determineWriteAccess(comp)) {
+    return 'fas fa-edit';
+  }
+  
+  return 'fas fa-eye';
 };
 
 const deleteComposition = async (compositionId: string) => {
@@ -458,10 +555,18 @@ watch(activeTab, () => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 12px;
-  border: 1px solid #eee;
-  border-radius: 6px;
-  background: #f8f9fa;
+  padding: 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #ffffff;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.composition-item:hover {
+  border-color: #d0d0d0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background: #fafafa;
 }
 
 .composition-info {
@@ -469,9 +574,53 @@ watch(activeTab, () => {
 }
 
 .comp-title {
-  margin: 0 0 4px 0;
+  margin: 0 0 6px 0;
   font-size: 1.1rem;
   color: #333;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.access-tag {
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: default;
+  pointer-events: none;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.access-tag i {
+  font-size: 0.9em;
+}
+
+.access-tag.access-owner {
+  background: #e8f5e8;
+  color: #2e7d32;
+  border: 1px solid #c8e6c9;
+}
+
+.access-tag.access-write {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ffcc80;
+}
+
+.access-tag.access-read {
+  background: #f5f5f5;
+  color: #424242;
+  border: 1px solid #e0e0e0;
 }
 
 .author {
@@ -578,6 +727,61 @@ watch(activeTab, () => {
   margin: 4px 0;
 }
 
+/* Sharing controls styles */
+.sharing-section {
+  width: 100%;
+  flex: 1 1 100%;
+}
+
+.share-entry {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.share-entry input[type="email"] {
+  flex: 2;
+}
+
+.share-entry select {
+  flex: 1;
+}
+
+.remove-share-btn {
+  background: #E53935;
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.add-share-btn {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
 .current-composition-card .meta {
   font-size: 0.9rem;
   color: #666;
@@ -676,6 +880,19 @@ watch(activeTab, () => {
   .composition-actions {
     width: 100%;
     justify-content: flex-end;
+  }
+  
+  .comp-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .access-tag {
+    font-size: 0.55rem;
+    padding: 1px 4px;
+    margin-left: 0;
+    align-self: flex-start;
   }
 }
 

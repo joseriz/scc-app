@@ -7,6 +7,20 @@
 
     <div class="composition-title">
       {{ compositionName || 'Untitled' }}
+      <button 
+        v-if="hasUnsavedChanges && !readOnlyMode"
+        @click="$emit('quickSave')"
+        class="quick-save-btn"
+        :disabled="isSaving"
+        :title="isSaving ? 'Saving...' : 'Save changes'"
+      >
+        <div v-if="isSaving" class="save-spinner"></div>
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="17,21 17,13 7,13 7,21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="7,3 7,8 15,8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
 
     <!-- Musical settings in a compact row -->
@@ -97,6 +111,8 @@ const props = defineProps<{
   timeSignature: string;
   tempo: number;
   compositionName?: string;
+  hasUnsavedChanges?: boolean;
+  isSaving?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -107,6 +123,7 @@ const emit = defineEmits<{
   (e: 'clefChange', value: string): void; // For immediate handling if needed
   (e: 'keySignatureChange', value: string): void; // For immediate handling
   (e: 'timeSignatureChange', value: string): void; // For immediate handling
+  (e: 'quickSave'): void; // For quick save functionality
 }>();
 
 const localTempo = ref(props.tempo);
@@ -167,6 +184,61 @@ const onTimeSignatureChange = (event: Event) => {
   background: rgba(255, 255, 255, 0.8);
   border-radius: 4px;
   border: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.quick-save-btn {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.quick-save-btn:hover {
+  background: #45a049;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+.quick-save-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.quick-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.quick-save-btn:disabled:hover {
+  background: #4CAF50;
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.save-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .app-logo {
