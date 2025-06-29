@@ -599,7 +599,7 @@
       <button @click="scrollStaff('left')" class="scroll-btn left" :disabled="scrollPosition === 0">
         ◀
       </button>
-      <button @click="extendStaff" class="extend-btn">
+      <button @click="extendStaff" class="extend-btn" :disabled="readOnlyMode">
         Extend Staff
       </button>
       <button @click="scrollStaff('right')" class="scroll-btn right" :disabled="scrollPosition >= maxScrollPosition">
@@ -1225,6 +1225,9 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
       staffWidth.value = compositionToLoad.staffWidth || 2000;
       scrollPosition.value = 0;
     }
+    
+    // Sync measuresCount with loaded staffWidth to ensure extend staff works correctly
+    measuresCount.value = Math.ceil(staffWidth.value / measureWidthPx.value);
 
     // Load editor state
     selectedDuration.value = compositionToLoad.selectedDuration || 'quarter';
@@ -2797,6 +2800,10 @@ const maxScrollPosition = computed(() => {
 
 // Function to extend the staff
 const extendStaff = () => {
+  if (readOnlyMode.value) {
+    return; // Exit early if in read-only mode
+  }
+
   // Add 4 more measures
   measuresCount.value += 4;
 
@@ -3309,6 +3316,9 @@ const loadComposition = (compositionId) => {
         staffWidth.value = (compositionToLoad as any).staffWidth || 2000;
         scrollPosition.value = 0;
       }
+      
+      // Sync measuresCount with loaded staffWidth to ensure extend staff works correctly
+      measuresCount.value = Math.ceil(staffWidth.value / measureWidthPx.value);
 
       selectedDuration.value = compositionToLoad.selectedDuration || 'quarter';
       selectedNoteType.value = compositionToLoad.selectedNoteType || 'note';
