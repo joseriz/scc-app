@@ -20,6 +20,17 @@
       </span>
     </div>
 
+    <!-- Vexflow toggle -->
+    <div class="vexflow-toggle">
+      <label class="toggle-switch">
+        <input type="checkbox" v-model="useVexflow">
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-label">
+        {{ useVexflow ? 'Using Vexflow (Professional)' : 'Using Custom Renderer' }}
+      </span>
+    </div>
+
     <!-- Floating Help Button -->
     <div @click="showHelp = true" class="floating-help-btn">
       ?
@@ -42,7 +53,7 @@
     />
 
     <!-- Staves container -->
-    <div class="staves-wrapper">
+    <div class="staves-wrapper" v-if="!useVexflow">
       <div v-for="(stave, staveIndex) in staves" :key="stave.id" class="staff-outer-container">
         <div class="staff-header-controls">
           <span v-if="editingStaffNameId !== stave.id" class="staff-name" @click="editStaffName(stave)"
@@ -593,6 +604,45 @@
       </div>
     </div>
 
+    <!-- Vexflow Renderer -->
+    <div class="vexflow-wrapper" v-if="useVexflow">
+      <VexflowRenderer 
+        :staves="staves"
+        :voiceLayers="voiceLayers"
+        :keySignature="keySignature"
+        :timeSignature="`${timeSignatureNumerator}/${timeSignatureDenominator}`"
+        :width="staffWidth"
+        :height="400"
+        :measuresPerLine="4"
+        :currentPlayingNoteIds="currentPlayingNoteIds"
+        :selectedNoteId="selectedNoteId"
+        :isInsertingSpace="isInsertingSpace"
+        :isDeletingSpace="isDeletingSpace"
+        :isSelectingRange="isSelectingRange"
+        :isPasting="isPasting"
+        :isCreatingTieSlur="isCreatingTieSlur"
+        :isAddingKeySignatureChange="isAddingKeySignatureChange"
+        :isAddingTimeSignatureChange="isAddingTimeSignatureChange"
+        :isAddingClefChange="isAddingClefChange"
+        :selectionStart="selectionStart"
+        :selectionEnd="selectionEnd"
+        :tiesSlurs="tiesSlurs"
+        :keySignatureChanges="keySignatureChanges"
+        :timeSignatureChanges="timeSignatureChanges"
+        :clefChanges="clefChanges"
+        :chordSymbols="chordSymbols"
+        :readOnlyMode="readOnlyMode"
+        @staffClick="handleStaffClick"
+        @noteClick="selectNote"
+        @insertSpace="insertSpace"
+        @deleteSpace="deleteSpace"
+        @rangeSelection="handleRangeSelection"
+        @pasteNotes="pasteNotes"
+        @addKeySignatureChange="addKeySignatureChange"
+        @addTimeSignatureChange="addTimeSignatureChange"
+        @addClefChange="addClefChange"
+      />
+    </div>
 
     <!-- Scroll controls (global for all staves) -->
     <div class="staff-scroll-controls-global">
@@ -734,6 +784,7 @@ import type { SaveDetails } from '@/types/SaveDetails';
 import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
 import { auth, db, nativeFirestore, logFirestoreCall } from '@/firebase';
 import { Capacitor } from '@capacitor/core';
+import VexflowRenderer from '@/components/notation/VexflowRenderer.vue';
 // Import types
 import type {
   Note as ImportedNote, // Alias the import
@@ -773,6 +824,9 @@ const isSavingToCloud = ref(false);
 // ---- Access Control ----
 // When true, user is forced into read-only mode and cannot toggle editing.
 const readOnlyLocked = ref(false);
+
+// Vexflow toggle
+const useVexflow = ref(false);
 
 // Determine if the current user has write permission for a composition
 function determineWriteAccess(comp: any): boolean {
@@ -8403,5 +8457,91 @@ watch([
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* Read-only and Vexflow toggle styling */
+.read-only-toggle,
+.vexflow-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+}
+
+.vexflow-toggle {
+  background: #e7f3ff;
+  border-color: #b6d7ff;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 24px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+  background-color: #2196F3;
+}
+
+input:checked + .toggle-slider:before {
+  transform: translateX(26px);
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+/* Vexflow wrapper styling */
+.vexflow-wrapper {
+  margin: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+/* Update staff controls to work with both renderers */
+.staff-scroll-controls-global {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 20px 0;
 }
 </style>

@@ -59,6 +59,11 @@ const router = createRouter({
       name: 'Admin',
       component: AdminView,
       beforeEnter: requireAdmin
+    },
+    {
+      path: '/vexflow-demo',
+      name: 'VexflowDemo',
+      component: () => import('@/components/notation/VexflowDemo.vue')
     }
   ]
 });
