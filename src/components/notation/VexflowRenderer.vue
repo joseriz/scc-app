@@ -2,6 +2,7 @@
   <div class="vexflow-container" ref="vexflowContainer">
     <div :id="rendererId" class="vexflow-renderer"
          @click="handleStaffClick"
+         @contextmenu.prevent="handleContextMenu"
          @mousedown="handleMouseDown"
          :class="{
            'inserting-space': isInsertingSpace,
@@ -45,7 +46,8 @@ import {
   Accidental,
   Dot,
   Annotation,
-  ChordSymbol as VexChordSymbol
+  ChordSymbol as VexChordSymbol,
+  Barline
 } from 'vexflow';
 import type { Note } from '@/types/notation';
 import type { 
@@ -216,6 +218,17 @@ const handleMouseDown = (event: MouseEvent) => {
   event.preventDefault();
 };
 
+// Add context menu handler
+const handleContextMenu = (event: MouseEvent) => {
+  if (props.readOnlyMode) return;
+  
+  // Check if a note was clicked
+  const clickedNote = findNoteAtPosition(event.offsetX, event.offsetY);
+  if (clickedNote) {
+    emit('noteContextMenu', clickedNote);
+  }
+};
+
 // Find staff at clicked position
 const findStaffAtPosition = (x: number, y: number): StaveType | null => {
   const staffHeight = 120;
@@ -249,32 +262,6 @@ function convertDurationToVexFlow(duration: string, isRest: boolean = false): st
   return isRest ? vexflowDuration + 'r' : vexflowDuration;
 }
 
-// Convert verticalPosition back to pitch that matches your custom renderer
-function mapPositionToPitch(verticalPosition: number, clef: 'treble' | 'bass'): string {
-  // Each 7.5px represents one step
-  const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-  
-  if (clef === 'treble') {
-    // F5 is at 100px
-    const stepsFromF5 = Math.round((100 - verticalPosition) / 7.5);
-    const totalSteps = noteOrder.indexOf('F') + (stepsFromF5);
-    
-    const octave = Math.floor(totalSteps / 7) + 5;
-    const noteIndex = ((totalSteps % 7) + 7) % 7;
-    
-    return `${noteOrder[noteIndex]}${octave}`;
-  } else {
-    // A3 is at 100px
-    const stepsFromA3 = Math.round((100 - verticalPosition) / 7.5);
-    const totalSteps = noteOrder.indexOf('A') + (stepsFromA3);
-    
-    const octave = Math.floor(totalSteps / 7) + 3;
-    const noteIndex = ((totalSteps % 7) + 7) % 7;
-    
-    return `${noteOrder[noteIndex]}${octave}`;
-  }
-}
-
 // Create Vexflow stave note with proper formatting for grid-based sequencer
 function createStaveNote(note: Note, clef: string, voiceColor?: string): StaveNote {
   let staveNote: StaveNote;
@@ -284,28 +271,29 @@ function createStaveNote(note: Note, clef: string, voiceColor?: string): StaveNo
     const vexflowDuration = convertDurationToVexFlow(note.duration, true);
     staveNote = new StaveNote({ keys: ['d/5'], duration: vexflowDuration });
   } else {
-    // Use the stored verticalPosition to determine the correct pitch for VexFlow
-    // This ensures VexFlow renders notes at the same positions as your custom renderer
+    // Use the pitch directly and let VexFlow handle clef positioning with proper clef parameter
     let pitchForVexFlow: string;
     
-    if (note.verticalPosition !== undefined) {
-      // Convert verticalPosition back to pitch using your positioning logic
-      pitchForVexFlow = mapPositionToPitch(note.verticalPosition, clef as 'treble' | 'bass');
-    } else if (note.pitch) {
-      // Fallback to stored pitch if verticalPosition is missing
+    if (note.pitch) {
       pitchForVexFlow = note.pitch;
+      
+      // Log the original pitch
+      console.log(`Note created - Original pitch: ${note.pitch}, Clef: ${clef}, Position: ${note.position}`);
     } else {
-      throw new Error('Note must have either pitch or verticalPosition');
+      throw new Error('Note must have pitch');
     }
     
-    // Parse the calculated pitch and convert to VexFlow format
+    // Parse the pitch and convert to VexFlow format
     let octave = '4';
     let pitch = pitchForVexFlow;
+    
+    console.log(`Parsing pitch: ${pitchForVexFlow}`);
     
     const octaveMatch = pitch.match(/\d+$/);
     if (octaveMatch) {
       octave = octaveMatch[0];
       pitch = pitch.replace(/\d+$/, '');
+      console.log(`Extracted octave: ${octave}, Note part: ${pitch}`);
     }
 
     // Convert to VexFlow format
@@ -313,9 +301,17 @@ function createStaveNote(note: Note, clef: string, voiceColor?: string): StaveNo
     const accidental = pitch.slice(1);
     const vexflowNote = `${noteName}${accidental}/${octave}`;
     
+    console.log(`Final VexFlow format: ${vexflowNote} with clef: ${clef}`);
+    
     // Use actual duration from the note data
     const vexflowDuration = convertDurationToVexFlow(note.duration, false);
-    staveNote = new StaveNote({ keys: [vexflowNote], duration: vexflowDuration });
+    
+    // IMPORTANT: Pass the clef to StaveNote so VexFlow interprets pitches correctly!
+    staveNote = new StaveNote({ 
+      keys: [vexflowNote], 
+      duration: vexflowDuration,
+      clef: clef  // This tells VexFlow how to interpret the pitch
+    });
     
     // Handle accidentals - use the original pitch to preserve accidental information
     const originalPitch = note.pitch || pitchForVexFlow;
@@ -538,16 +534,16 @@ function renderNotation() {
     renderer = new Renderer(container as HTMLDivElement, Renderer.Backends.SVG);
     
     const calculatedHeight = Math.max(props.height, props.staves.length * 120 + 100);
-    renderer.resize(props.width, calculatedHeight);
-    context = renderer.getContext();
-
-    let yOffset = 40;
+    
     // Calculate measure width dynamically based on note density (not fixed musical rules)
     const calculateMeasureWidth = (noteCount: number): number => {
       const minWidth = 150; // Minimum measure width
       const noteSpacing = 40; // Space per note
       return Math.max(minWidth, noteCount * noteSpacing + 100); // Extra space for clefs/signatures
     };
+    
+    // Calculate total width needed for all measures
+    let totalWidthNeeded = 10; // Start margin
     
     // First pass: Calculate maximum width needed for each measure across ALL staves
     const globalMeasureWidths: number[] = [];
@@ -574,45 +570,50 @@ function renderNotation() {
       globalMeasureWidths.push(calculateMeasureWidth(0));
     }
     
+    // Calculate total width needed
+    totalWidthNeeded = 10 + globalMeasureWidths.reduce((sum, width) => sum + width, 0) + 20; // margins
+    const rendererWidth = Math.max(props.width, totalWidthNeeded);
+    
+    renderer.resize(rendererWidth, calculatedHeight);
+    context = renderer.getContext();
+
+    let yOffset = 40;
     // Render each staff
     props.staves.forEach((staff, staffIndex) => {
       const staffVoices = props.voiceLayers.filter(v => v.staffId === staff.id && v.visible);
       
       if (staffVoices.length === 0) {
-        // Still draw empty staff using global measure widths for alignment
-        const totalWidth = 100 + globalMeasureWidths.reduce((sum, width) => sum + width, 0);
-        const stave = new Stave(10, yOffset, totalWidth);
-        stave.addClef(staff.clef || 'treble');
-        stave.addKeySignature(getVexflowKeySignature(props.keySignature));
-        stave.addTimeSignature(props.timeSignature);
-        stave.setContext(context).draw();
+        // Still draw empty staff with separate staves per measure
+        let currentX = 10;
         
-        // Add barlines and measure numbers for empty staff too
-        let currentX = 10 + 100; // Start after clef/key/time sig
-        
-        // Add measure number for the first measure
-        context.fillStyle = '#666';
-        context.font = '12px Arial';
-        context.textAlign = 'left';
-        context.fillText('1', 10, yOffset + 100);
-        
-        globalMeasureWidths.forEach((width, index) => {
-          if (index > 0) {
-            // Draw barline
-            context.beginPath();
-            context.moveTo(currentX, yOffset);
-            context.lineTo(currentX, yOffset + 80);
-            context.strokeStyle = '#000';
-            context.lineWidth = 1;
-            context.stroke();
-            
-            // Add measure number below the barline
-            const measureNumber = index + 1;
-            context.fillStyle = '#666';
-            context.font = '12px Arial';
-            context.textAlign = 'left';
-            context.fillText(measureNumber.toString(), currentX + 2, yOffset + 100);
+        globalMeasureWidths.forEach((width, measureIndex) => {
+          const stave = new Stave(currentX, yOffset, width);
+          
+          // Add clef, key signature, and time signature only to first measure
+          if (measureIndex === 0) {
+            stave.addClef(staff.clef || 'treble');
+            stave.addKeySignature(getVexflowKeySignature(props.keySignature));
+            stave.addTimeSignature(props.timeSignature);
+          } else {
+            // Set barline type for subsequent measures
+            stave.setBegBarType(Barline.type.SINGLE);
           }
+          
+          // Set end barline
+          if (measureIndex === globalMeasureWidths.length - 1) {
+            stave.setEndBarType(Barline.type.END);
+          } else {
+            stave.setEndBarType(Barline.type.SINGLE);
+          }
+          
+          stave.setContext(context).draw();
+          
+          // Add measure number
+          context.fillStyle = '#666';
+          context.font = '12px Arial';
+          context.textAlign = 'left';
+          context.fillText((measureIndex + 1).toString(), currentX + 5, yOffset + 100);
+          
           currentX += width;
         });
         
@@ -620,14 +621,48 @@ function renderNotation() {
         return;
       }
 
-      // Process each voice layer - CONTINUOUS STAVE APPROACH (like custom renderer)
+      // Process each voice layer with separate staves per measure
+      let currentX = 10;
+      const allStavesForThisStaff: Stave[] = [];
+      
+      // Create staves for all measures first
+      globalMeasureWidths.forEach((width, measureIndex) => {
+        const stave = new Stave(currentX, yOffset, width);
+        
+        // Add clef, key signature, and time signature only to first measure
+        if (measureIndex === 0) {
+          stave.addClef(staff.clef || 'treble');
+          stave.addKeySignature(getVexflowKeySignature(props.keySignature));
+          stave.addTimeSignature(props.timeSignature);
+        } else {
+          // Set barline type for subsequent measures
+          stave.setBegBarType(Barline.type.SINGLE);
+        }
+        
+        // Set end barline
+        if (measureIndex === globalMeasureWidths.length - 1) {
+          stave.setEndBarType(Barline.type.END);
+        } else {
+          stave.setEndBarType(Barline.type.SINGLE);
+        }
+        
+        stave.setContext(context).draw();
+        
+        // Add measure number
+        context.fillStyle = '#666';
+        context.font = '12px Arial';
+        context.textAlign = 'left';
+        context.fillText((measureIndex + 1).toString(), currentX + 5, yOffset + 100);
+        
+        allStavesForThisStaff.push(stave);
+        currentX += width;
+      });
+
+      // Now process each voice layer
       staffVoices.forEach((voiceLayer) => {
         console.log(`Processing voice layer ${voiceLayer.id} with ${voiceLayer.notes.length} total notes`);
         
-        // Get time signature info
-        const [beatsPerMeasure] = props.timeSignature.split('/').map(Number);
-        
-        // Group notes by their proper measure using your existing logic
+        // Group notes by their proper measure
         const measures = groupNotesByMeasure(voiceLayer.notes, props.keySignature, props.timeSignature);
         console.log('Notes grouped by measure:', measures.map((m, i) => ({ 
           measure: i, 
@@ -636,116 +671,95 @@ function renderNotation() {
           pitches: m.map(n => n.pitch)
         })));
         
-        // Use global measure widths for consistent alignment across all staves
-        const totalWidth = 100 + globalMeasureWidths.reduce((sum, width) => sum + width, 0);
-        
-        // Create one continuous stave for all measures
-        const continuousStave = new Stave(10, yOffset, totalWidth);
-        
-        // Add clef, key signature, and time signature to each staff (like your custom renderer)
-        continuousStave.addClef(staff.clef || 'treble');
-        continuousStave.addKeySignature(getVexflowKeySignature(props.keySignature));
-        continuousStave.addTimeSignature(props.timeSignature);
-        
-        continuousStave.setContext(context).draw();
-        
-        // Add barlines and measure numbers using global widths
-        let currentX = 10 + 100; // Start after clef/key/time sig
-        
-        // Add measure number for the first measure (at the beginning)
-        context.fillStyle = '#666';
-        context.font = '12px Arial';
-        context.textAlign = 'left';
-        context.fillText('1', 10, yOffset + 100); // Below the staff
-        
-        globalMeasureWidths.forEach((width: number, index: number) => {
-          if (index > 0) { // Don't add barline before first measure
-            // Draw barline
-            context.beginPath();
-            context.moveTo(currentX, yOffset);
-            context.lineTo(currentX, yOffset + 80); // Height of staff
-            context.strokeStyle = '#000';
-            context.lineWidth = 1;
-            context.stroke();
-            
-            // Add measure number below the barline
-            const measureNumber = index + 1;
-            context.fillStyle = '#666';
-            context.font = '12px Arial';
-            context.textAlign = 'left';
-            context.fillText(measureNumber.toString(), currentX + 2, yOffset + 100); // 2px offset from barline
+        // Render each measure separately
+        measures.forEach((measureNotes, measureIndex) => {
+          if (measureIndex >= allStavesForThisStaff.length) return; // Skip if beyond our staves
+          
+          const stave = allStavesForThisStaff[measureIndex];
+          
+          if (measureNotes.length > 0) {
+            try {
+              console.log(`Rendering measure ${measureIndex + 1} with ${measureNotes.length} notes`);
+              
+              // Sort by position for proper order
+              const sortedNotes = measureNotes.sort((a, b) => a.position - b.position);
+              
+              const vexflowNotes = sortedNotes.map((note) => {
+                const staveNote = createStaveNote(note, staff.clef || 'treble', voiceLayer.color);
+                
+                // Apply visual effects
+                if (props.currentPlayingNoteIds.includes(note.id)) {
+                  staveNote.setStyle({ fillStyle: '#FFD700', strokeStyle: '#FFD700' });
+                } else if (props.selectedNoteId === note.id) {
+                  staveNote.setStyle({ fillStyle: '#87CEEB', strokeStyle: '#87CEEB' });
+                } else {
+                  staveNote.setStyle({ fillStyle: voiceLayer.color, strokeStyle: voiceLayer.color });
+                }
+                
+                return staveNote;
+              });
+
+              // Store note positions
+              vexflowNotes.forEach((staveNote, index) => {
+                const note = sortedNotes[index];
+                noteElements.set(note.id, {
+                  x: 0, // Will be updated after formatting
+                  y: 0, // Will be updated after formatting  
+                  width: 30,
+                  height: 30,
+                  staffId: staff.id,
+                  note: {
+                    ...note,
+                    voiceId: voiceLayer.id,
+                    voiceColor: voiceLayer.color,
+                    staffId: staff.id,
+                    staffClef: staff.clef || 'treble'
+                  } as NoteWithVoiceInfo
+                });
+              });
+
+              // Create voice for this measure only
+              const voice = new Voice({ 
+                numBeats: 4, // Default, doesn't matter with SOFT mode
+                beatValue: 4
+              });
+              
+              // Set the voice mode to soft to disable timing validation
+              voice.setMode(Voice.Mode.SOFT);
+              
+              voice.addTickables(vexflowNotes);
+              
+              // Format and draw the voice for this measure
+              const formatter = new Formatter();
+              formatter.joinVoices([voice]);
+              formatter.formatToStave([voice], stave);
+              voice.draw(context, stave);
+              
+              // Update note positions after VexFlow has rendered them
+              vexflowNotes.forEach((staveNote, index) => {
+                const note = sortedNotes[index];
+                const noteElement = noteElements.get(note.id);
+                if (noteElement && staveNote.getAbsoluteX) {
+                  // Get the actual rendered position from VexFlow
+                  noteElement.x = staveNote.getAbsoluteX();
+                  noteElement.y = staveNote.getYs()[0] || yOffset + 40; // Use first y position or fallback
+                  
+                  // Update bounding box for click detection
+                  const bbox = staveNote.getBoundingBox();
+                  if (bbox) {
+                    noteElement.width = bbox.getW();
+                    noteElement.height = bbox.getH();
+                  }
+                }
+              });
+              
+              console.log(`✅ Measure ${measureIndex + 1}: rendered ${vexflowNotes.length} notes`);
+              
+            } catch (voiceError) {
+              console.warn(`❌ Measure ${measureIndex + 1} failed:`, voiceError);
+            }
           }
-          currentX += width;
         });
-        
-        // Collect all notes from all measures for the continuous stave
-        const allMeasureNotes = measures.flat();
-        
-        if (allMeasureNotes.length > 0) {
-          try {
-            console.log(`Rendering continuous stave with ${allMeasureNotes.length} notes`);
-            
-            // Sort by position for proper order
-            const sortedNotes = allMeasureNotes.sort((a, b) => a.position - b.position);
-            
-                         const vexflowNotes = sortedNotes.map((note) => {
-               const staveNote = createStaveNote(note, staff.clef || 'treble', voiceLayer.color);
-               
-               // Apply visual effects
-               if (props.currentPlayingNoteIds.includes(note.id)) {
-                 staveNote.setStyle({ fillStyle: '#FFD700', strokeStyle: '#FFD700' });
-               } else if (props.selectedNoteId === note.id) {
-                 staveNote.setStyle({ fillStyle: '#87CEEB', strokeStyle: '#87CEEB' });
-               } else {
-                 staveNote.setStyle({ fillStyle: voiceLayer.color, strokeStyle: voiceLayer.color });
-               }
-               
-               return staveNote;
-             });
-
-             // Store note positions after VexFlow formatter handles positioning
-             vexflowNotes.forEach((staveNote, index) => {
-               const note = sortedNotes[index];
-               // VexFlow will handle the actual positioning, we just store metadata
-               noteElements.set(note.id, {
-                 x: 0, // Will be updated after formatting
-                 y: 0, // Will be updated after formatting  
-                 width: 30,
-                 height: 30,
-                 staffId: staff.id,
-                 note: {
-                   ...note,
-                   voiceId: voiceLayer.id,
-                   voiceColor: voiceLayer.color,
-                   staffId: staff.id,
-                   staffClef: staff.clef || 'treble'
-                 } as NoteWithVoiceInfo
-               });
-             });
-
-            // Create voice with flexible timing for the entire continuous stave
-            const voice = new Voice({ 
-              numBeats: Math.max(1, vexflowNotes.length), // Use note count
-              beatValue: 4 // Always use quarter notes as base
-            });
-            
-            // Set the voice mode to soft to completely disable timing validation
-            voice.setMode(Voice.Mode.SOFT);
-            
-            voice.addTickables(vexflowNotes);
-            
-            // Format and draw the continuous voice
-            const formatter = new Formatter();
-            formatter.joinVoices([voice]);
-            formatter.formatToStave([voice], continuousStave);
-            voice.draw(context, continuousStave);
-            
-            console.log(`✅ Continuous stave: rendered ${vexflowNotes.length} notes`);
-            
-          } catch (voiceError) {
-            console.warn(`❌ Continuous stave failed:`, voiceError);
-          }
-        }
       });
 
       yOffset += 120;
@@ -760,7 +774,7 @@ function renderNotation() {
     // Connect multiple staves with bracket
     if (props.staves.length > 1) {
       try {
-        const connectorWidth = calculateMeasureWidth(0); // Use minimum width for connector
+        const connectorWidth = 150; // Use minimum width for connector
         const topStave = new Stave(10, 40, connectorWidth);
         const bottomStave = new Stave(10, 40 + (props.staves.length - 1) * 120, connectorWidth);
         const connector = new StaveConnector(topStave, bottomStave);
