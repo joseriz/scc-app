@@ -13,10 +13,13 @@
           @logout="handleLogout"
         />
       </template>
-      <button v-else @click="signInWithGoogle" class="google-signin-btn">
-        <img src="@/assets/google-icon.svg" alt="Google" class="google-icon" />
-        Sign in
-      </button>
+      <div v-else class="signin-container">
+        <button @click="signInWithGoogle" class="google-signin-btn" :disabled="isSigningIn">
+          <img src="@/assets/google-icon.svg" alt="Google" class="google-icon" />
+          {{ isSigningIn ? 'Signing in...' : 'Sign in' }}
+        </button>
+        <p v-if="signInError" class="error-message">{{ signInError }}</p>
+      </div>
     </div>
   </nav>
 </template>
@@ -24,13 +27,15 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { auth } from '@/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, type User, type Unsubscribe } from 'firebase/auth';
 import UserMenu from './UserMenu.vue';
 import { useCloudStore } from '@/stores/cloud';
 import { useAuth } from '@/firebase/auth';
 
-const currentUser = ref(null);
+const currentUser = ref<User | null>(null);
 const isMobileView = ref(false);
+const isSigningIn = ref(false);
+const signInError = ref('');
 
 // Cloud store actions
 const cloudStore = useCloudStore();
@@ -41,11 +46,25 @@ const updateMobileState = () => {
 };
 
 const signInWithGoogle = async () => {
+  isSigningIn.value = true;
+  signInError.value = '';
+  
   try {
     const { googleSignIn } = useAuth();
     await googleSignIn();
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error signing in with Google:', error);
+    
+    // Provide specific error messages for different cases
+    if (error.message && error.message.includes('Account authentication expired')) {
+      signInError.value = 'Your Google account needs to be re-authenticated. Please try again.';
+    } else if (error.message && error.message.includes('Network error')) {
+      signInError.value = 'Network error. Please check your internet connection and try again.';
+    } else {
+      signInError.value = error.message || 'An unexpected error occurred during sign-in. Please try again.';
+    }
+  } finally {
+    isSigningIn.value = false;
   }
 };
 
@@ -57,7 +76,7 @@ const handleLogout = async () => {
   }
 };
 
-let unsubscribe;
+let unsubscribe: Unsubscribe;
 onMounted(() => {
   unsubscribe = onAuthStateChanged(auth, (user) => {
     currentUser.value = user;
@@ -126,6 +145,21 @@ onUnmounted(() => {
 .google-icon {
   width: 18px;
   height: 18px;
+}
+
+.signin-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.error-message {
+  color: #dc3545;
+  font-size: 12px;
+  margin: 0;
+  max-width: 250px;
+  text-align: right;
 }
 
 @media (max-width: 768px) {

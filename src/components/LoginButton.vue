@@ -35,8 +35,20 @@ const handleGoogleSignIn = async () => {
       error.value = signInError;
     }
   } catch (e) {
-    error.value = 'An unexpected error occurred';
-    console.error(e);
+    console.error('Error signing in with Google:', e);
+    
+    // Provide specific error messages for different cases
+    if (e.message && e.message.includes('Account authentication expired')) {
+      error.value = 'Your Google account needs to be re-authenticated. Please try again.';
+    } else if (e.message && e.message.includes('Network error')) {
+      error.value = 'Network error. Please check your internet connection and try again.';
+    } else if (e.message && e.message.includes('popup-blocked')) {
+      error.value = 'Please allow popups for this site and try again.';
+    } else if (e.message && e.message.includes('popup-closed-by-user')) {
+      error.value = 'Sign-in was cancelled. Please try again.';
+    } else {
+      error.value = e.message || 'An unexpected error occurred during sign-in. Please try again.';
+    }
   } finally {
     loading.value = false;
   }

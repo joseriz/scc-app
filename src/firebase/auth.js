@@ -50,6 +50,32 @@ export const useAuth = () => {
             logger.error('Error message:', nativeError.message);
           }
           
+          // Handle specific error codes
+          if (nativeError.message && nativeError.message.includes('[16]')) {
+            // Account reauth failed - try to clear cached credentials and retry
+            try {
+              logger.info('Attempting to clear cached credentials and retry...');
+              await SocialLogin.logout({ provider: 'google' });
+              
+              // Retry the sign-in process
+              const retryResult = await SocialLogin.login({
+                provider: 'google',
+                options: {}
+              });
+              
+              if (retryResult && retryResult.result && retryResult.result.idToken) {
+                const credential = GoogleAuthProvider.credential(retryResult.result.idToken);
+                const firebaseResult = await signInWithCredential(auth, credential);
+                logger.info('Retry successful after clearing cache:', firebaseResult.user.email);
+                return firebaseResult;
+              }
+            } catch (retryError) {
+              logger.error('Retry after clearing cache failed:', retryError);
+            }
+            
+            throw new Error('Account authentication expired. Please try signing in again or restart the app.');
+          }
+          
           // Don't fall back to web auth - throw the error to show what's really happening
           throw new Error(`Native Google Sign-In failed: ${nativeError.message || 'Unknown error'}`);
         }
@@ -96,6 +122,25 @@ export const useAuth = () => {
     }
   };
 
+  const clearAuthCache = async () => {
+    try {
+      logger.info('Clearing authentication cache...');
+      
+      if (Capacitor.isNativePlatform()) {
+        // Clear native authentication cache
+        await SocialLogin.logout({ provider: 'google' });
+      }
+      
+      // Sign out from Firebase
+      await signOut(auth);
+      
+      logger.info('Authentication cache cleared successfully');
+    } catch (error) {
+      logger.error('Error clearing auth cache:', error);
+      throw new Error('Failed to clear authentication cache. Please restart the app.');
+    }
+  };
+
   const checkRedirectResult = async () => {
     try {
       const result = await getRedirectResult(auth);
@@ -112,6 +157,7 @@ export const useAuth = () => {
   return {
     googleSignIn,
     signOut: signOutUser,
+    clearAuthCache,
     checkRedirectResult
   };
 }; 

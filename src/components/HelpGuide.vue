@@ -570,6 +570,48 @@
             </div>
           </div>
 
+          <!-- About Tab -->
+          <div v-if="activeTab === 'about'" class="tab-pane">
+            <h2>About St Cecilia's Songbook</h2>
+            
+            <div class="help-section">
+              <h3>Version Information</h3>
+              <ul>
+                <li><strong>Version:</strong> {{ appVersion }}</li>
+                <li><strong>Build:</strong> Mobile</li>
+                <li><strong>Platform:</strong> {{ platformInfo }}</li>
+              </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>About the App</h3>
+              <p>St Cecilia's Songbook is a comprehensive music notation and composition app designed for musicians of all levels. Create, edit, and play back musical compositions with an intuitive interface that works seamlessly on both desktop and mobile devices.</p>
+            </div>
+
+            <div class="help-section">
+              <h3>Key Features</h3>
+              <ul>
+                <li>Multi-staff notation with treble and bass clefs</li>
+                <li>Multiple voice layers with individual volume control</li>
+                <li>Real-time playback with tempo control</li>
+                <li>Sections and sequence management</li>
+                <li>Cloud synchronization for saved compositions</li>
+                <li>Mobile-optimized touch interface</li>
+                <li>Export and import functionality</li>
+                <li>Lyrics support</li>
+              </ul>
+            </div>
+
+            <div class="help-section">
+              <h3>Developer Information</h3>
+              <ul>
+                <li><strong>Developer:</strong> Joseriz Concepcion</li>
+                <li><strong>App ID:</strong> com.stcecilia.songbook</li>
+                <li><strong>Build Date:</strong> {{ buildDate }}</li>
+              </ul>
+            </div>
+          </div>
+
           <!-- Legal Information Tab -->
           <div v-if="activeTab === 'legal'" class="tab-pane">
             <h2>Legal Information</h2>
@@ -598,7 +640,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, defineProps, defineEmits, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, defineProps, defineEmits, watch, nextTick, onMounted, onBeforeUnmount, computed } from 'vue';
+import { Capacitor } from '@capacitor/core';
 
 const props = defineProps({
   isVisible: {
@@ -610,6 +653,17 @@ const props = defineProps({
 const emit = defineEmits(['close']);
 
 const activeTab = ref('basics');
+
+// Version information
+const appVersion = ref('1.0.20250704');
+const buildDate = ref('2025-07-04');
+const platformInfo = computed(() => {
+  if (Capacitor.isNativePlatform()) {
+    return `${Capacitor.getPlatform()} (Native)`;
+  } else {
+    return 'Web Browser';
+  }
+});
 
 const tabs = [
   { id: 'basics', label: 'Basic Usage' },
@@ -623,7 +677,8 @@ const tabs = [
   { id: 'mobile', label: 'Mobile Tips' },
   { id: 'troubleshooting', label: 'Troubleshooting' },
   { id: 'advanced', label: 'Advanced Features' },
-  { id: 'legal', label: 'Legal' }
+  { id: 'legal', label: 'Legal' },
+  { id: 'about', label: 'About' }
 ];
 
 const close = () => {

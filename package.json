@@ -1,6 +1,6 @@
 {
-  "name": "music-notation-app",
-  "version": "0.0.0",
+  "name": "st-cecilia-songbook",
+  "version": "1.0.20250704",
   "private": true,
   "type": "module",
   "scripts": {
