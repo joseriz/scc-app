@@ -35,6 +35,18 @@
           <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke="currentColor" stroke-width="2"/>
         </svg>
       </button>
+      <button 
+        @click="$emit('reset')"
+        class="reset-btn"
+        title="Reset app to fresh state"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 3v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 21v-5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
 
     <!-- Musical settings in a compact row -->
@@ -140,6 +152,7 @@ const emit = defineEmits<{
   (e: 'timeSignatureChange', value: string): void; // For immediate handling
   (e: 'quickSave'): void; // For quick save functionality
   (e: 'share'): void; // For sharing functionality
+  (e: 'reset'): void; // For reset functionality
 }>();
 
 const localTempo = ref(props.tempo);
@@ -206,7 +219,7 @@ const onTimeSignatureChange = (event: Event) => {
   gap: 8px;
 }
 
-.quick-save-btn, .share-btn {
+.quick-save-btn, .share-btn, .reset-btn {
   background: #4CAF50;
   color: white;
   border: none;
@@ -219,7 +232,7 @@ const onTimeSignatureChange = (event: Event) => {
   transition: background-color 0.2s;
 }
 
-.quick-save-btn:hover, .share-btn:hover {
+.quick-save-btn:hover, .share-btn:hover, .reset-btn:hover {
   background: #45a049;
 }
 
@@ -229,6 +242,14 @@ const onTimeSignatureChange = (event: Event) => {
 
 .share-btn:hover {
   background: #1976D2;
+}
+
+.reset-btn {
+  background: #FF9800;
+}
+
+.reset-btn:hover {
+  background: #F57C00;
 }
 
 .quick-save-btn {

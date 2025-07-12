@@ -8,7 +8,7 @@
       :isSaving="isSavingToCloud"
       :canShare="!!(currentCloudDocId && currentCloudDocId.value)"
       @keySignatureChange="changeKeySignatureDirectly" @timeSignatureChange="updateTimeSignature"
-      @quickSave="quickSave" @share="generateShareLink" />
+      @quickSave="quickSave" @share="generateShareLink" @reset="resetAppToFreshState" />
 
     <!-- Read-only toggle moved to the top -->
     <div class="read-only-toggle">
@@ -997,6 +997,113 @@ function resetToNewComposition() {
   
   // Clear URL to go back to home
   SharingService.navigateToHome();
+}
+
+// Reset app to fresh state (equivalent to browser refresh)
+function resetAppToFreshState() {
+  // Show confirmation dialog
+  if (!confirm('Are you sure you want to reset the app to its initial state? All unsaved changes will be lost.')) {
+    return;
+  }
+  
+  // Stop any ongoing playback
+  stopPlayback();
+  
+  // Clear all composition data
+  compositionName.value = '';
+  currentCompositionId.value = '';
+  currentCloudDocId.value = null;
+  originalSource.value = null;
+  originalCloudData.value = null;
+  
+  // Clear all music data
+  voiceLayers.value = [];
+  staves.value = [];
+  chordSymbols.value = [];
+  sections.value = [];
+  sequenceItems.value = [];
+  timeSignatureChanges.value = [];
+  clefChanges.value = [];
+  keySignatureChanges.value = [];
+  tiesSlurs.value = [];
+  
+  // Reset all settings to defaults
+  tempo.value = 120;
+  keySignature.value = 'C';
+  timeSignature.value = '4/4';
+  selectedDuration.value = 'quarter';
+  selectedNoteType.value = 'note';
+  selectedAccidental.value = null;
+  selectedOctave.value = 4;
+  isDottedNote.value = false;
+  isTripletNote.value = false;
+  
+  // Reset UI state
+  readOnlyMode.value = false;
+  readOnlyLocked.value = false;
+  showHelp.value = false;
+  activeTab.value = 'notes';
+  
+  // Reset playback state
+  isPlaying.value = false;
+  isPaused.value = false;
+  playbackStartMeasure.value = 0;
+  playbackEndMeasure.value = 0;
+  
+  // Reset staff settings
+  staffWidth.value = 2000;
+  scrollPosition.value = 0;
+  measuresCount.value = Math.ceil(staffWidth.value / measureWidthPx.value);
+  
+  // Reset sharing state
+  isSharedComposition.value = false;
+  sharedCompositionId.value = null;
+  showLoginPrompt.value = false;
+  pendingSharedCompositionId.value = null;
+  pendingCompositionId.value = null;
+  pendingCompositionSource.value = null;
+  
+  // Reset loading states
+  isCloudLoading.value = false;
+  isSavingToCloud.value = false;
+  isCheckingAuth.value = false;
+  
+  // Reset modal states
+  isSaveToCloudModalVisible.value = false;
+  isLoadFromCloudVisible.value = false;
+  
+  // Reset editor states
+  selectedNoteId.value = null;
+  isInsertingSpace.value = false;
+  isDeletingSpace.value = false;
+  isSelectingRange.value = false;
+  isPasting.value = false;
+  isCreatingTieSlur.value = false;
+  isAddingKeySignatureChange.value = false;
+  isAddingTimeSignatureChange.value = false;
+  isAddingClefChange.value = false;
+  
+  // Clear selection states
+  selectionStart.value = null;
+  selectionEnd.value = null;
+  
+  // Initialize default staff and voice
+  initializeDefaultStaffAndVoice();
+  
+  // Clear URL to go back to home
+  SharingService.navigateToHome();
+  
+  // Mark as clean (no unsaved changes)
+  markAsSaved();
+  
+  // Update display
+  nextTick(() => {
+    updateStaffDisplay();
+    updateStaffScroll();
+  });
+  
+  // Show confirmation
+  alert('App has been reset to its initial state.');
 }
 
 // Global loading indicator when compositions are being fetched from cloud
