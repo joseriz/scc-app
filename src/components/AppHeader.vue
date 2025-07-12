@@ -21,6 +21,20 @@
           <polyline points="7,3 7,8 15,8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
+      <button 
+        v-if="canShare"
+        @click="$emit('share')"
+        class="share-btn"
+        title="Share composition"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="18" cy="5" r="3" stroke="currentColor" stroke-width="2"/>
+          <circle cx="6" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+          <circle cx="18" cy="19" r="3" stroke="currentColor" stroke-width="2"/>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke="currentColor" stroke-width="2"/>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke="currentColor" stroke-width="2"/>
+        </svg>
+      </button>
     </div>
 
     <!-- Musical settings in a compact row -->
@@ -113,6 +127,7 @@ const props = defineProps<{
   compositionName?: string;
   hasUnsavedChanges?: boolean;
   isSaving?: boolean;
+  canShare?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -124,6 +139,7 @@ const emit = defineEmits<{
   (e: 'keySignatureChange', value: string): void; // For immediate handling
   (e: 'timeSignatureChange', value: string): void; // For immediate handling
   (e: 'quickSave'): void; // For quick save functionality
+  (e: 'share'): void; // For sharing functionality
 }>();
 
 const localTempo = ref(props.tempo);
@@ -190,7 +206,7 @@ const onTimeSignatureChange = (event: Event) => {
   gap: 8px;
 }
 
-.quick-save-btn {
+.quick-save-btn, .share-btn {
   background: #4CAF50;
   color: white;
   border: none;
@@ -198,6 +214,24 @@ const onTimeSignatureChange = (event: Event) => {
   padding: 6px 8px;
   cursor: pointer;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.quick-save-btn:hover, .share-btn:hover {
+  background: #45a049;
+}
+
+.share-btn {
+  background: #2196F3;
+}
+
+.share-btn:hover {
+  background: #1976D2;
+}
+
+.quick-save-btn {
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;

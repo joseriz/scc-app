@@ -6,8 +6,9 @@
       :compositionName="compositionName"
       :hasUnsavedChanges="hasUnsavedChanges"
       :isSaving="isSavingToCloud"
+      :canShare="!!(currentCloudDocId && currentCloudDocId.value)"
       @keySignatureChange="changeKeySignatureDirectly" @timeSignatureChange="updateTimeSignature"
-      @quickSave="quickSave" />
+      @quickSave="quickSave" @share="generateShareLink" />
 
     <!-- Read-only toggle moved to the top -->
     <div class="read-only-toggle">
@@ -681,6 +682,13 @@
 
     <!-- Add the FirstTimeInstructionModal component -->
     <FirstTimeInstructionModal :is-visible="showFirstTimeInstructions" @close="closeFirstTimeInstructions" />
+    
+    <!-- Add the LoginPromptModal component -->
+    <LoginPromptModal 
+      :is-visible="showLoginPrompt" 
+      @close="closeLoginPrompt" 
+      @login-success="handleLoginSuccess" 
+    />
 
     <!-- In your template, if needed, add this hidden element to force re-renders -->
     <div style="display: none;">{{ lastUIUpdateTimestamp }}</div>
@@ -695,6 +703,12 @@
     <div v-if="isCloudLoading" class="loading-overlay">
       <div class="spinner"></div>
       <p>Loading composition...</p>
+    </div>
+
+    <!-- Auth checking overlay -->
+    <div v-if="isCheckingAuth" class="loading-overlay">
+      <div class="spinner"></div>
+      <p>Checking authentication...</p>
     </div>
 
     <!-- Saving overlay -->
@@ -721,12 +735,13 @@ import VoiceLayersPanel from '@/components/VoiceLayersPanel.vue';
 import SettingsPanel from '@/components/SettingsPanel.vue';
 import DebugPanel from '@/components/DebugPanel.vue';
 import FirstTimeInstructionModal from '@/components/FirstTimeInstructionModal.vue';
+import LoginPromptModal from '@/components/LoginPromptModal.vue';
 import { useDebug } from '@/composables/useDebug';
 import SectionsPanel from '@/components/SectionsPanel.vue';
 import { generateId } from '@/utils/idGenerator'; // Make sure this import path is correct
 import SaveToCloudModal from '@/components/SaveToCloudModal.vue';
 import LoadCompositionModal from '@/components/LoadCompositionModal.vue';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import UserMenu from '@/components/UserMenu.vue';
 import { useCloudStore } from '@/stores/cloud';
 import { storeToRefs } from 'pinia';
@@ -734,6 +749,8 @@ import type { SaveDetails } from '@/types/SaveDetails';
 import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
 import { auth, db, nativeFirestore, logFirestoreCall } from '@/firebase';
 import { Capacitor } from '@capacitor/core';
+import { SharingService } from '@/utils/sharing';
+import { useRoute } from 'vue-router';
 // Import types
 import type {
   Note as ImportedNote, // Alias the import
@@ -977,6 +994,9 @@ function resetToNewComposition() {
   
   // Mark as clean (no unsaved changes)
   markAsSaved();
+  
+  // Clear URL to go back to home
+  SharingService.navigateToHome();
 }
 
 // Global loading indicator when compositions are being fetched from cloud
@@ -990,9 +1010,237 @@ const updateMobileState = () => {
   isMobileView.value = window.innerWidth <= 768;
 };
 
-onMounted(() => {
+// Sharing functionality
+const route = useRoute();
+const isSharedComposition = ref(false);
+const sharedCompositionId = ref<string | null>(null);
+const showLoginPrompt = ref(false);
+const pendingSharedCompositionId = ref<string | null>(null);
+
+// URL-based composition loading
+const pendingCompositionId = ref<string | null>(null);
+const pendingCompositionSource = ref<'local' | 'cloud' | null>(null);
+
+// Authentication state tracking
+const authInitialized = ref(false);
+const currentUser = ref(auth.currentUser);
+const isCheckingAuth = ref(false);
+
+// Wait for authentication state to be ready
+const waitForAuthState = (): Promise<void> => {
+  return new Promise((resolve) => {
+    if (authInitialized.value) {
+      resolve();
+      return;
+    }
+    
+    // Set up a one-time listener for auth state change
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      currentUser.value = user;
+      authInitialized.value = true;
+      unsubscribe();
+      resolve();
+    });
+    
+    // Also add a timeout as a fallback
+    setTimeout(() => {
+      if (!authInitialized.value) {
+        currentUser.value = auth.currentUser;
+        authInitialized.value = true;
+        unsubscribe();
+        resolve();
+      }
+    }, 2000); // Wait up to 2 seconds for auth state
+  });
+};
+
+// Handle shared composition loading
+const loadSharedComposition = async (compositionId: string) => {
+  try {
+    // Show loading state while checking auth
+    isCheckingAuth.value = true;
+    
+    // Wait for authentication state to be ready
+    await waitForAuthState();
+    
+    // Hide loading state
+    isCheckingAuth.value = false;
+    
+    if (!currentUser.value) {
+      // Store the composition ID and show login prompt
+      pendingSharedCompositionId.value = compositionId;
+      showLoginPrompt.value = true;
+      return;
+    }
+    
+    isCloudLoading.value = true;
+    
+    const composition = await SharingService.loadSharedComposition(compositionId);
+    if (!composition) {
+      alert('Composition not found or you do not have access to it.');
+      return;
+    }
+
+    // Load the composition data
+    await handleLoadFromCloud(composition);
+    
+    // Set shared composition state
+    isSharedComposition.value = true;
+    sharedCompositionId.value = compositionId;
+    
+    // Force read-only mode for shared compositions
+    readOnlyMode.value = true;
+    readOnlyLocked.value = !SharingService.determineWriteAccess(composition);
+    
+    // Show access info
+    const accessInfo = SharingService.getAccessInfo(composition);
+    alert(`Composition loaded successfully! You have ${accessInfo.text.toLowerCase()} access.`);
+    
+  } catch (error: unknown) {
+    console.error('Error loading shared composition:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    alert('Failed to load shared composition: ' + errorMessage);
+  } finally {
+    isCloudLoading.value = false;
+    isCheckingAuth.value = false;
+  }
+};
+
+// Handle login success
+const handleLoginSuccess = async () => {
+  if (pendingSharedCompositionId.value) {
+    await loadSharedComposition(pendingSharedCompositionId.value);
+    pendingSharedCompositionId.value = null;
+  } else if (pendingCompositionId.value && pendingCompositionSource.value) {
+    await loadCompositionFromUrl(pendingCompositionId.value, pendingCompositionSource.value);
+    pendingCompositionId.value = null;
+    pendingCompositionSource.value = null;
+  }
+};
+
+// Close login prompt
+const closeLoginPrompt = () => {
+  showLoginPrompt.value = false;
+  pendingSharedCompositionId.value = null;
+  pendingCompositionId.value = null;
+  pendingCompositionSource.value = null;
+  SharingService.navigateToHome();
+};
+
+// Generate share link for current composition
+const generateShareLink = async () => {
+  if (!currentCloudDocId.value) {
+    alert('Please save this composition to the cloud first to generate a shareable link.');
+    return;
+  }
+
+  try {
+    const shareLink = SharingService.generateShareLink(currentCloudDocId.value);
+    await navigator.clipboard.writeText(shareLink);
+    alert('Share link copied to clipboard!');
+  } catch (error) {
+    console.error('Failed to copy share link:', error);
+    alert('Failed to copy share link to clipboard.');
+  }
+};
+
+// Load composition from URL parameters
+const loadCompositionFromUrl = async (compositionId: string, source: 'local' | 'cloud') => {
+  try {
+    if (source === 'local') {
+      const composition = SharingService.loadLocalComposition(compositionId);
+      if (!composition) {
+        alert('Local composition not found.');
+        SharingService.navigateToHome();
+        return;
+      }
+      
+      // Load the local composition
+      loadComposition(compositionId);
+      
+      // Update URL to reflect the loaded composition
+      SharingService.updateUrlForComposition(compositionId, 'local');
+      
+    } else if (source === 'cloud') {
+      // Show loading state while checking auth
+      isCheckingAuth.value = true;
+      
+      // Wait for authentication state to be ready
+      await waitForAuthState();
+      
+      // Hide loading state
+      isCheckingAuth.value = false;
+      
+      if (!currentUser.value) {
+        // Store pending composition and show login prompt
+        pendingCompositionId.value = compositionId;
+        pendingCompositionSource.value = source;
+        showLoginPrompt.value = true;
+        return;
+      }
+      
+      isCloudLoading.value = true;
+      
+      const composition = await SharingService.loadCloudComposition(compositionId);
+      if (!composition) {
+        alert('Cloud composition not found.');
+        SharingService.navigateToHome();
+        return;
+      }
+      
+      // Check access permissions
+      const accessCheck = SharingService.checkCompositionAccess(composition);
+      if (!accessCheck.hasAccess) {
+        alert(accessCheck.message || 'You do not have access to this composition.');
+        SharingService.navigateToHome();
+        return;
+      }
+      
+      // Load the cloud composition
+      await handleLoadFromCloud(composition);
+      
+      // Update URL to reflect the loaded composition
+      SharingService.updateUrlForComposition(compositionId, 'cloud');
+    }
+  } catch (error: unknown) {
+    console.error('Error loading composition from URL:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    alert('Failed to load composition: ' + errorMessage);
+    SharingService.navigateToHome();
+  } finally {
+    isCloudLoading.value = false;
+    isCheckingAuth.value = false;
+  }
+};
+
+onMounted(async () => {
   updateMobileState();
   window.addEventListener('resize', updateMobileState);
+  
+  // Initialize auth state listener
+  auth.onAuthStateChanged((user) => {
+    currentUser.value = user;
+    authInitialized.value = true;
+  });
+  
+  // Initialize current user state immediately if already available
+  if (auth.currentUser) {
+    currentUser.value = auth.currentUser;
+    authInitialized.value = true;
+  }
+  
+  // Check route for composition loading
+  const compositionId = route.params.id as string;
+  
+  if (compositionId) {
+    if (route.name === 'shared-composition') {
+      loadSharedComposition(compositionId);
+    } else if (route.name === 'local-composition') {
+      loadCompositionFromUrl(compositionId, 'local');
+    } else if (route.name === 'cloud-composition') {
+      loadCompositionFromUrl(compositionId, 'cloud');
+    }
+  }
 });
 
 onUnmounted(() => {
@@ -1123,6 +1371,11 @@ const handleSaveToCloud = (details: SaveDetails) => {
         ...dataToSave,
         id: savedId
       };
+      
+      // Update URL to reflect the saved composition
+      if (savedId) {
+        SharingService.updateUrlForComposition(savedId, 'cloud');
+      }
       
       // Hide loading overlay
       isSavingToCloud.value = false;
@@ -1336,6 +1589,11 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
 
     // Mark as saved since we just loaded it
     markAsSaved();
+    
+    // Update URL to reflect the loaded composition
+    if (currentCloudDocId.value) {
+      SharingService.updateUrlForComposition(currentCloudDocId.value, 'cloud');
+    }
   } catch (error: any) {
     console.error('Error loading composition:', error);
     alert('Failed to load composition: ' + error.message);
@@ -3263,6 +3521,9 @@ const saveComposition = () => {
 
   // Provide user feedback
   alert(`Composition "${compositionName.value}" saved successfully!`);
+  
+  // Update URL to reflect the saved composition
+  SharingService.updateUrlForComposition(newComposition.id, 'local');
 };
 
 // Update the loadComposition function to be more robust
@@ -3496,6 +3757,9 @@ const loadComposition = (compositionId) => {
       
       // Mark as saved since we just loaded it
       markAsSaved();
+      
+      // Update URL to reflect the loaded composition
+      SharingService.updateUrlForComposition(compositionId, 'local');
 
     } catch (error) {
       alert(`Error loading composition: ${error instanceof Error ? error.message : String(error)}`);

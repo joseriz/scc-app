@@ -165,6 +165,39 @@ export class NativeFirestoreWrapper {
       throw error;
     }
   }
+
+  async getComposition(collectionName: string, docId: string): Promise<any> {
+    try {
+      const token = await this.getAuthToken();
+      const url = `${this.baseUrl}/${collectionName}/${docId}`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const fields = this.convertFirestoreFields(data.fields);
+      
+      return {
+        docId: data.name.split('/').pop(),
+        ...fields
+      };
+    } catch (error) {
+      console.error('[NativeFirestore] Error fetching composition:', error);
+      throw error;
+    }
+  }
   
   async deleteComposition(collectionName: string, docId: string): Promise<void> {
     try {

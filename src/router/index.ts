@@ -26,6 +26,60 @@ const requireAdmin = async (
   }
 };
 
+// Navigation guard for shared composition route
+const handleSharedComposition = async (
+  to: RouteLocationNormalized,
+  from: RouteLocationNormalized,
+  next: NavigationGuardNext
+) => {
+  const compositionId = to.params.id as string;
+  
+  if (!compositionId) {
+    next('/');
+    return;
+  }
+
+  // Store the composition ID in the route meta for the component to access
+  to.meta.sharedCompositionId = compositionId;
+  next();
+};
+
+// Navigation guard for cloud composition route
+const handleCloudComposition = async (
+  to: RouteLocationNormalized,
+  from: RouteLocationNormalized,
+  next: NavigationGuardNext
+) => {
+  const compositionId = to.params.id as string;
+  
+  if (!compositionId) {
+    next('/');
+    return;
+  }
+
+  // Store the composition ID in the route meta for the component to access
+  to.meta.cloudCompositionId = compositionId;
+  next();
+};
+
+// Navigation guard for local composition route
+const handleLocalComposition = async (
+  to: RouteLocationNormalized,
+  from: RouteLocationNormalized,
+  next: NavigationGuardNext
+) => {
+  const compositionId = to.params.id as string;
+  
+  if (!compositionId) {
+    next('/');
+    return;
+  }
+
+  // Store the composition ID in the route meta for the component to access
+  to.meta.localCompositionId = compositionId;
+  next();
+};
+
 // Add type declaration for import.meta.env
 declare global {
   interface ImportMeta {
@@ -43,6 +97,24 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: NotationEditorView
+    },
+    {
+      path: '/local/:id',
+      name: 'local-composition',
+      component: NotationEditorView,
+      beforeEnter: handleLocalComposition
+    },
+    {
+      path: '/cloud/:id',
+      name: 'cloud-composition',
+      component: NotationEditorView,
+      beforeEnter: handleCloudComposition
+    },
+    {
+      path: '/shared/:id',
+      name: 'shared-composition',
+      component: NotationEditorView,
+      beforeEnter: handleSharedComposition
     },
     {
       path: '/terms-and-conditions',
