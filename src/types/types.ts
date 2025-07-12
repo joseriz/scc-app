@@ -84,6 +84,13 @@ export interface ClefChange {
   staffId: string;
 }
 
+export interface PartialMeasure {
+  id: string;
+  measureNumber: number;
+  durationFactor: number; // 0.5 for half duration, 0.25 for quarter duration, etc.
+  position: number; // Position on the staff for UI purposes
+}
+
 export interface CompositionData {
   id: string;
   name: string;
@@ -99,6 +106,7 @@ export interface CompositionData {
   keySignatureChanges?: KeySignatureChange[];
   timeSignatureChanges?: TimeSignatureChange[];
   clefChanges?: ClefChange[];
+  partialMeasures?: PartialMeasure[];
   activeVoiceId?: string;
   staffWidth?: number;
   selectedDuration?: string;

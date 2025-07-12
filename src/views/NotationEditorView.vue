@@ -184,6 +184,27 @@
                 Click on a measure to insert clef change
               </div>
             </div>
+
+            <!-- Partial Measure controls -->
+            <button 
+              @click="togglePartialMeasureMode"
+              :class="{ active: isAddingPartialMeasure }" 
+              class="partial-measure-btn">
+              {{ isAddingPartialMeasure ? 'Cancel Partial Measure' : 'Add Partial Measure' }}
+            </button>
+            <div v-if="isAddingPartialMeasure" class="partial-measure-controls">
+              <label>Duration Factor:</label>
+              <select v-model="partialMeasureDurationFactor">
+                <option value="0.25">Quarter (1/4)</option>
+                <option value="0.5">Half (1/2)</option>
+                <option value="0.75">Three-quarters (3/4)</option>
+                <option value="0.33">One-third (1/3)</option>
+                <option value="0.67">Two-thirds (2/3)</option>
+              </select>
+              <div class="partial-measure-info">
+                Click on a measure to make it partial
+              </div>
+            </div>
             
             <div class="copy-controls" v-if="isSelectingRange && selectionEnd">
               <button @click="copySelectedNotes(false)" class="copy-btn">
@@ -250,6 +271,8 @@
                             ? addTimeSignatureChange($event, stave.id)
                             : isAddingClefChange
                               ? addClefChange($event, stave.id)
+                              : isAddingPartialMeasure
+                                ? addPartialMeasure($event, stave.id)
                               : handleStaffClick($event, stave.id)
               " @mousedown="startDrag" @touchstart="startDrag" :class="{
                 'inserting-space': isInsertingSpace,
@@ -259,7 +282,8 @@
                 'tie-slur-mode': isCreatingTieSlur,
                 'key-change-mode': isAddingKeySignatureChange,
                 'time-change-mode': isAddingTimeSignatureChange,
-                'clef-change-mode': isAddingClefChange
+                'clef-change-mode': isAddingClefChange,
+                'partial-measure-mode': isAddingPartialMeasure
               }" :style="{
                 width: `${staffWidth}px`,
                 transform: `translateX(-${scrollPosition}px)`,
@@ -276,6 +300,8 @@
                           : isAddingTimeSignatureChange
                             ? 'pointer'
                             : isAddingClefChange
+                              ? 'pointer'
+                              : isAddingPartialMeasure
                               ? 'pointer'
                               : 'default'
               }">
@@ -392,6 +418,20 @@
                 <div class="clef-change-marker" style="pointer-events: none;">
                   <div class="clef-change-icon">{{ clefChange.clef === 'treble' ? '𝄞' : '𝄢' }}</div>
                   <div class="clef-change-text">{{ clefChange.clef === 'treble' ? 'Treble' : 'Bass' }}</div>
+                </div>
+              </div>
+
+              <!-- Partial Measures -->
+              <div v-for="partialMeasure in partialMeasures" :key="`partial-measure-${partialMeasure.id}`" 
+                   class="partial-measure" 
+                   :class="{ 'clickable': !readOnlyMode }"
+                   :style="{ left: `${partialMeasure.position}px` }"
+                   @click.stop="!readOnlyMode && removePartialMeasure(partialMeasure.id)"
+                   @mousedown.stop
+                   :title="readOnlyMode ? undefined : 'Click to remove partial measure'">
+                <div class="partial-measure-marker" style="pointer-events: none;">
+                  <div class="partial-measure-icon">⏸️</div>
+                  <div class="partial-measure-text">{{ Math.round(partialMeasure.durationFactor * 100) }}%</div>
                 </div>
               </div>
 
@@ -764,6 +804,7 @@ import type {
   KeySignatureChange,
   TimeSignatureChange,
   ClefChange,
+  PartialMeasure,
 } from '@/types/types'; // Updated path
 
 // Store
@@ -831,7 +872,8 @@ function generateStateHash(): string {
     tiesSlurs: tiesSlurs.value,
     keySignatureChanges: keySignatureChanges.value,
     timeSignatureChanges: timeSignatureChanges.value,
-    clefChanges: clefChanges.value
+    clefChanges: clefChanges.value,
+    partialMeasures: partialMeasures.value
   };
   return JSON.stringify(state);
 }
@@ -972,6 +1014,7 @@ function resetToNewComposition() {
   timeSignatureChanges.value = [];
   clefChanges.value = [];
   keySignatureChanges.value = [];
+  partialMeasures.value = [];
   tiesSlurs.value = [];
   
   // Reset settings to defaults
@@ -1025,6 +1068,7 @@ function resetAppToFreshState() {
   timeSignatureChanges.value = [];
   clefChanges.value = [];
   keySignatureChanges.value = [];
+  partialMeasures.value = [];
   tiesSlurs.value = [];
   
   // Reset all settings to defaults
@@ -1082,6 +1126,7 @@ function resetAppToFreshState() {
   isAddingKeySignatureChange.value = false;
   isAddingTimeSignatureChange.value = false;
   isAddingClefChange.value = false;
+  isAddingPartialMeasure.value = false;
   
   // Clear selection states
   selectionStart.value = null;
@@ -1555,6 +1600,7 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
     timeSignatureChanges.value = [];
     clefChanges.value = [];
     keySignatureChanges.value = [];
+    partialMeasures.value = [];
 
     // Set basic metadata
     compositionName.value = compositionToLoad.name || 'Untitled';
@@ -1575,6 +1621,11 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
     // Load key signature changes
     if (compositionToLoad.keySignatureChanges) {
       keySignatureChanges.value = JSON.parse(JSON.stringify(compositionToLoad.keySignatureChanges));
+    }
+
+    // Load partial measures
+    if (compositionToLoad.partialMeasures) {
+      partialMeasures.value = JSON.parse(JSON.stringify(compositionToLoad.partialMeasures));
     }
 
     // Use staffSettings if available, otherwise staffWidth
@@ -1948,6 +1999,7 @@ interface Composition {
   keySignatureChanges?: KeySignatureChange[];
   timeSignatureChanges?: TimeSignatureChange[];
   clefChanges?: ClefChange[];
+  partialMeasures?: PartialMeasure[];
 }
 
 // Add window property declarations
@@ -2136,6 +2188,11 @@ const tiesSlurs = ref<TieSlur[]>([]);
 
 const keySignatureChanges = ref<KeySignatureChange[]>([]);
 
+// Partial measures support
+const partialMeasures = ref<PartialMeasure[]>([]);
+const isAddingPartialMeasure = ref(false);
+const partialMeasureDurationFactor = ref(0.5); // Default to half duration
+
 // Chord input state
 const showChordInput = ref(false);
 const chordInputPosition = ref(0);
@@ -2204,7 +2261,7 @@ const clearKeySignatureCache = () => {
 // Function to get the effective key signature at a specific position
 const getEffectiveKeySignatureAtPosition = (position: number): string => {
   // Create cache key based on position and current state
-  const cacheKey = `${position}-${keySignature.value}-${keySignatureChanges.value.length}`;
+  const cacheKey = `${position}-${keySignature.value}-${keySignatureChanges.value.length}-${partialMeasures.value.length}`;
   
   // Check cache first
   if (keySignatureCache.has(cacheKey)) {
@@ -2213,14 +2270,34 @@ const getEffectiveKeySignatureAtPosition = (position: number): string => {
   }
   
   // Find the measure number for this position
-  const measureWidth = measureWidthByTimeSignature.value;
   // Calculate initial position using the GLOBAL key signature (not position-specific)
   // This avoids circular dependency since we're not calling getEffectiveKeySignatureAtPosition
   const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
   const initialPosition = 70 + globalKeySignatureWidth + 20; // clef + global key sig + time sig
   
   const relativePosition = position - initialPosition;
-  const measureNumber = Math.floor(relativePosition / measureWidth) + 1;
+  
+  // Calculate measure number by iterating through measures (accounting for partial measures)
+  let currentPosition = 0;
+  let measureNumber = 1;
+  
+  while (currentPosition < relativePosition) {
+    // Get the time signature for this measure
+    const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+    
+    // Get the actual width for this specific measure (accounting for partial measures)
+    const measureWidth = getMeasureWidth(timeSignature.numerator, timeSignature.denominator, measureNumber);
+    
+    // If adding this measure's width would exceed the position,
+    // then the position is in this measure
+    if (currentPosition + measureWidth > relativePosition) {
+      break;
+    }
+    
+    // Move to the next measure
+    currentPosition += measureWidth;
+    measureNumber++;
+  }
   
   const effectiveKey = getEffectiveKeySignatureAtMeasure(measureNumber);
   
@@ -2275,6 +2352,21 @@ const toggleTimeSignatureChangeMode = () => {
   isCreatingTieSlur.value = false;
   tieSlurStartNote.value = null;
   isAddingKeySignatureChange.value = false;
+  isAddingPartialMeasure.value = false;
+};
+
+// Function to toggle partial measure mode
+const togglePartialMeasureMode = () => {
+  isAddingPartialMeasure.value = !isAddingPartialMeasure.value;
+  // Reset other modes
+  isInsertingSpace.value = false;
+  isDeletingSpace.value = false;
+  isSelectingRange.value = false;
+  isPasting.value = false;
+  isCreatingTieSlur.value = false;
+  tieSlurStartNote.value = null;
+  isAddingKeySignatureChange.value = false;
+  isAddingTimeSignatureChange.value = false;
 };
 
 // Function to add a time signature change at a specific measure
@@ -2284,19 +2376,42 @@ const addTimeSignatureChange = (event: MouseEvent, staffId: string) => {
   const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const x = event.clientX - staffRect.left;
   
-  // Calculate which measure was clicked
-  const measureWidth = measureWidthByTimeSignature.value;
+  // Calculate which measure was clicked by iterating through measures
   const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
   const initialPosition = 70 + globalKeySignatureWidth + 20;
   
   const relativePosition = x - initialPosition;
-  const measureNumber = Math.floor(relativePosition / measureWidth) + 1;
+  
+  // Calculate measure number by iterating through measures (accounting for partial measures)
+  let currentPosition = 0;
+  let measureNumber = 1;
+  
+  while (currentPosition < relativePosition) {
+    // Get the time signature for this measure
+    const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+    
+    // Get the actual width for this specific measure (accounting for partial measures)
+    const measureWidth = getMeasureWidth(timeSignature.numerator, timeSignature.denominator, measureNumber);
+    
+    // If adding this measure's width would exceed the click position,
+    // then the click is in this measure
+    if (currentPosition + measureWidth > relativePosition) {
+      break;
+    }
+    
+    // Move to the next measure
+    currentPosition += measureWidth;
+    measureNumber++;
+  }
   
   // Don't allow time signature change in measure 1 (use global time signature instead)
   if (measureNumber < 2) {
     alert('Time signature changes cannot be placed in measure 1. Use the global time signature setting instead.');
     return;
   }
+  
+  // Calculate the correct position for the time signature change marker
+  const measureStartPosition = initialPosition + currentPosition;
   
   // Check if there's already a time signature change at this measure
   const existingChange = timeSignatureChanges.value.find(change => change.measure === measureNumber);
@@ -2324,6 +2439,87 @@ const addTimeSignatureChange = (event: MouseEvent, staffId: string) => {
   isAddingTimeSignatureChange.value = false;
   saveToLocalStorage();
   
+};
+
+// Function to add a partial measure at a specific measure
+const addPartialMeasure = (event: MouseEvent, staffId: string) => {
+  if (readOnlyMode.value || !isAddingPartialMeasure.value) return;
+
+  const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX - staffRect.left;
+  
+  // Calculate which measure was clicked by iterating through measures
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20;
+  
+  const relativePosition = x - initialPosition;
+  
+  // Calculate measure number by iterating through measures (accounting for existing partial measures)
+  let currentPosition = 0;
+  let measureNumber = 1;
+  
+  while (currentPosition < relativePosition) {
+    // Get the time signature for this measure
+    const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+    
+    // Get the actual width for this specific measure (accounting for existing partial measures)
+    const measureWidth = getMeasureWidth(timeSignature.numerator, timeSignature.denominator, measureNumber);
+    
+    // If adding this measure's width would exceed the click position,
+    // then the click is in this measure
+    if (currentPosition + measureWidth > relativePosition) {
+      break;
+    }
+    
+    // Move to the next measure
+    currentPosition += measureWidth;
+    measureNumber++;
+  }
+  
+  // Don't allow partial measure for measure 0 or negative measures
+  if (measureNumber < 1) {
+    alert('Cannot create partial measure before measure 1.');
+    return;
+  }
+  
+  // Calculate the correct position for the partial measure marker
+  const measureStartPosition = initialPosition + currentPosition;
+  
+  // Check if there's already a partial measure at this measure
+  const existingPartialMeasure = partialMeasures.value.find(pm => pm.measureNumber === measureNumber);
+  if (existingPartialMeasure) {
+    // Update existing partial measure
+    existingPartialMeasure.durationFactor = partialMeasureDurationFactor.value;
+    console.log(`🔄 Updating existing partial measure: ${partialMeasureDurationFactor.value} duration at measure ${measureNumber}`);
+  } else {
+    // Create new partial measure
+    const newPartialMeasure: PartialMeasure = {
+      id: generateId(),
+      measureNumber: measureNumber,
+      durationFactor: partialMeasureDurationFactor.value,
+      position: measureStartPosition + 5 // Small offset from measure line
+    };
+    console.log(`➕ Creating NEW partial measure: ${partialMeasureDurationFactor.value} duration at measure ${measureNumber}, position ${newPartialMeasure.position}`);
+    partialMeasures.value.push(newPartialMeasure);
+  }
+  
+  // Sort partial measures by measure number
+  partialMeasures.value.sort((a, b) => a.measureNumber - b.measureNumber);
+  
+  // Exit partial measure mode
+  isAddingPartialMeasure.value = false;
+  saveToLocalStorage();
+  
+};
+
+// Function to remove a partial measure
+const removePartialMeasure = (partialMeasureId: string) => {
+  const index = partialMeasures.value.findIndex(pm => pm.id === partialMeasureId);
+  if (index !== -1) {
+    partialMeasures.value.splice(index, 1);
+    console.log(`🗑️ Removed partial measure: ${partialMeasureId}`);
+    saveToLocalStorage();
+  }
 };
 
 // Function to get accidentals for a specific key signature
@@ -3592,6 +3788,7 @@ const prepareCompositionData = (): CompositionData => {
     keySignatureChanges: [...keySignatureChanges.value],
     timeSignatureChanges: [...timeSignatureChanges.value],
     clefChanges: [...clefChanges.value],
+    partialMeasures: [...partialMeasures.value],
     activeVoiceId: activeVoiceId.value,
     staffWidth: staffWidth.value,
     selectedDuration: selectedDuration.value,
@@ -3649,6 +3846,7 @@ const loadComposition = (compositionId) => {
       timeSignatureChanges.value = [];
       clefChanges.value = [];
       keySignatureChanges.value = [];
+      partialMeasures.value = [];
 
       currentCompositionId.value = compositionToLoad.id;
       compositionName.value = compositionToLoad.name;
@@ -3674,6 +3872,11 @@ const loadComposition = (compositionId) => {
       // Load key signature changes
       if (compositionToLoad.keySignatureChanges) {
         keySignatureChanges.value = JSON.parse(JSON.stringify(compositionToLoad.keySignatureChanges));
+      }
+
+      // Load partial measures
+      if (compositionToLoad.partialMeasures) {
+        partialMeasures.value = JSON.parse(JSON.stringify(compositionToLoad.partialMeasures));
       }
 
       // Use staffSettings if available, otherwise staffWidth
@@ -4459,8 +4662,8 @@ const timeSignatureNumerator = computed(() => parseInt(timeSignature.value.split
 const timeSignatureDenominator = computed(() => parseInt(timeSignature.value.split('/')[1]) || 4);
 const showBeatMarkers = ref(false); // Set to true for debugging
 
-// Function to calculate measure width based on time signature
-const getMeasureWidth = (numerator: number, denominator: number): number => {
+// Function to calculate measure width based on time signature and partial measure settings
+const getMeasureWidth = (numerator: number, denominator: number, measureNumber?: number): number => {
   // Base width per quarter note - increased to allow more note positions
   const quarterNoteWidth = 50;
   
@@ -4487,7 +4690,17 @@ const getMeasureWidth = (numerator: number, denominator: number): number => {
   
   // Ensure we have enough positions (minimum 25px per position for tight packing)
   const minWidthForPositions = minimumPositionsPerMeasure * 25;
-  const width = Math.max(baseWidth, minWidthForPositions);
+  let width = Math.max(baseWidth, minWidthForPositions);
+  
+  // Check if this measure is marked as partial
+  if (measureNumber !== undefined) {
+    const partialMeasure = partialMeasures.value.find(pm => pm.measureNumber === measureNumber);
+    if (partialMeasure) {
+      width *= partialMeasure.durationFactor;
+      // Ensure minimum width for partial measures
+      width = Math.max(width, 100); // Minimum 100px for partial measures
+    }
+  }
   
   return width;
 };
@@ -4516,7 +4729,7 @@ const getWidthUpToMeasure = (measureNumber: number): number => {
   let totalWidth = 0;
   for (let i = 1; i <= measureNumber; i++) {
     const timeSignature = getEffectiveTimeSignatureAtMeasure(i);
-    totalWidth += getMeasureWidth(timeSignature.numerator, timeSignature.denominator);
+    totalWidth += getMeasureWidth(timeSignature.numerator, timeSignature.denominator, i);
   }
   return totalWidth;
 };
@@ -4546,7 +4759,7 @@ const barlines = computed(() => {
   while (currentPosition < staffWidth.value) {
     // Get the width of the current measure
     const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
-    const measureWidth = getMeasureWidth(timeSignature.numerator, timeSignature.denominator);
+    const measureWidth = getMeasureWidth(timeSignature.numerator, timeSignature.denominator, measureNumber);
     
     // Add the measure width to get the next barline position
     currentPosition += measureWidth;
@@ -4601,7 +4814,7 @@ const beatPositions = computed(() => {
     }
     
     // Get the width of this measure
-    const measureWidth = getMeasureWidth(numerator, denominator);
+    const measureWidth = getMeasureWidth(numerator, denominator, measureNumber);
     
     // Add beat positions for this measure
     for (let beat = 1; beat < totalBeats; beat++) {
@@ -4749,9 +4962,32 @@ const getNotesMeasure = (note: ImportedNote | NoteWithVoiceInfo) => { // Update 
   // Calculate the relative position from the start of the first measure
   const relativePosition = notePosition - initialPosition;
 
-  // Calculate which measure this note is in
-  // Use measureWidthByTimeSignature for correct measure width based on time signature
-  return Math.floor(relativePosition / measureWidthByTimeSignature.value) + 1;
+  // Instead of using a fixed measure width, iterate through measures
+  // accounting for partial measures and time signature changes
+  let currentPosition = 0;
+  let measureNumber = 1;
+  
+  while (currentPosition < relativePosition) {
+    // Get the time signature for this measure
+    const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+    
+    // Get the actual width for this specific measure (accounting for partial measures)
+    const measureWidth = getMeasureWidth(timeSignature.numerator, timeSignature.denominator, measureNumber);
+    
+    // If adding this measure's width would exceed the note's position,
+    // then the note is in this measure
+    if (currentPosition + measureWidth > relativePosition) {
+      return measureNumber;
+    }
+    
+    // Move to the next measure
+    currentPosition += measureWidth;
+    measureNumber++;
+  }
+  
+  // If we've gone through all measures and haven't found the note,
+  // it's in the last measure we checked
+  return measureNumber;
 };
 
 // Function to convert note duration to beats (quarter note = 1 beat)
@@ -4944,7 +5180,15 @@ const getTimeSignatureDurationInBeatsForMeasure = (measureNumber: number): numbe
 
 // Function to calculate timing compression factor for a measure
 const getMeasureTimingFactor = (measureNumber: number, voiceNotes: ImportedNote[]) => {
-  const timeSignatureBeats = getTimeSignatureDurationInBeatsForMeasure(measureNumber);
+  let timeSignatureBeats = getTimeSignatureDurationInBeatsForMeasure(measureNumber);
+  
+  // Check if this measure is marked as partial
+  const partialMeasure = partialMeasures.value.find(pm => pm.measureNumber === measureNumber);
+  if (partialMeasure) {
+    // Adjust the expected time signature beats based on the partial measure factor
+    timeSignatureBeats *= partialMeasure.durationFactor;
+  }
+  
   const actualNoteDuration = getTotalNoteDurationInMeasure(measureNumber, voiceNotes);
   
   if (actualNoteDuration === 0) return 1; // No notes in measure
@@ -6165,14 +6409,13 @@ const playSection = (section: Section) => {
 
 // Add a function to jump to a section (just scroll, don't play)
 const jumpToSection = (section: Section) => {
-  // Calculate position of start measure
-  const measureWidth = measureWidthByTimeSignature.value;
+  // Calculate position of start measure using cumulative width calculation
   // Use global key signature for consistency
   const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
   const initialPosition = 70 + globalKeySignatureWidth + 20; // clef + global key sig + time sig
 
-  // Calculate where the measure starts
-  const measureStart = initialPosition + ((section.startMeasure - 1) * measureWidth);
+  // Calculate cumulative width up to the section start measure
+  const measureStart = initialPosition + getWidthUpToMeasure(section.startMeasure - 1);
 
   // Scroll to that position
   scrollPosition.value = Math.max(0, measureStart - 100); // 100px padding at left
@@ -6181,13 +6424,12 @@ const jumpToSection = (section: Section) => {
 
 // Add this function to calculate the position of a section marker
 const getSectionPosition = (measure: number) => {
-  const measureWidth = measureWidthByTimeSignature.value;
   // Use global key signature for consistency
   const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
   const initialPosition = 70 + globalKeySignatureWidth + 20; // clef + global key sig + time sig
 
-  // Calculate position based on measure number
-  return initialPosition + ((measure - 1) * measureWidth);
+  // Calculate position based on cumulative measure widths (accounting for partial measures)
+  return initialPosition + getWidthUpToMeasure(measure - 1);
 };
 
 // Add these variables near where the 'sections' ref is defined
@@ -7779,20 +8021,43 @@ const addKeySignatureChange = (event: MouseEvent, staffId: string) => {
   const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const x = event.clientX - staffRect.left;
   
-  // Calculate which measure was clicked
-  const measureWidth = measureWidthByTimeSignature.value;
+  // Calculate which measure was clicked by iterating through measures
   // Use the same calculation as getEffectiveKeySignatureAtPosition
   const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
   const initialPosition = 70 + globalKeySignatureWidth + 20;
   
   const relativePosition = x - initialPosition;
-  const measureNumber = Math.floor(relativePosition / measureWidth) + 1;
+  
+  // Calculate measure number by iterating through measures (accounting for partial measures)
+  let currentPosition = 0;
+  let measureNumber = 1;
+  
+  while (currentPosition < relativePosition) {
+    // Get the time signature for this measure
+    const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
+    
+    // Get the actual width for this specific measure (accounting for partial measures)
+    const measureWidth = getMeasureWidth(timeSignature.numerator, timeSignature.denominator, measureNumber);
+    
+    // If adding this measure's width would exceed the click position,
+    // then the click is in this measure
+    if (currentPosition + measureWidth > relativePosition) {
+      break;
+    }
+    
+    // Move to the next measure
+    currentPosition += measureWidth;
+    measureNumber++;
+  }
   
   // Don't allow key signature change in measure 1 (use global key signature instead)
   if (measureNumber < 2) {
     alert('Key signature changes cannot be placed in measure 1. Use the global key signature setting instead.');
     return;
   }
+  
+  // Calculate the correct position for the key signature change marker
+  const measureStartPosition = initialPosition + currentPosition;
   
   // Check if there's already a key signature change at this measure
   const existingChange = keySignatureChanges.value.find(change => change.measure === measureNumber);
@@ -7805,7 +8070,7 @@ const addKeySignatureChange = (event: MouseEvent, staffId: string) => {
       id: generateId(),
       measure: measureNumber,
       keySignature: newKeySignature.value,
-      position: initialPosition + ((measureNumber - 1) * measureWidth) + 5 // Small offset from measure line
+      position: measureStartPosition + 5 // Small offset from measure line
     };
     keySignatureChanges.value.push(newChange);
   }
@@ -8774,5 +9039,98 @@ watch([
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* Partial Measure Styles */
+.partial-measure-btn {
+  background-color: #ff6b35;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.2s;
+}
+
+.partial-measure-btn:hover {
+  background-color: #e55a2b;
+}
+
+.partial-measure-btn.active {
+  background-color: #d4481f;
+}
+
+.partial-measure-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px;
+  background-color: #fff3f0;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.partial-measure-controls label {
+  font-weight: bold;
+  color: #ff6b35;
+}
+
+.partial-measure-controls select {
+  padding: 4px;
+  border: 1px solid #ff6b35;
+  border-radius: 3px;
+  background-color: white;
+}
+
+.partial-measure-info {
+  color: #666;
+  font-style: italic;
+  margin-top: 4px;
+}
+
+.partial-measure {
+  position: absolute;
+  top: 100px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.partial-measure-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: rgba(255, 107, 53, 0.9);
+  color: white;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.2;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.partial-measure-marker:hover {
+  opacity: 0.8;
+}
+
+.partial-measure-icon {
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.partial-measure-text {
+  font-size: 9px;
+  font-weight: bold;
+}
+
+.staff.partial-measure-mode {
+  cursor: pointer;
+}
+
+.staff.partial-measure-mode:hover {
+  background-color: rgba(255, 107, 53, 0.1);
 }
 </style>
