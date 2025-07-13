@@ -655,7 +655,7 @@
     <PlaybackSettings v-model:playbackStartMeasure="playbackStartMeasure"
       v-model:playbackEndMeasure="playbackEndMeasure" :maxMeasures="barlines.length"
       v-model:autoScrollToPlayingNote="autoScrollToPlayingNote" v-model:showMeasureNumbers="showMeasureNumbers"
-      v-model:lyricsEditMode="lyricsEditMode" />
+      v-model:lyricsEditMode="lyricsEditMode" v-model:floatingNoteControlsMode="floatingNoteControlsMode" />
 
     <!-- Mobile-optimized note controls with tabs -->
     <div class="mobile-tabs">
@@ -674,13 +674,19 @@
     <!-- Modify the Notes tab content to be completely hidden in read-only mode -->
     <div v-if="activeTab === 'notes'">
       <div v-if="!readOnlyMode">
-        <NoteInputControls v-model:selectedDuration="selectedDuration" v-model:selectedNoteType="selectedNoteType"
+        <FloatingNoteControls v-if="floatingNoteControlsMode" v-model:selectedDuration="selectedDuration" v-model:selectedNoteType="selectedNoteType"
+          v-model:isDottedNote="isDottedNote" v-model:isTripletNote="isTripletNote" :availableDurations="availableDurations"
+          :usesFallbackSymbols="usesFallbackSymbols" v-model:selectedAccidental="selectedAccidental"
+          :availableAccidentals="availableAccidentals" v-model:selectedOctave="selectedOctave"
+          :floatingNoteControlsMode="floatingNoteControlsMode"
+          @toggleDottedNote="toggleDottedNote" @toggleTripletNote="toggleTripletNote" @close="floatingNoteControlsMode = false" />
+        <NoteInputControls v-else v-model:selectedDuration="selectedDuration" v-model:selectedNoteType="selectedNoteType"
           v-model:isDottedNote="isDottedNote" v-model:isTripletNote="isTripletNote" :availableDurations="availableDurations"
           :usesFallbackSymbols="usesFallbackSymbols" v-model:selectedAccidental="selectedAccidental"
           :availableAccidentals="availableAccidentals" v-model:selectedOctave="selectedOctave"
           @toggleDottedNote="toggleDottedNote" @toggleTripletNote="toggleTripletNote" />
         <LyricsControls v-model="currentLyric" :selectedNoteId="selectedNoteId" @setLyric="setLyricForNoteHandler"
-          :lyricsEditMode="lyricsEditMode" />
+          :lyricsEditMode="lyricsEditMode" @close="lyricsEditMode = false" />
       </div>
       <div v-else class="read-only-message-container">
         <div class="read-only-message">
@@ -768,6 +774,7 @@ import HelpGuide from '@/components/HelpGuide.vue';
 import AppHeader from '@/components/AppHeader.vue';
 import PlaybackControls from '@/components/PlaybackControls.vue';
 import NoteInputControls from '@/components/NoteInputControls.vue';
+import FloatingNoteControls from '@/components/FloatingNoteControls.vue';
 import SavedCompositionsPanel from '@/components/SavedCompositionsPanel.vue';
 import PlaybackSettings from '@/components/PlaybackSettings.vue';
 import LyricsControls from '@/components/LyricsControls.vue';
@@ -5500,6 +5507,9 @@ const showMeasureNumbers = ref(true); // Default to shown
 
 // Add a ref for lyrics edit mode
 const lyricsEditMode = ref(false); // Default to disabled
+
+// Add a ref for floating note controls mode
+const floatingNoteControlsMode = ref(false); // Default to disabled
 
 // Add a ref to track if playback is paused
 const isPaused = ref(false);

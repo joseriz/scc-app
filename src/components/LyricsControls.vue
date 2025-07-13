@@ -6,16 +6,16 @@
          position: lyricsEditMode ? 'fixed' : 'relative',
          left: lyricsEditMode ? position.x + 'px' : 'auto',
          top: lyricsEditMode ? position.y + 'px' : 'auto',
-         cursor: lyricsEditMode ? 'move' : 'default',
          zIndex: lyricsEditMode ? 1000 : 'auto',
          width: lyricsEditMode ? '300px' : '100%'
-       }"
-       @mousedown="handleMouseDown"
-       @touchstart="handleTouchStart">
-    <div v-if="lyricsEditMode" class="drag-handle">
+       }">
+    <div v-if="lyricsEditMode" class="drag-handle" @mousedown="handleMouseDown" @touchstart="handleTouchStart">
       <span class="drag-icon">⋮⋮</span>
+      <button class="close-btn" @click="$emit('close')" @mousedown.stop title="Close lyrics edit mode">
+        ×
+      </button>
     </div>
-    <h4>Lyrics</h4>
+    <h4 @mousedown="lyricsEditMode ? handleMouseDown($event) : null" @touchstart="lyricsEditMode ? handleTouchStart($event) : null" :style="{ cursor: lyricsEditMode ? 'move' : 'default' }">Lyrics</h4>
     <div class="lyrics-input-container">
       <input
         ref="lyricInput"
@@ -54,6 +54,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void;
   (e: 'setLyric', noteId: string, lyric: string): void;
+  (e: 'close'): void;
 }>();
 
 const position = ref({ x: 20, y: 20 }); // Initial position
@@ -73,12 +74,24 @@ watch(() => props.selectedNoteId, (newNoteId) => {
 });
 
 const handleMouseDown = (event: MouseEvent) => {
-  // Only allow dragging from the drag handle or the header
+  // Only allow dragging from the drag handle (but not close button) or the header
   const target = event.target as HTMLElement;
   const isDragHandle = target.closest('.drag-handle') !== null;
   const isHeader = target.tagName === 'H4';
+  const isCloseButton = target.closest('.close-btn') !== null;
+  const isDragIcon = target.closest('.drag-icon') !== null;
   
-  if (!props.lyricsEditMode || (!isDragHandle && !isHeader)) return;
+  // Only start dragging if:
+  // 1. Clicking on the drag icon specifically, OR
+  // 2. Clicking on the header (H4), OR  
+  // 3. Clicking on the drag handle area but NOT the close button
+  const shouldStartDrag = props.lyricsEditMode && (
+    isDragIcon || 
+    isHeader || 
+    (isDragHandle && !isCloseButton)
+  );
+  
+  if (!shouldStartDrag) return;
   
   isDragging.value = true;
   
@@ -96,6 +109,13 @@ const handleMouseDown = (event: MouseEvent) => {
 
 const handleTouchStart = (event: TouchEvent) => {
   if (!props.lyricsEditMode) return;
+  
+  // Check if touching the close button
+  const target = event.target as HTMLElement;
+  const isCloseButton = target.closest('.close-btn') !== null;
+  
+  // Don't start dragging if touching the close button
+  if (isCloseButton) return;
   
   isDragging.value = true;
   
@@ -186,6 +206,30 @@ const handleKeypress = (event: KeyboardEvent) => {
   border-top-left-radius: 6px;
   border-top-right-radius: 6px;
   border-bottom: 1px solid #cce5ff;
+}
+
+.close-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: #ff4444;
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.close-btn:hover {
+  background: #cc0000;
 }
 
 .drag-icon {

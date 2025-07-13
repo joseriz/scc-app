@@ -61,6 +61,16 @@
         />
         <label for="lyrics-edit-mode-input">Lyrics Edit Mode</label>
       </div>
+
+      <div class="floating-note-controls-toggle">
+        <input
+          type="checkbox"
+          id="floating-note-controls-input"
+          :checked="floatingNoteControlsMode"
+          @change="$emit('update:floatingNoteControlsMode', ($event.target as HTMLInputElement).checked)"
+        />
+        <label for="floating-note-controls-input">Floating Note Controls</label>
+      </div>
     </div>
   </div>
 </template>
@@ -75,6 +85,7 @@ defineProps<{
   autoScrollToPlayingNote: boolean;
   showMeasureNumbers: boolean;
   lyricsEditMode: boolean;
+  floatingNoteControlsMode: boolean;
 }>();
 
 defineEmits<{
@@ -83,6 +94,7 @@ defineEmits<{
   (e: 'update:autoScrollToPlayingNote', value: boolean): void;
   (e: 'update:showMeasureNumbers', value: boolean): void;
   (e: 'update:lyricsEditMode', value: boolean): void;
+  (e: 'update:floatingNoteControlsMode', value: boolean): void;
 }>();
 </script>
 
@@ -150,7 +162,8 @@ defineEmits<{
 
 .auto-scroll-toggle,
 .measure-visibility-toggle,
-.lyrics-edit-toggle {
+.lyrics-edit-toggle,
+.floating-note-controls-toggle {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -159,7 +172,8 @@ defineEmits<{
 
 .auto-scroll-toggle input[type="checkbox"],
 .measure-visibility-toggle input[type="checkbox"],
-.lyrics-edit-toggle input[type="checkbox"] {
+.lyrics-edit-toggle input[type="checkbox"],
+.floating-note-controls-toggle input[type="checkbox"] {
   margin: 0;
   width: 16px;
   height: 16px;
