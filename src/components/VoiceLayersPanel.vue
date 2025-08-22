@@ -42,7 +42,7 @@
             @click="emitConfirmDeleteVoice(voice.id)" 
             class="control-btn icon-btn delete-in-info-btn" 
             title="Delete voice">
-            🗑️
+            ❌
           </button>
         </div>
 
@@ -63,7 +63,7 @@
             @click="emitToggleVoiceVisibility(voice.id)" 
             :title="voice.visible ? 'Visible | Click to Hide' : 'Hidden | Click to Show'"
             class="control-btn icon-btn">
-            {{ voice.visible ? '👁️' : '🙈' }}
+            {{ voice.visible ? '👁️' : '🚫' }}
           </button>
           
           <!-- Selection for playback toggle - always visible -->

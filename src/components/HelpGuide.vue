@@ -216,8 +216,8 @@
                 <li><strong>Assign Voice to Staff:</strong> In the Voice Layers panel, there's usually an option (e.g., a dropdown menu) next to each voice to select which staff it belongs to. This allows you to move a voice from one staff to another.</li>
                 <li><strong>Rename Voice:</strong> Click the "Rename" button for a voice, enter the new name, and confirm.</li>
                 <li><strong>Change Voice Color:</strong> Click the color swatch next to a voice to open a color picker or cycle through predefined colors.</li>
-                <li><strong>Toggle Visibility:</strong> Use the eye icon or checkbox to show/hide a voice layer on the staff. Hidden voices are not included in playback unless specified.</li>
-                <li><strong>Delete Voice:</strong> Click the "Delete" button for a voice. You'll be asked for confirmation as this action also deletes all notes in that voice. You typically cannot delete the last remaining voice.</li>
+                <li><strong>Toggle Visibility:</strong> Use the eye icon (👁️) to show/hide a voice layer on the staff. Hidden voices are not included in playback unless specified.</li>
+                <li><strong>Delete Voice:</strong> Click the red X icon (❌) to delete a voice. You'll be asked for confirmation as this action also deletes all notes in that voice. You typically cannot delete the last remaining voice.</li>
               </ul>
             </div>
 
