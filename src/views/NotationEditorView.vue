@@ -5883,11 +5883,26 @@ const assignVoiceToStaff = (voiceId: string, newStaffId: string) => {
   const staffExists = staves.value.some(s => s.id === newStaffId);
 
   if (voice && staffExists) {
+    const oldStaffId = voice.staffId;
     voice.staffId = newStaffId;
+    
+    // Update ties and slurs that involve notes from this voice
+    voice.notes.forEach(note => {
+      // Find all ties/slurs that start or end with this note
+      tiesSlurs.value.forEach(tieSlur => {
+        if (tieSlur.startNoteId === note.id || tieSlur.endNoteId === note.id) {
+          // Update the staffId of the tie/slur to match the new staff
+          tieSlur.staffId = newStaffId;
+        }
+      });
+    });
+    
     // If this voice was active, ensure the activeStaffId is also updated
     if (voice.active) {
       activeStaffId.value = newStaffId;
     }
+    
+    console.log(`Moved voice ${voice.name} from staff ${oldStaffId} to staff ${newStaffId}`);
     saveToLocalStorage();
   } else {
     console.error(`Failed to assign voice ${voiceId} to staff ${newStaffId}. Voice or staff not found.`);
