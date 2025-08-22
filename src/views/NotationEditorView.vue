@@ -44,7 +44,9 @@
 
     <!-- Staves container -->
     <div class="staves-wrapper">
-      <div v-for="(stave, staveIndex) in staves" :key="stave.id" class="staff-outer-container">
+      <div v-for="(stave, staveIndex) in staves" :key="stave.id" 
+           v-show="!isStaffHidden(stave.id)"
+           class="staff-outer-container">
         <div class="staff-header-controls">
           <span v-if="editingStaffNameId !== stave.id" class="staff-name" @click="editStaffName(stave)"
             title="Click to rename staff">
@@ -6100,6 +6102,20 @@ const createTripletGroup = (notes: NoteWithVoiceInfo[], tripletGroups: TripletGr
     y,
     color
   });
+};
+
+// Helper function to check if a staff should be hidden (when all its voice layers are hidden)
+const isStaffHidden = (staffId: string): boolean => {
+  // Get all voice layers assigned to this staff
+  const voicesOnStaff = voiceLayers.value.filter(voice => voice.staffId === staffId);
+  
+  // If no voices on this staff, don't hide it (it might be a new staff)
+  if (voicesOnStaff.length === 0) {
+    return false;
+  }
+  
+  // Check if all voices on this staff are hidden
+  return voicesOnStaff.every(voice => !voice.visible);
 };
 
 // Watch compositions and auto-save whenever they change
