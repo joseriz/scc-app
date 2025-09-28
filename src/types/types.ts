@@ -91,6 +91,13 @@ export interface PartialMeasure {
   position: number; // Position on the staff for UI purposes
 }
 
+export interface BpmChange {
+  id: string;
+  measure: number;
+  bpm: number;
+  position: number;
+}
+
 export interface CompositionData {
   id: string;
   name: string;
@@ -106,6 +113,7 @@ export interface CompositionData {
   keySignatureChanges?: KeySignatureChange[];
   timeSignatureChanges?: TimeSignatureChange[];
   clefChanges?: ClefChange[];
+  bpmChanges?: BpmChange[];
   partialMeasures?: PartialMeasure[];
   activeVoiceId?: string;
   staffWidth?: number;

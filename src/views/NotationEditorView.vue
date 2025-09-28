@@ -187,6 +187,28 @@
               </div>
             </div>
 
+            <!-- BPM Change controls -->
+            <button 
+              @click="toggleBpmChangeMode"
+              :class="{ active: isAddingBpmChange }" 
+              class="bpm-change-btn">
+              {{ isAddingBpmChange ? 'Cancel BPM Change' : 'Add BPM Change' }}
+            </button>
+            <div v-if="isAddingBpmChange" class="bpm-change-controls">
+              <label>New BPM:</label>
+              <input 
+                type="number" 
+                v-model.number="newBpm" 
+                min="40" 
+                max="240" 
+                step="1"
+                class="bpm-input"
+              />
+              <div class="bpm-change-info">
+                Click on a measure to insert BPM change
+              </div>
+            </div>
+
             <!-- Partial Measure controls -->
             <button 
               @click="togglePartialMeasureMode"
@@ -273,6 +295,8 @@
                             ? addTimeSignatureChange($event, stave.id)
                             : isAddingClefChange
                               ? addClefChange($event, stave.id)
+                              : isAddingBpmChange
+                                ? addBpmChange($event, stave.id)
                               : isAddingPartialMeasure
                                 ? addPartialMeasure($event, stave.id)
                               : handleStaffClick($event, stave.id)
@@ -285,6 +309,7 @@
                 'key-change-mode': isAddingKeySignatureChange,
                 'time-change-mode': isAddingTimeSignatureChange,
                 'clef-change-mode': isAddingClefChange,
+                'bpm-change-mode': isAddingBpmChange,
                 'partial-measure-mode': isAddingPartialMeasure
               }" :style="{
                 width: `${staffWidth}px`,
@@ -420,6 +445,21 @@
                 <div class="clef-change-marker" style="pointer-events: none;">
                   <div class="clef-change-icon">{{ clefChange.clef === 'treble' ? '𝄞' : '𝄢' }}</div>
                   <div class="clef-change-text">{{ clefChange.clef === 'treble' ? 'Treble' : 'Bass' }}</div>
+                </div>
+              </div>
+
+              <!-- BPM Changes -->
+              <div v-for="bpmChange in bpmChanges" 
+                   :key="`bpm-change-${bpmChange.id}`" 
+                   class="bpm-change" 
+                   :class="{ 'clickable': !readOnlyMode }"
+                   :style="{ left: `${bpmChange.position}px` }"
+                   @click.stop="!readOnlyMode && removeBpmChange(bpmChange.id)"
+                   @mousedown.stop
+                   :title="readOnlyMode ? undefined : 'Click to remove BPM change'">
+                <div class="bpm-change-marker" style="pointer-events: none;">
+                  <div class="bpm-change-icon">🎵</div>
+                  <div class="bpm-change-text">{{ bpmChange.bpm }} BPM</div>
                 </div>
               </div>
 
@@ -813,6 +853,7 @@ import type {
   KeySignatureChange,
   TimeSignatureChange,
   ClefChange,
+  BpmChange,
   PartialMeasure,
 } from '@/types/types'; // Updated path
 
@@ -882,6 +923,7 @@ function generateStateHash(): string {
     keySignatureChanges: keySignatureChanges.value,
     timeSignatureChanges: timeSignatureChanges.value,
     clefChanges: clefChanges.value,
+    bpmChanges: bpmChanges.value,
     partialMeasures: partialMeasures.value
   };
   return JSON.stringify(state);
@@ -1022,6 +1064,7 @@ function resetToNewComposition() {
   sequenceItems.value = [];
   timeSignatureChanges.value = [];
   clefChanges.value = [];
+  bpmChanges.value = [];
   keySignatureChanges.value = [];
   partialMeasures.value = [];
   tiesSlurs.value = [];
@@ -1076,6 +1119,7 @@ function resetAppToFreshState() {
   sequenceItems.value = [];
   timeSignatureChanges.value = [];
   clefChanges.value = [];
+  bpmChanges.value = [];
   keySignatureChanges.value = [];
   partialMeasures.value = [];
   tiesSlurs.value = [];
@@ -1135,6 +1179,7 @@ function resetAppToFreshState() {
   isAddingKeySignatureChange.value = false;
   isAddingTimeSignatureChange.value = false;
   isAddingClefChange.value = false;
+  isAddingBpmChange.value = false;
   isAddingPartialMeasure.value = false;
   
   // Clear selection states
@@ -1608,6 +1653,7 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
     sequenceItems.value = [];
     timeSignatureChanges.value = [];
     clefChanges.value = [];
+    bpmChanges.value = [];
     keySignatureChanges.value = [];
     partialMeasures.value = [];
 
@@ -1625,6 +1671,11 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
     // Load clef changes
     if (compositionToLoad.clefChanges) {
       clefChanges.value = JSON.parse(JSON.stringify(compositionToLoad.clefChanges));
+    }
+
+    // Load BPM changes
+    if (compositionToLoad.bpmChanges) {
+      bpmChanges.value = JSON.parse(JSON.stringify(compositionToLoad.bpmChanges));
     }
 
     // Load key signature changes
@@ -1919,19 +1970,20 @@ const usesFallbackSymbols = ref(false);
 
 // Test if the browser can display musical symbols
 onMounted(() => {
-  const testSymbols = ['𝅝', '𝄻', '𝅗𝅥', '𝄼', '♩', '𝄽', '♪', '𝄾', '♬', '𝄿'];
-  const testElement = document.createElement('span');
-  document.body.appendChild(testElement);
-  
-  for (const symbol of testSymbols) {
-    testElement.textContent = symbol;
-    if (testElement.offsetWidth === 0) {
+  // Import and initialize symbol support
+  import('@/utils/symbolUtils').then(({ initializeSymbolSupport }) => {
+    const results = initializeSymbolSupport();
+    
+    // Check if any musical symbols failed
+    const failedSymbols = Object.values(results.musical).filter(supported => !supported);
+    if (failedSymbols.length > 0) {
       usesFallbackSymbols.value = true;
-      break;
+      console.log('Some musical symbols not supported, using fallbacks');
     }
-  }
-  
-  document.body.removeChild(testElement);
+  }).catch(error => {
+    console.warn('Could not load symbol utilities, using fallbacks:', error);
+    usesFallbackSymbols.value = true;
+  });
 });
 
 const availableDurations = [
@@ -2350,6 +2402,23 @@ const getEffectiveTimeSignatureAtMeasure = (measureNumber: number): { numerator:
   return { numerator, denominator };
 };
 
+// Function to get the effective BPM at a specific measure
+const getEffectiveBpmAtMeasure = (measureNumber: number): number => {
+  // Find the most recent BPM change at or before this measure
+  const applicableChanges = bpmChanges.value
+    .filter(change => change.measure <= measureNumber)
+    .sort((a, b) => b.measure - a.measure); // Sort by measure descending
+  
+  if (applicableChanges.length > 0) {
+    console.log(`🎵 BPM change found for measure ${measureNumber}: ${applicableChanges[0].bpm} BPM`);
+    return applicableChanges[0].bpm;
+  }
+  
+  // If no changes, use the global tempo
+  console.log(`🎵 No BPM change for measure ${measureNumber}, using global tempo: ${tempo.value} BPM`);
+  return tempo.value;
+};
+
 // Function to toggle time signature change mode
 const toggleTimeSignatureChangeMode = () => {
   isAddingTimeSignatureChange.value = !isAddingTimeSignatureChange.value;
@@ -2361,6 +2430,8 @@ const toggleTimeSignatureChangeMode = () => {
   isCreatingTieSlur.value = false;
   tieSlurStartNote.value = null;
   isAddingKeySignatureChange.value = false;
+  isAddingClefChange.value = false;
+  isAddingBpmChange.value = false;
   isAddingPartialMeasure.value = false;
 };
 
@@ -2376,6 +2447,8 @@ const togglePartialMeasureMode = () => {
   tieSlurStartNote.value = null;
   isAddingKeySignatureChange.value = false;
   isAddingTimeSignatureChange.value = false;
+  isAddingClefChange.value = false;
+  isAddingBpmChange.value = false;
 };
 
 // Function to add a time signature change at a specific measure
@@ -2757,19 +2830,6 @@ const playNoteSound = (pitch: string, duration = "8n", isDotted = false, volumeP
       pitchToPlay = `${noteLetter}${octave}`;
     }
 
-    // Extract position from the pitch string (e.g., "C4") and create a dummy note for measure calculation
-    const dummyNote = { position: Math.floor(pitchToPlay.length > 0 ? pitchToPlay.charCodeAt(0) / 25 : 0), type: 'note' } as ImportedNote;
-    const measureNumber = getNotesMeasure(dummyNote);
-    const measureTempo = getTempoForMeasure(measureNumber);
-    
-    const baseDurationMap: { [key: string]: number; } = {
-      "1n": 4 * (60 / measureTempo),
-      "2n": 2 * (60 / measureTempo),
-      "4n": 1 * (60 / measureTempo),
-      "8n": 0.5 * (60 / measureTempo),
-      "16n": 0.25 * (60 / measureTempo)
-    };
-
     let durationInSeconds;
     
     // Check if duration is already in seconds format (e.g., "2.5s" for tied notes)
@@ -2777,7 +2837,15 @@ const playNoteSound = (pitch: string, duration = "8n", isDotted = false, volumeP
       durationInSeconds = parseFloat(duration.slice(0, -1));
     } else {
       // Use standard Tone.js notation duration
-      durationInSeconds = baseDurationMap[duration] || (60 / tempo.value);
+      const baseDurationMap: { [key: string]: number; } = {
+        "1n": 4 * (60 / measureTempo),
+        "2n": 2 * (60 / measureTempo),
+        "4n": 1 * (60 / measureTempo),
+        "8n": 0.5 * (60 / measureTempo),
+        "16n": 0.25 * (60 / measureTempo)
+      };
+      
+      durationInSeconds = baseDurationMap[duration] || (60 / measureTempo);
       
       // Apply triplet timing first (if applicable)
       if (isTriplet) {
@@ -3797,6 +3865,7 @@ const prepareCompositionData = (): CompositionData => {
     keySignatureChanges: [...keySignatureChanges.value],
     timeSignatureChanges: [...timeSignatureChanges.value],
     clefChanges: [...clefChanges.value],
+    bpmChanges: [...bpmChanges.value],
     partialMeasures: [...partialMeasures.value],
     activeVoiceId: activeVoiceId.value,
     staffWidth: staffWidth.value,
@@ -3854,6 +3923,7 @@ const loadComposition = (compositionId) => {
       sequenceItems.value = [];
       timeSignatureChanges.value = [];
       clefChanges.value = [];
+      bpmChanges.value = [];
       keySignatureChanges.value = [];
       partialMeasures.value = [];
 
@@ -3876,6 +3946,11 @@ const loadComposition = (compositionId) => {
       // Load clef changes
       if (compositionToLoad.clefChanges) {
         clefChanges.value = JSON.parse(JSON.stringify(compositionToLoad.clefChanges));
+      }
+
+      // Load BPM changes
+      if (compositionToLoad.bpmChanges) {
+        bpmChanges.value = JSON.parse(JSON.stringify(compositionToLoad.bpmChanges));
       }
 
       // Load key signature changes
@@ -5037,16 +5112,19 @@ const getNoteDurationInBeats = (duration: string, isDotted = false, isTriplet = 
 const getTempoForMeasure = (measureNumber: number): number => {
   const timeSignature = getEffectiveTimeSignatureAtMeasure(measureNumber);
   
+  // Get the effective BPM for this measure (including BPM changes)
+  const effectiveBpm = getEffectiveBpmAtMeasure(measureNumber);
+  
   // Adjust tempo based on time signature denominator
-  let adjustedTempo = tempo.value;
+  let adjustedTempo = effectiveBpm;
   
   // For compound meters (6/8, 9/8, 12/8), adjust tempo to maintain musical feel
   if ([6, 9, 12].includes(timeSignature.numerator) && timeSignature.denominator === 8) {
-    adjustedTempo = tempo.value * (2/3); // Slower for compound meters
+    adjustedTempo = effectiveBpm * (2/3); // Slower for compound meters
   }
   // For 2/2 (cut time), double the tempo
   else if (timeSignature.numerator === 2 && timeSignature.denominator === 2) {
-    adjustedTempo = tempo.value * 2;
+    adjustedTempo = effectiveBpm * 2;
   }
   
   return adjustedTempo;
@@ -5340,7 +5418,8 @@ const playScore = () => {
       // }
 
       // Calculate the wait duration in seconds for this voice
-    const secondsPerBeat = 60 / tempo.value;
+    const measureTempo = getTempoForMeasure(measureNumber);
+    const secondsPerBeat = 60 / measureTempo;
       const waitDurationSeconds = compressedDuration * secondsPerBeat;
 
       voiceSchedule.push({
@@ -6653,7 +6732,8 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
       // }
 
       // Calculate the wait duration in seconds for this voice
-    const secondsPerBeat = 60 / tempo.value;
+    const measureTempo = getTempoForMeasure(measureNumber);
+    const secondsPerBeat = 60 / measureTempo;
       const waitDurationSeconds = compressedDuration * secondsPerBeat;
 
       voiceSchedule.push({
@@ -8016,6 +8096,11 @@ const handleKeyPress = (event: KeyboardEvent) => {
       if (isAddingTimeSignatureChange.value) {
         alert('Time signature change mode activated. Click on a measure to insert time change. Press "m" again to cancel.');
       }
+    } else if (event.key === 'b') {
+      toggleBpmChangeMode();
+      if (isAddingBpmChange.value) {
+        alert('BPM change mode activated. Click on a measure to insert BPM change. Press "b" again to cancel.');
+      }
     } else if (event.key === 'c' && isSelectingRange.value) {
       copySelectedNotes(false);
     }
@@ -8053,6 +8138,10 @@ const toggleKeySignatureChangeMode = () => {
   isPasting.value = false;
   isCreatingTieSlur.value = false;
   tieSlurStartNote.value = null;
+  isAddingTimeSignatureChange.value = false;
+  isAddingClefChange.value = false;
+  isAddingBpmChange.value = false;
+  isAddingPartialMeasure.value = false;
 };
 
 // Function to add a key signature change at a specific measure
@@ -8232,19 +8321,42 @@ const playNoteWithTieHandling = (noteToPlay: NoteWithVoiceInfo, voice: VoiceLaye
     );
     return { isPlaying: true, totalDurationMs };
   } else {
-        // This note is not tied - play normally
+    // This note is not tied - play normally
     const toneDuration = toneDurationMap[noteToPlay.duration] || '4n';
+    
+    // Calculate the actual duration in seconds based on measure-specific tempo
+    const baseDurationMap: { [key: string]: number; } = {
+      "1n": 4 * (60 / measureTempo),
+      "2n": 2 * (60 / measureTempo),
+      "4n": 1 * (60 / measureTempo),
+      "8n": 0.5 * (60 / measureTempo),
+      "16n": 0.25 * (60 / measureTempo)
+    };
+    
+    let durationInSeconds = baseDurationMap[toneDuration] || (60 / measureTempo);
+    
+    // Apply triplet timing first (if applicable)
+    if (noteToPlay.triplet) {
+      durationInSeconds *= (2/3);
+    }
+    
+    // Then apply dotted timing
+    if (noteToPlay.dotted) {
+      durationInSeconds *= 1.5;
+    }
+    
+    const durationInSecondsString = `${durationInSeconds}s`;
       
     playNoteSound(
       pitchToPlay,
-      toneDuration,
-      noteToPlay.dotted,
-      isLastInSlur ? currentVoiceVolumePercent * 0.8 : currentVoiceVolumePercent, // Slightly softer for last note in slur
+      durationInSecondsString, // Use calculated duration in seconds
+      false, // Don't apply dotted modifier as it's already included in duration calculation
+      isLastInSlur ? currentVoiceVolumePercent * 0.8 : currentVoiceVolumePercent,
       noteToPlay.explicitNatural,
       noteToPlay.triplet,
       noteToPlay.position
     );
-    return { isPlaying: true, totalDurationMs: 0 }; // 0 means use standard duration
+    return { isPlaying: true, totalDurationMs: durationInSeconds * 1000 };
   }
 };
 
@@ -8367,6 +8479,27 @@ const isAddingClefChange = ref(false);
 const newClef = ref<'treble' | 'bass'>('treble');
 const clefChanges = ref<ClefChange[]>([]);
 
+// Add BPM change state and functions
+const isAddingBpmChange = ref(false);
+const newBpm = ref(120);
+const bpmChanges = ref<BpmChange[]>([]);
+
+// Add this function to toggle BPM change mode
+const toggleBpmChangeMode = () => {
+  isAddingBpmChange.value = !isAddingBpmChange.value;
+  // Reset other modes
+  isInsertingSpace.value = false;
+  isDeletingSpace.value = false;
+  isSelectingRange.value = false;
+  isPasting.value = false;
+  isCreatingTieSlur.value = false;
+  tieSlurStartNote.value = null;
+  isAddingKeySignatureChange.value = false;
+  isAddingTimeSignatureChange.value = false;
+  isAddingClefChange.value = false;
+  isAddingPartialMeasure.value = false;
+};
+
 // Add this function to toggle clef change mode
 const toggleClefChangeMode = () => {
   isAddingClefChange.value = !isAddingClefChange.value;
@@ -8379,6 +8512,22 @@ const toggleClefChangeMode = () => {
   tieSlurStartNote.value = null;
   isAddingKeySignatureChange.value = false;
   isAddingTimeSignatureChange.value = false;
+  isAddingBpmChange.value = false;
+  isAddingPartialMeasure.value = false;
+};
+
+// Add this function to remove a BPM change
+const removeBpmChange = (changeId: string) => {
+  if (readOnlyMode.value) return;
+
+  const index = bpmChanges.value.findIndex(change => change.id === changeId);
+  if (index !== -1) {
+    const change = bpmChanges.value[index];
+    if (confirm(`Remove BPM change to ${change.bpm} BPM at measure ${change.measure}?`)) {
+      bpmChanges.value.splice(index, 1);
+      saveToLocalStorage();
+    }
+  }
 };
 
 // Add this function to remove a clef change
@@ -8393,6 +8542,54 @@ const removeClefChange = (changeId: string) => {
       saveToLocalStorage();
     }
   }
+};
+
+// Add this function to add a BPM change
+const addBpmChange = (event: MouseEvent, staffId: string) => {
+  if (readOnlyMode.value || !isAddingBpmChange.value) return;
+
+  const staffRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX - staffRect.left;
+  
+  // Calculate which measure was clicked
+  const measureWidth = measureWidthByTimeSignature.value;
+  const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
+  const initialPosition = 70 + globalKeySignatureWidth + 20;
+  
+  const relativePosition = x - initialPosition;
+  const measureNumber = Math.floor(relativePosition / measureWidth) + 1;
+  
+  // Don't allow BPM change in measure 1 (use global tempo setting instead)
+  if (measureNumber < 2) {
+    alert('BPM changes cannot be placed in measure 1. Use the global tempo setting instead.');
+    return;
+  }
+  
+  // Check if there's already a BPM change at this measure
+  const existingChange = bpmChanges.value.find(change => change.measure === measureNumber);
+  
+  if (existingChange) {
+    // Update existing change
+    existingChange.bpm = newBpm.value;
+  } else {
+    // Create new change
+    const newChange: BpmChange = {
+      id: generateId(),
+      measure: measureNumber,
+      bpm: newBpm.value,
+      position: initialPosition + ((measureNumber - 1) * measureWidth) + 5
+    };
+    console.log(`➕ Creating NEW BPM change: ${newBpm.value} BPM at measure ${measureNumber}, position ${newChange.position}`);
+    bpmChanges.value.push(newChange);
+  }
+  
+  // Sort BPM changes by measure
+  bpmChanges.value.sort((a, b) => a.measure - b.measure);
+  
+  // Exit BPM change mode
+  isAddingBpmChange.value = false;
+  saveToLocalStorage();
+  
 };
 
 // Add this function to add a clef change
@@ -8472,7 +8669,9 @@ watch([
   tiesSlurs,
   keySignatureChanges,
   timeSignatureChanges,
-  clefChanges
+  clefChanges,
+  bpmChanges,
+  partialMeasures
 ], updateDirtyState, { deep: true });
 
 </script>
@@ -8829,6 +9028,84 @@ watch([
 .clef-change-info {
   color: #666;
   font-style: italic;
+}
+
+/* BPM change button styling */
+.bpm-change-btn {
+  padding: 8px 16px;
+  background-color: #FF9800;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.bpm-change-btn.active {
+  background-color: #F57C00;
+}
+
+.bpm-change-btn:hover {
+  opacity: 0.9;
+}
+
+.bpm-change-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.bpm-change-controls .bpm-input {
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 80px;
+}
+
+.bpm-change-info {
+  color: #666;
+  font-style: italic;
+}
+
+/* BPM change visual styling */
+.bpm-change {
+  position: absolute;
+  top: 0;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.bpm-change.clickable:hover .bpm-change-marker {
+  background-color: rgba(255, 152, 0, 0.2);
+}
+
+.bpm-change-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: rgba(255, 152, 0, 0.1);
+  border: 2px solid #FF9800;
+  border-radius: 8px;
+  padding: 4px 8px;
+  min-width: 60px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #FF9800;
+}
+
+.bpm-change-icon {
+  font-size: 16px;
+  margin-bottom: 2px;
+}
+
+.bpm-change-text {
+  font-size: 10px;
+  text-align: center;
 }
 
 /* Clef change visual styling */

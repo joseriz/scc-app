@@ -3,7 +3,7 @@
     <h4>Voice Layers</h4>
     <div v-if="readOnlyMode" class="read-only-banner">
       <div class="read-only-message">
-        <i class="lock-icon">🔒</i> Voice editing is locked in read-only mode.
+        <i class="lock-icon">{{ getSymbol('control', 'lock') }}</i> Voice editing is locked in read-only mode.
         <div class="read-only-detail">You can only adjust which voices are visible and selected for playback.</div>
       </div>
     </div>
@@ -42,7 +42,7 @@
             @click="emitConfirmDeleteVoice(voice.id)" 
             class="control-btn icon-btn delete-in-info-btn" 
             title="Delete voice">
-            ❌
+            {{ getSymbol('voice', 'delete') }}
           </button>
         </div>
 
@@ -55,7 +55,7 @@
             :title="voice.active ? 'This voice is active' : 'Set as active voice'"
             class="control-btn icon-btn"
             :class="{ 'is-active-btn': voice.active }">
-            {{ voice.active ? '★' : '☆' }}
+            {{ voice.active ? getSymbol('voice', 'active') : getSymbol('voice', 'inactive') }}
           </button>
           
           <!-- Visibility toggle - always visible -->
@@ -63,7 +63,7 @@
             @click="emitToggleVoiceVisibility(voice.id)" 
             :title="voice.visible ? 'Visible | Click to Hide' : 'Hidden | Click to Show'"
             class="control-btn icon-btn">
-            {{ voice.visible ? '👁️' : '🚫' }}
+            {{ voice.visible ? getSymbol('voice', 'visible') : getSymbol('voice', 'hidden') }}
           </button>
           
           <!-- Selection for playback toggle - always visible -->
@@ -71,7 +71,7 @@
             @click="emitUpdateVoiceSelection(voice.id)" 
             :title="voice.selected ? 'Selected for Playback | Click to Exclude' : 'Not Selected for Playback | Click to Include'"
             class="control-btn icon-btn">
-            {{ voice.selected ? '🔊' : '🔇' }}
+            {{ voice.selected ? getSymbol('voice', 'selected') : getSymbol('voice', 'unselected') }}
           </button>
           
           <!-- Volume display is always visible -->
@@ -156,6 +156,7 @@
 <script setup lang="ts">
 import { ref, watch, type PropType, onMounted } from 'vue';
 import type { VoiceLayer, Stave } from '@/types/types'; // Adjust path as needed
+import { getSymbol } from '@/utils/symbolUtils';
 
 const props = defineProps({
   voiceLayers: {

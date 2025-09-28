@@ -3936,3 +3936,71 @@ input:checked+.toggle-slider:before {
   -moz-user-select: text;
   -ms-user-select: text;
 }
+
+/* Cross-device symbol and font support */
+/* Ensure musical symbols work on all devices */
+.note, .rest, .accidental, .clef, .time-signature, .key-signature {
+  font-family: 'Noto Music', 'Noto Sans Symbols', 'Times New Roman', serif;
+  font-feature-settings: 'liga' 1, 'dlig' 1;
+  text-rendering: optimizeLegibility;
+}
+
+/* Voice control icons with fallback support */
+.control-btn.icon-btn {
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Sans Symbols', sans-serif;
+  font-feature-settings: 'liga' 1, 'dlig' 1;
+  text-rendering: optimizeLegibility;
+}
+
+/* Device-specific optimizations */
+.device-ios .control-btn.icon-btn {
+  font-family: 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
+}
+
+.device-android .control-btn.icon-btn {
+  font-family: 'Noto Color Emoji', 'Android Emoji', sans-serif;
+}
+
+.browser-safari .control-btn.icon-btn {
+  font-family: 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
+}
+
+.browser-chrome .control-btn.icon-btn {
+  font-family: 'Noto Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+
+.browser-firefox .control-btn.icon-btn {
+  font-family: 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif;
+}
+
+/* Ensure proper sizing for all symbols */
+.control-btn.icon-btn {
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+/* Musical symbol specific styles */
+.musical-symbol {
+  font-family: 'Noto Music', 'Noto Sans Symbols', 'Times New Roman', serif;
+  font-feature-settings: 'liga' 1, 'dlig' 1;
+  text-rendering: optimizeLegibility;
+}
+
+/* Fallback text styling for when symbols fail */
+.fallback-text {
+  font-family: 'Arial', 'Helvetica', sans-serif;
+  font-weight: bold;
+  text-align: center;
+  line-height: 1;
+}
+
+/* Ensure proper contrast for fallback symbols */
+.control-btn.icon-btn .fallback-text {
+  color: inherit;
+  background: transparent;
+}
