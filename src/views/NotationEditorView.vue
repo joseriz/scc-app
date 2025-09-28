@@ -5325,7 +5325,7 @@ const playScore = () => {
   window.playbackTimeouts.forEach(id => clearTimeout(id));
   window.playbackTimeouts = [];
 
-  // Process each voice independently for truly independent timing
+  // Process voices measure by measure to ensure synchronization
   const voiceSchedules = new Map();
   
   // Group notes by voice first
@@ -5337,67 +5337,109 @@ const playScore = () => {
     notesByVoice[note.voiceId].push(note);
   });
 
-  // Create independent timing schedule for each voice
-  Object.entries(notesByVoice).forEach(([voiceId, voiceNotes]) => {
-    const voice = voicesToPlay.find(v => v.id === voiceId);
-    if (!voice) return;
+  // Determine the range of measures we need to process
+  let minMeasure = playbackStartMeasure.value > 1 ? playbackStartMeasure.value : 1;
+  let maxMeasure = playbackEndMeasure.value > 0 ? playbackEndMeasure.value : 1;
+  
+  if (filteredNotes.length > 0) {
+    const measures = filteredNotes.map(note => getNotesMeasure(note));
+    minMeasure = Math.max(minMeasure, Math.min(...measures));
+    maxMeasure = Math.max(maxMeasure, Math.max(...measures));
+  }
 
-    // Sort notes by position for this voice
-    const sortedVoiceNotes = (voiceNotes as any[]).sort((a, b) => a.position - b.position);
+  // Create synchronized timing schedule for all voices
+  voicesToPlay.forEach(voice => {
+    const voiceNotes = notesByVoice[voice.id] || [];
+    const sortedVoiceNotes = voiceNotes.sort((a, b) => a.position - b.position);
     
-    // Group notes by position within this voice (for chords within the same voice)
-    const notesByPosition = {};
+    // Group notes by measure for this voice
+    const notesByMeasure = {};
     sortedVoiceNotes.forEach(note => {
-    if (!notesByPosition[note.position]) {
-      notesByPosition[note.position] = [];
-    }
-    notesByPosition[note.position].push(note);
-  });
+      const measure = getNotesMeasure(note);
+      if (!notesByMeasure[measure]) {
+        notesByMeasure[measure] = [];
+      }
+      notesByMeasure[measure].push(note);
+    });
 
-    // Calculate timing for this voice independently
     let voiceDelay = 0;
     const voiceSchedule = [];
 
-    Object.keys(notesByPosition).map(Number).sort((a, b) => a - b).forEach(position => {
-    const notesAtPosition = notesByPosition[position];
-
-      // Find the longest duration at this position within this voice only
-    let longestDuration = 0;
-    notesAtPosition.forEach(note => {
-        const noteDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
-      longestDuration = Math.max(longestDuration, noteDuration);
-    });
-
-      // Get the measure this position is in and calculate timing compression for this voice
-      const measureNumber = getNotesMeasure(notesAtPosition[0]);
-      let voiceTimingFactor = 1;
-      if (measureNumber > 0) {
-        voiceTimingFactor = getMeasureTimingFactor(measureNumber, voice.notes);
-      }
-
-      // Apply voice-specific compression
-      const compressedDuration = longestDuration * voiceTimingFactor;
+    // Process each measure in order
+    for (let measureNumber = minMeasure; measureNumber <= maxMeasure; measureNumber++) {
+      const notesInMeasure = notesByMeasure[measureNumber] || [];
       
-      // Log voice-specific compression when significant
-      // if (Math.abs(voiceTimingFactor - 1) > 0.01) {
-      //   console.log(`Voice ${voice.name}: Measure ${measureNumber}, compression factor ${voiceTimingFactor.toFixed(3)} (${longestDuration}→${compressedDuration.toFixed(3)} beats)`);
-      // }
+      if (notesInMeasure.length > 0) {
+        // Group notes by position within this measure
+        const notesByPosition = {};
+        notesInMeasure.forEach(note => {
+          if (!notesByPosition[note.position]) {
+            notesByPosition[note.position] = [];
+          }
+          notesByPosition[note.position].push(note);
+        });
 
-      // Calculate the wait duration in seconds for this voice
-    const measureTempo = getTempoForMeasure(measureNumber);
-    const secondsPerBeat = 60 / measureTempo;
-      const waitDurationSeconds = compressedDuration * secondsPerBeat;
+        // Process each position within the measure
+        Object.keys(notesByPosition).map(Number).sort((a, b) => a - b).forEach(position => {
+          const notesAtPosition = notesByPosition[position];
 
-      voiceSchedule.push({
-        delay: voiceDelay * 1000, // Convert to milliseconds
-        notes: notesAtPosition,
-        duration: waitDurationSeconds * 1000
-      });
+          // Find the longest duration at this position within this voice only
+          let longestDuration = 0;
+          notesAtPosition.forEach(note => {
+            const noteDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
+            longestDuration = Math.max(longestDuration, noteDuration);
+          });
 
-      voiceDelay += waitDurationSeconds;
-    });
+          // Get timing compression for this voice and measure
+          let voiceTimingFactor = 1;
+          if (measureNumber > 0) {
+            voiceTimingFactor = getMeasureTimingFactor(measureNumber, voice.notes);
+          }
 
-    voiceSchedules.set(voiceId, voiceSchedule);
+          // Apply voice-specific compression
+          const compressedDuration = longestDuration * voiceTimingFactor;
+
+          // Calculate the wait duration in seconds for this voice
+          const measureTempo = getTempoForMeasure(measureNumber);
+          const secondsPerBeat = 60 / measureTempo;
+          const waitDurationSeconds = compressedDuration * secondsPerBeat;
+
+          voiceSchedule.push({
+            delay: voiceDelay * 1000, // Convert to milliseconds
+            notes: notesAtPosition,
+            duration: waitDurationSeconds * 1000
+          });
+
+          voiceDelay += waitDurationSeconds;
+        });
+      } else {
+        // Empty measure - still needs to consume time equal to the time signature
+        const timeSignatureBeats = getTimeSignatureDurationInBeatsForMeasure(measureNumber);
+        
+        // Check if this measure is marked as partial
+        let measureDuration = timeSignatureBeats;
+        const partialMeasure = partialMeasures.value.find(pm => pm.measureNumber === measureNumber);
+        if (partialMeasure) {
+          measureDuration *= partialMeasure.durationFactor;
+        }
+        
+        // Calculate the wait duration in seconds for this empty measure
+        const measureTempo = getTempoForMeasure(measureNumber);
+        const secondsPerBeat = 60 / measureTempo;
+        const waitDurationSeconds = measureDuration * secondsPerBeat;
+
+        // Add a silent placeholder for the empty measure
+        voiceSchedule.push({
+          delay: voiceDelay * 1000,
+          notes: [], // Empty measure
+          duration: waitDurationSeconds * 1000
+        });
+
+        voiceDelay += waitDurationSeconds;
+      }
+    }
+
+    voiceSchedules.set(voice.id, voiceSchedule);
   });
 
   // Schedule playback for all voices
@@ -6623,7 +6665,7 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
   window.playbackTimeouts.forEach(id => clearTimeout(id));
   window.playbackTimeouts = [];
 
-  // Process each voice independently for truly independent timing
+  // Process voices measure by measure to ensure synchronization
   const voiceSchedules = new Map();
   
   // Group notes by voice first
@@ -6635,67 +6677,109 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
     notesByVoice[note.voiceId].push(note);
   });
 
-  // Create independent timing schedule for each voice
-  Object.entries(notesByVoice).forEach(([voiceId, voiceNotes]) => {
-    const voice = voicesToPlay.find(v => v.id === voiceId);
-    if (!voice) return;
+  // Determine the range of measures we need to process
+  let minMeasure = startMeasure > 1 ? startMeasure : 1;
+  let maxMeasure = endMeasure > 0 ? endMeasure : 1;
+  
+  if (filteredNotes.length > 0) {
+    const measures = filteredNotes.map(note => getNotesMeasure(note));
+    minMeasure = Math.max(minMeasure, Math.min(...measures));
+    maxMeasure = Math.max(maxMeasure, Math.max(...measures));
+  }
 
-    // Sort notes by position for this voice
-    const sortedVoiceNotes = (voiceNotes as any[]).sort((a, b) => a.position - b.position);
+  // Create synchronized timing schedule for all voices
+  voicesToPlay.forEach(voice => {
+    const voiceNotes = notesByVoice[voice.id] || [];
+    const sortedVoiceNotes = voiceNotes.sort((a, b) => a.position - b.position);
     
-    // Group notes by position within this voice (for chords within the same voice)
-    const notesByPosition = {};
+    // Group notes by measure for this voice
+    const notesByMeasure = {};
     sortedVoiceNotes.forEach(note => {
-    if (!notesByPosition[note.position]) {
-      notesByPosition[note.position] = [];
-    }
-    notesByPosition[note.position].push(note);
-  });
+      const measure = getNotesMeasure(note);
+      if (!notesByMeasure[measure]) {
+        notesByMeasure[measure] = [];
+      }
+      notesByMeasure[measure].push(note);
+    });
 
-    // Calculate timing for this voice independently
     let voiceDelay = 0;
     const voiceSchedule = [];
 
-    Object.keys(notesByPosition).map(Number).sort((a, b) => a - b).forEach(position => {
-    const notesAtPosition = notesByPosition[position];
-
-      // Find the longest duration at this position within this voice only
-    let longestDuration = 0;
-    notesAtPosition.forEach(note => {
-        const noteDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
-      longestDuration = Math.max(longestDuration, noteDuration);
-    });
-
-      // Get the measure this position is in and calculate timing compression for this voice
-      const measureNumber = getNotesMeasure(notesAtPosition[0]);
-      let voiceTimingFactor = 1;
-      if (measureNumber > 0) {
-        voiceTimingFactor = getMeasureTimingFactor(measureNumber, voice.notes);
-      }
-
-      // Apply voice-specific compression
-      const compressedDuration = longestDuration * voiceTimingFactor;
+    // Process each measure in order
+    for (let measureNumber = minMeasure; measureNumber <= maxMeasure; measureNumber++) {
+      const notesInMeasure = notesByMeasure[measureNumber] || [];
       
-      // Log voice-specific compression when significant
-      // if (Math.abs(voiceTimingFactor - 1) > 0.01) {
-      //   console.log(`Voice ${voice.name}: Measure ${measureNumber}, compression factor ${voiceTimingFactor.toFixed(3)} (${longestDuration}→${compressedDuration.toFixed(3)} beats)`);
-      // }
+      if (notesInMeasure.length > 0) {
+        // Group notes by position within this measure
+        const notesByPosition = {};
+        notesInMeasure.forEach(note => {
+          if (!notesByPosition[note.position]) {
+            notesByPosition[note.position] = [];
+          }
+          notesByPosition[note.position].push(note);
+        });
 
-      // Calculate the wait duration in seconds for this voice
-    const measureTempo = getTempoForMeasure(measureNumber);
-    const secondsPerBeat = 60 / measureTempo;
-      const waitDurationSeconds = compressedDuration * secondsPerBeat;
+        // Process each position within the measure
+        Object.keys(notesByPosition).map(Number).sort((a, b) => a - b).forEach(position => {
+          const notesAtPosition = notesByPosition[position];
 
-      voiceSchedule.push({
-        delay: voiceDelay * 1000, // Convert to milliseconds
-        notes: notesAtPosition,
-        duration: waitDurationSeconds * 1000
-      });
+          // Find the longest duration at this position within this voice only
+          let longestDuration = 0;
+          notesAtPosition.forEach(note => {
+            const noteDuration = getNoteDurationInBeats(note.duration, note.dotted, note.triplet);
+            longestDuration = Math.max(longestDuration, noteDuration);
+          });
 
-      voiceDelay += waitDurationSeconds;
-    });
+          // Get timing compression for this voice and measure
+          let voiceTimingFactor = 1;
+          if (measureNumber > 0) {
+            voiceTimingFactor = getMeasureTimingFactor(measureNumber, voice.notes);
+          }
 
-    voiceSchedules.set(voiceId, voiceSchedule);
+          // Apply voice-specific compression
+          const compressedDuration = longestDuration * voiceTimingFactor;
+
+          // Calculate the wait duration in seconds for this voice
+          const measureTempo = getTempoForMeasure(measureNumber);
+          const secondsPerBeat = 60 / measureTempo;
+          const waitDurationSeconds = compressedDuration * secondsPerBeat;
+
+          voiceSchedule.push({
+            delay: voiceDelay * 1000, // Convert to milliseconds
+            notes: notesAtPosition,
+            duration: waitDurationSeconds * 1000
+          });
+
+          voiceDelay += waitDurationSeconds;
+        });
+      } else {
+        // Empty measure - still needs to consume time equal to the time signature
+        const timeSignatureBeats = getTimeSignatureDurationInBeatsForMeasure(measureNumber);
+        
+        // Check if this measure is marked as partial
+        let measureDuration = timeSignatureBeats;
+        const partialMeasure = partialMeasures.value.find(pm => pm.measureNumber === measureNumber);
+        if (partialMeasure) {
+          measureDuration *= partialMeasure.durationFactor;
+        }
+        
+        // Calculate the wait duration in seconds for this empty measure
+        const measureTempo = getTempoForMeasure(measureNumber);
+        const secondsPerBeat = 60 / measureTempo;
+        const waitDurationSeconds = measureDuration * secondsPerBeat;
+
+        // Add a silent placeholder for the empty measure
+        voiceSchedule.push({
+          delay: voiceDelay * 1000,
+          notes: [], // Empty measure
+          duration: waitDurationSeconds * 1000
+        });
+
+        voiceDelay += waitDurationSeconds;
+      }
+    }
+
+    voiceSchedules.set(voice.id, voiceSchedule);
   });
 
   // Schedule playback for all voices
