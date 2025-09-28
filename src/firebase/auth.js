@@ -2,14 +2,13 @@ import { auth } from '@/firebase';
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signInWithCredential, signOut, getRedirectResult } from 'firebase/auth';
 import { SocialLogin } from '@capgo/capacitor-social-login';
 import { Capacitor } from '@capacitor/core';
-import { logger } from '@/utils/logger';
 
 export const useAuth = () => {
   const googleSignIn = async () => {
     try {
       // Check if we're on a native platform (Android/iOS)
       if (Capacitor.isNativePlatform()) {
-        logger.info('Attempting native Google sign-in...');
+        // Attempting native Google sign-in
         
         try {
           // Initialize SocialLogin with Google configuration
@@ -19,14 +18,14 @@ export const useAuth = () => {
               mode: 'online'
             }
           });
-          logger.info('SocialLogin initialized successfully');
+          // SocialLogin initialized successfully
           
           // Try to sign in - remove custom scopes to avoid MainActivity requirement
           const result = await SocialLogin.login({
             provider: 'google',
             options: {}
           });
-          logger.info('Native Google sign-in successful:', result);
+          // Native Google sign-in successful
 
           // Validate the result structure - new plugin structure
           if (!result || !result.result || !result.result.idToken) {
@@ -37,24 +36,24 @@ export const useAuth = () => {
           const credential = GoogleAuthProvider.credential(result.result.idToken);
           const firebaseResult = await signInWithCredential(auth, credential);
           
-          logger.info('Firebase authentication successful:', firebaseResult.user.email);
+          // Firebase authentication successful
           return firebaseResult;
         } catch (nativeError) {
-          logger.error('Native Google sign-in failed with error:', nativeError);
+          // Native Google sign-in failed with error
           
           // Log specific error details
           if (nativeError.code) {
-            logger.error('Error code:', nativeError.code);
+            // Error code
           }
           if (nativeError.message) {
-            logger.error('Error message:', nativeError.message);
+            // Error message
           }
           
           // Handle specific error codes
           if (nativeError.message && nativeError.message.includes('[16]')) {
             // Account reauth failed - try to clear cached credentials and retry
             try {
-              logger.info('Attempting to clear cached credentials and retry...');
+              // Attempting to clear cached credentials and retry
               await SocialLogin.logout({ provider: 'google' });
               
               // Retry the sign-in process
@@ -66,11 +65,11 @@ export const useAuth = () => {
               if (retryResult && retryResult.result && retryResult.result.idToken) {
                 const credential = GoogleAuthProvider.credential(retryResult.result.idToken);
                 const firebaseResult = await signInWithCredential(auth, credential);
-                logger.info('Retry successful after clearing cache:', firebaseResult.user.email);
+                // Retry successful after clearing cache
                 return firebaseResult;
               }
             } catch (retryError) {
-              logger.error('Retry after clearing cache failed:', retryError);
+              // Retry after clearing cache failed
             }
             
             throw new Error('Account authentication expired. Please try signing in again or restart the app.');
@@ -81,7 +80,7 @@ export const useAuth = () => {
         }
       } else {
         // Web platform - use popup
-        logger.info('Using web-based Google sign-in...');
+        // Using web-based Google sign-in
         
         const provider = new GoogleAuthProvider();
         provider.addScope('profile');
@@ -93,7 +92,7 @@ export const useAuth = () => {
         return await signInWithPopup(auth, provider);
       }
     } catch (error) {
-      logger.error('Google sign-in error:', error);
+      // Google sign-in error
       
       // Provide more specific error handling
       if (error.message && error.message.includes('disallowed_useragent')) {
@@ -117,14 +116,14 @@ export const useAuth = () => {
       }
       await signOut(auth);
     } catch (error) {
-      logger.error('Sign out error:', error);
+      // Sign out error
       throw error;
     }
   };
 
   const clearAuthCache = async () => {
     try {
-      logger.info('Clearing authentication cache...');
+      // Clearing authentication cache
       
       if (Capacitor.isNativePlatform()) {
         // Clear native authentication cache
@@ -134,9 +133,9 @@ export const useAuth = () => {
       // Sign out from Firebase
       await signOut(auth);
       
-      logger.info('Authentication cache cleared successfully');
+      // Authentication cache cleared successfully
     } catch (error) {
-      logger.error('Error clearing auth cache:', error);
+      // Error clearing auth cache
       throw new Error('Failed to clear authentication cache. Please restart the app.');
     }
   };
@@ -145,11 +144,11 @@ export const useAuth = () => {
     try {
       const result = await getRedirectResult(auth);
       if (result) {
-        logger.info('Redirect result found:', result.user.email);
+        // Redirect result found
         return result;
       }
     } catch (error) {
-      logger.error('Error checking redirect result:', error);
+      // Error checking redirect result
     }
     return null;
   };

@@ -64,7 +64,6 @@
     <div class="playback-sequence">
       <h4>Playback Sequence</h4>
       
-      <button v-if="debugMode" @click="logSequence" class="debug-btn">Log Sequence</button>
       
       <div v-if="playbackSequence.length === 0" class="no-sequences">
         No playback sequence defined. Add sections to create a sequence.
@@ -163,10 +162,8 @@ const addSection = () => {
   endMeasure.value = Math.min(props.maxMeasures, endMeasure.value + 1);
 };
 
-// Add section to playback sequence with additional debugging
+// Add section to playback sequence
 const addToSequence = (section: Section) => {
-  console.log(`Adding section to sequence: ${section.name} (id: ${section.id})`);
-  
   // Create a new sequence item
   const newItem: SequenceItem = {
     sectionId: section.id
@@ -178,12 +175,6 @@ const addToSequence = (section: Section) => {
   
   // Emit the updated sequence to parent
   emit('updateSequence', newSequence);
-  
-  console.log(`Sequence now has ${playbackSequence.value.length} sections:`, 
-    playbackSequence.value.map(item => {
-      const s = props.sections.find(sec => sec.id === item.sectionId);
-      return s ? s.name : 'Unknown';
-    }).join(', '));
 };
 
 // Update the removeFromSequence to also create a new array
@@ -196,9 +187,8 @@ const removeFromSequence = (index: number) => {
   emit('updateSequence', newSequence);
 };
 
-// Update the clearSequence method to also log
+// Update the clearSequence method
 const clearSequence = () => {
-  console.log('Clearing sequence');
   playbackSequence.value = [];
   
   // Emit the empty sequence to parent
@@ -208,10 +198,9 @@ const clearSequence = () => {
 // Add a computed property to check if sequence is empty
 const hasSequence = computed(() => playbackSequence.value.length > 0);
 
-// Add a method to log the current sequence to the console
+// Add a method to get the current sequence (debugging disabled)
 const logSequence = () => {
-  console.log('Current sequence:', playbackSequence.value);
-  console.log('hasSequence computed value:', hasSequence.value);
+  // Debugging disabled for performance
 };
 
 // Add a watch effect to initialize the playbackSequence from props

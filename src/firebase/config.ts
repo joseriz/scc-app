@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, initializeAuth, browserLocalPersistence, indexedDBLocalPersistence } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
-import { logger } from '@/utils/logger';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -13,14 +12,7 @@ const firebaseConfig = {
   appId: "1:377945407536:web:ea9f6474c2e9695ce86df5"
 };
 
-logger.info('Firebase Config:', {
-  apiKey: firebaseConfig.apiKey ? 'Present' : 'Missing',
-  authDomain: firebaseConfig.authDomain ? 'Present' : 'Missing',
-  projectId: firebaseConfig.projectId ? 'Present' : 'Missing',
-  storageBucket: firebaseConfig.storageBucket ? 'Present' : 'Missing',
-  messagingSenderId: firebaseConfig.messagingSenderId ? 'Present' : 'Missing',
-  appId: firebaseConfig.appId ? 'Present' : 'Missing'
-});
+// Firebase configuration loaded
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

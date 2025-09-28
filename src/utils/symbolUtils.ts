@@ -153,9 +153,9 @@ export const initializeSymbolSupport = () => {
   const voiceSymbolsToTest = Object.values(voiceControlSymbols).map(s => s.primary);
   const voiceSymbolResults = symbolSupport.testSymbols(voiceSymbolsToTest);
   
-  console.log('Musical symbol support:', musicalSymbolResults);
-  console.log('Control symbol support:', controlSymbolResults);
-  console.log('Voice control symbol support:', voiceSymbolResults);
+  // Musical symbol support
+  // Control symbol support
+  // Voice control symbol support
   
   return {
     musical: musicalSymbolResults,
@@ -181,7 +181,7 @@ export const getSymbol = (category: 'musical' | 'control' | 'voice', key: string
   }
   
   if (!symbolSet) {
-    console.warn(`Symbol not found: ${category}.${key}`);
+    // Symbol not found
     return '?';
   }
   

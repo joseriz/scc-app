@@ -738,10 +738,6 @@
       </div>
     </div>
 
-    <DebugPanel :debugMode="debugMode" :showNotePositions="showNotePositions" :lastClickY="lastClickY"
-      :selectedOctave="selectedOctave" :notesForDebug="notes" :needsLedgerLines="needsLedgerLinesForDebugPanel"
-      :getLedgerLines="getLedgerLinesForDebugPanel" @toggleShowNotePositions="showNotePositions = !showNotePositions"
-      @testAllNotes="testAllNotes" />
 
     <div v-if="activeTab === 'saved'">
       <SavedCompositionsPanel :savedCompositions="savedCompositions" v-model:compositionName="compositionName"
@@ -822,10 +818,8 @@ import PlaybackSettings from '@/components/PlaybackSettings.vue';
 import LyricsControls from '@/components/LyricsControls.vue';
 import VoiceLayersPanel from '@/components/VoiceLayersPanel.vue';
 import SettingsPanel from '@/components/SettingsPanel.vue';
-import DebugPanel from '@/components/DebugPanel.vue';
 import FirstTimeInstructionModal from '@/components/FirstTimeInstructionModal.vue';
 import LoginPromptModal from '@/components/LoginPromptModal.vue';
-import { useDebug } from '@/composables/useDebug';
 import SectionsPanel from '@/components/SectionsPanel.vue';
 import { generateId } from '@/utils/idGenerator'; // Make sure this import path is correct
 import SaveToCloudModal from '@/components/SaveToCloudModal.vue';
@@ -836,7 +830,7 @@ import { useCloudStore } from '@/stores/cloud';
 import { storeToRefs } from 'pinia';
 import type { SaveDetails } from '@/types/SaveDetails';
 import { collection, doc, setDoc, addDoc } from 'firebase/firestore';
-import { auth, db, nativeFirestore, logFirestoreCall } from '@/firebase';
+import { auth, db, nativeFirestore } from '@/firebase';
 import { Capacitor } from '@capacitor/core';
 import { SharingService } from '@/utils/sharing';
 import { useRoute } from 'vue-router';
@@ -960,7 +954,7 @@ async function quickSave() {
       }
     }
   } catch (error) {
-    console.error('Quick save failed:', error);
+    // Quick save failed
     alert('Quick save failed: ' + error.message);
   } finally {
     isSavingToCloud.value = false;
@@ -1014,7 +1008,7 @@ async function quickSaveToCloud() {
   }
 
   markAsSaved();
-  console.log('Quick saved to cloud successfully');
+  // Quick saved to cloud successfully
   
   // Show brief success message
   alert('Composition saved successfully!');
@@ -1044,7 +1038,7 @@ async function quickSaveToLocal() {
   saveToLocalStorage();
 
   markAsSaved();
-  console.log('Quick saved to local storage successfully');
+  // Quick saved to local storage successfully
 }
 
 // Reset to new composition state
@@ -1303,7 +1297,7 @@ const loadSharedComposition = async (compositionId: string) => {
     alert(`Composition loaded successfully! You have ${accessInfo.text.toLowerCase()} access.`);
     
   } catch (error: unknown) {
-    console.error('Error loading shared composition:', error);
+    // Error loading shared composition
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     alert('Failed to load shared composition: ' + errorMessage);
   } finally {
@@ -1345,7 +1339,7 @@ const generateShareLink = async () => {
     await navigator.clipboard.writeText(shareLink);
     alert('Share link copied to clipboard!');
   } catch (error) {
-    console.error('Failed to copy share link:', error);
+    // Failed to copy share link
     alert('Failed to copy share link to clipboard.');
   }
 };
@@ -1409,7 +1403,7 @@ const loadCompositionFromUrl = async (compositionId: string, source: 'local' | '
       SharingService.updateUrlForComposition(compositionId, 'cloud');
     }
   } catch (error: unknown) {
-    console.error('Error loading composition from URL:', error);
+    // Error loading composition from URL
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     alert('Failed to load composition: ' + errorMessage);
     SharingService.navigateToHome();
@@ -1459,7 +1453,7 @@ const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
   } catch (error) {
-    console.error('Error signing in with Google:', error);
+    // Error signing in with Google
   }
 };
 
@@ -1469,7 +1463,7 @@ const handleLogout = async () => {
     await auth.signOut();
     // Redirect to login or home page if needed
   } catch (error) {
-    console.error('Error logging out:', error);
+    // Error logging out
   }
 };
 
@@ -1484,8 +1478,7 @@ const handleSaveToCloud = (details: SaveDetails) => {
     // Prepare the composition data (this will include the updated name)
     let compositionData = prepareCompositionData();
     
-    // Log the composition data for debugging with full details
-    console.log('Composition data before cloud save:', JSON.parse(JSON.stringify(compositionData)));
+    // Composition data prepared for cloud save
     
     // Create a clean version of the data for Firestore
     // Get the current user
@@ -1513,8 +1506,7 @@ const handleSaveToCloud = (details: SaveDetails) => {
       allowPublicWrite: details.allowPublicWrite || false
     };
     
-    // Log the final data being saved with full details
-    console.log('Data being saved to cloud:', JSON.parse(JSON.stringify(dataToSave)));
+    // Data prepared for Firestore
     
     // Validate the data structure
     if (!dataToSave.id || !dataToSave.name) {
@@ -1533,28 +1525,20 @@ const handleSaveToCloud = (details: SaveDetails) => {
     let savePromise;
     
     if (Capacitor.isNativePlatform() && nativeFirestore) {
-      logFirestoreCall('saveComposition (native)', { docId: currentCloudDocId.value });
+      // Save composition using native Firestore
       savePromise = nativeFirestore.saveComposition('compositions', dataToSave, currentCloudDocId.value || undefined);
     } else {
       // Modular Firestore API for web
       const compositionsCol = collection(db, 'compositions');
       
-      // Debug logging to understand save decision
-      console.log('Save decision debug:', {
-        currentCloudDocId: currentCloudDocId.value,
-        hasOriginalData: !!originalCloudData.value,
-        hasWriteAccess: originalCloudData.value ? determineWriteAccess(originalCloudData.value) : false,
-        willUpdate: !!(currentCloudDocId.value && originalCloudData.value && determineWriteAccess(originalCloudData.value))
-      });
+      // Save decision debug info
       
       if (currentCloudDocId.value && originalCloudData.value && determineWriteAccess(originalCloudData.value)) {
         const docRef = doc(db, 'compositions', currentCloudDocId.value);
-        logFirestoreCall('setDoc (web)', { docId: currentCloudDocId.value });
-        console.log('UPDATING existing composition with ID:', currentCloudDocId.value);
+        // UPDATING existing composition
         savePromise = setDoc(docRef, dataToSave, { merge: true });
       } else {
-        logFirestoreCall('addDoc (web)');
-        console.log('CREATING new composition (no valid cloud ID to update)');
+        // CREATING new composition
         savePromise = addDoc(compositionsCol, dataToSave);
       }
     }
@@ -1566,7 +1550,7 @@ const handleSaveToCloud = (details: SaveDetails) => {
       if (savedId) {
         currentCloudDocId.value = savedId;
       }
-      console.log('Successfully saved to Firestore with ID:', savedId);
+      // Successfully saved to Firestore
       alert(`Composition saved successfully${savedId ? ` with ID: ${savedId}` : ''}`);
       isSaveToCloudModalVisible.value = false;
       
@@ -1587,11 +1571,6 @@ const handleSaveToCloud = (details: SaveDetails) => {
       isSavingToCloud.value = false;
     }).catch((error) => {
       // Log the detailed error
-      console.error("Error saving to Firestore:", {
-        code: error.code,
-        message: error.message,
-        details: error
-      });
       
       // Provide a more helpful error message
       let errorMessage = "Failed to save composition to cloud. ";
@@ -1610,10 +1589,6 @@ const handleSaveToCloud = (details: SaveDetails) => {
     });
   } catch (error) {
     // Log the detailed error
-    console.error("Error preparing composition data:", {
-      error,
-      stage: 'preparing'
-    });
     
     alert(`Failed to prepare composition data: ${error.message}`);
     
@@ -1632,12 +1607,6 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
     currentCloudDocId.value = compositionToLoad.docId || compositionToLoad.id || null;
     
     // Debug logging to help track the ID
-    console.log('Loading composition from cloud:', {
-      name: compositionToLoad.name,
-      docId: compositionToLoad.docId,
-      id: compositionToLoad.id,
-      finalCloudDocId: currentCloudDocId.value
-    });
     
     // Track original source and data for quick save
     originalSource.value = 'cloud';
@@ -1813,7 +1782,7 @@ const handleLoadFromCloud = (compositionToLoad: any) => {
       SharingService.updateUrlForComposition(currentCloudDocId.value, 'cloud');
     }
   } catch (error: any) {
-    console.error('Error loading composition:', error);
+    // Error loading composition
     alert('Failed to load composition: ' + error.message);
     isCloudLoading.value = false; // Ensure overlay is hidden on error
   }
@@ -1892,7 +1861,7 @@ const activeVoice = computed<VoiceLayer>(() => { // Explicitly type activeVoice
       staves.value.push({ id: newDefaultStaffId, clef: 'treble', order: 0, name: 'Default Staff' });
       staffIdForDefaultVoice = newDefaultStaffId;
       activeStaffId.value = newDefaultStaffId; // Make it active
-      console.warn("activeVoice computed created an default staff.");
+      // Active voice computed created a default staff
     }
 
     const defaultVoice: VoiceLayer = {
@@ -1978,10 +1947,10 @@ onMounted(() => {
     const failedSymbols = Object.values(results.musical).filter(supported => !supported);
     if (failedSymbols.length > 0) {
       usesFallbackSymbols.value = true;
-      console.log('Some musical symbols not supported, using fallbacks');
+      // Some musical symbols not supported, using fallbacks
     }
   }).catch(error => {
-    console.warn('Could not load symbol utilities, using fallbacks:', error);
+    // Could not load symbol utilities, using fallbacks
     usesFallbackSymbols.value = true;
   });
 });
@@ -2133,14 +2102,14 @@ const initializeToneJs = async () => {
           // Change this to use local files instead of external URL
           baseUrl: '/audio/',
           onload: () => {
-            console.log('Piano samples loaded successfully');
+            // Piano samples loaded successfully
             if (isMobile) {
               pianoSynth.volume.value = 3; // Boost sampler volume by 3dB on mobile
             }
           }
         }).toDestination();
       } catch (error) {
-        console.error('Error initializing piano sampler:', error);
+        // Error initializing piano sampler
       }
     }
 
@@ -2159,13 +2128,13 @@ const initializeToneJs = async () => {
           }
         }).toDestination();
       } catch (error) {
-        console.error('Error initializing basic synth:', error);
+        // Error initializing basic synth
       }
     }
 
     return true;
   } catch (error) {
-    console.error('Failed to initialize Tone.js:', error);
+    // Failed to initialize Tone.js
     return false;
   }
 };
@@ -2202,7 +2171,7 @@ onMounted(async () => {
     // Check if it's the first time visit
     checkFirstTimeVisit();
   } catch (error) {
-    console.error('Error initializing Tone.js:', error);
+    // Error initializing Tone.js
     // Fallback to basic synth if piano samples fail to load
     if (!noteSynth) {
       noteSynth = new Tone.Synth().toDestination();
@@ -2410,12 +2379,11 @@ const getEffectiveBpmAtMeasure = (measureNumber: number): number => {
     .sort((a, b) => b.measure - a.measure); // Sort by measure descending
   
   if (applicableChanges.length > 0) {
-    console.log(`🎵 BPM change found for measure ${measureNumber}: ${applicableChanges[0].bpm} BPM`);
+    // BPM change found for measure
     return applicableChanges[0].bpm;
   }
   
   // If no changes, use the global tempo
-  console.log(`🎵 No BPM change for measure ${measureNumber}, using global tempo: ${tempo.value} BPM`);
   return tempo.value;
 };
 
@@ -2510,7 +2478,7 @@ const addTimeSignatureChange = (event: MouseEvent, staffId: string) => {
       denominator: newTimeSignatureDenominator.value,
       position: initialPosition + ((measureNumber - 1) * measureWidth) + 5 // Small offset from measure line
     };
-    console.log(`➕ Creating NEW time signature change: ${newTimeSignatureNumerator.value}/${newTimeSignatureDenominator.value} at measure ${measureNumber}, position ${newChange.position}`);
+    // Creating NEW time signature change
     timeSignatureChanges.value.push(newChange);
   }
   
@@ -2572,7 +2540,7 @@ const addPartialMeasure = (event: MouseEvent, staffId: string) => {
   if (existingPartialMeasure) {
     // Update existing partial measure
     existingPartialMeasure.durationFactor = partialMeasureDurationFactor.value;
-    console.log(`🔄 Updating existing partial measure: ${partialMeasureDurationFactor.value} duration at measure ${measureNumber}`);
+    // Updating existing partial measure
   } else {
     // Create new partial measure
     const newPartialMeasure: PartialMeasure = {
@@ -2581,7 +2549,7 @@ const addPartialMeasure = (event: MouseEvent, staffId: string) => {
       durationFactor: partialMeasureDurationFactor.value,
       position: measureStartPosition + 5 // Small offset from measure line
     };
-    console.log(`➕ Creating NEW partial measure: ${partialMeasureDurationFactor.value} duration at measure ${measureNumber}, position ${newPartialMeasure.position}`);
+    // Creating NEW partial measure
     partialMeasures.value.push(newPartialMeasure);
   }
   
@@ -2599,7 +2567,7 @@ const removePartialMeasure = (partialMeasureId: string) => {
   const index = partialMeasures.value.findIndex(pm => pm.id === partialMeasureId);
   if (index !== -1) {
     partialMeasures.value.splice(index, 1);
-    console.log(`🗑️ Removed partial measure: ${partialMeasureId}`);
+    // Removed partial measure
     saveToLocalStorage();
   }
 };
@@ -2894,7 +2862,7 @@ const playNoteSound = (pitch: string, duration = "8n", isDotted = false, volumeP
       setTimeout(() => fallbackSynth.dispose(), durationInSeconds * 1000 + 500);
     }
   } catch (error) {
-    console.error('Error playing note sound:', error);
+    // Error playing note sound
   }
 };
 
@@ -3445,8 +3413,7 @@ const extendStaff = () => {
   // Add 4 more measures
   measuresCount.value += 4;
 
-  // Log for debugging
-  console.log(`Extended staff: ${measuresCount.value} measures, width: ${staffWidth.value}px`);
+  // Extended staff information
 
   // Force a re-render of the staff lines
   nextTick(() => {
@@ -4236,7 +4203,7 @@ onMounted(async () => {
     markAsSaved();
 
   } catch (error) {
-    console.error('Error during component initialization:', error);
+    // Error during component initialization
   }
 });
 
@@ -4247,7 +4214,7 @@ const startToneJs = async () => {
     await Tone.start();
     return true;
   } catch (error) {
-    console.error('Error starting Tone.js AudioContext:', error);
+    // Error starting Tone.js AudioContext
     return false;
   }
 };
@@ -4279,7 +4246,7 @@ const updateComposition = (id) => {
 
   const compositionIndex = savedCompositions.value.findIndex(comp => comp.id === id);
   if (compositionIndex === -1) {
-    console.error('Composition not found for update:', id);
+    // Composition not found for update
     return;
   }
 
@@ -4315,7 +4282,7 @@ const saveRename = (id) => {
 
   const composition = savedCompositions.value.find(comp => comp.id === id);
   if (!composition) {
-    console.error('Composition not found:', id);
+    // Composition not found
     return;
   }
 
@@ -4351,7 +4318,7 @@ const exportAllCompositions = async () => {
 
         alert(`All compositions saved to Documents/${fileName}`);
       } catch (error) {
-        console.error('Error writing file with Capacitor:', error);
+        // Error writing file with Capacitor
         alert(`Error saving file: ${error.message}`);
       }
     } else {
@@ -4365,10 +4332,10 @@ const exportAllCompositions = async () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(a.href);
 
-      console.log('All compositions exported successfully via browser download');
+      // All compositions exported successfully via browser download
     }
   } catch (error) {
-    console.error('Error exporting compositions:', error);
+    // Error exporting compositions
     alert('Error exporting compositions: ' + error.message);
   }
 };
@@ -4449,7 +4416,7 @@ const exportCurrentComposition = async () => {
 
         alert(`Composition saved to Documents/${fileName}`);
       } catch (error) {
-        console.error('Error writing file with Capacitor:', error);
+        // Error writing file with Capacitor
         alert(`Error saving file: ${error.message}`);
       }
     } else {
@@ -4463,10 +4430,10 @@ const exportCurrentComposition = async () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(a.href);
 
-      console.log('Composition exported successfully via browser download');
+      // Composition exported successfully via browser download
     }
   } catch (error) {
-    console.error('Error exporting composition:', error);
+    // Error exporting composition
     alert('Error exporting composition: ' + error.message);
   }
 };
@@ -4521,7 +4488,7 @@ const processWebFiles = async (files: File[]) => {
         parsedCompositions: validCompositions
       });
     } catch (error) {
-      console.error(`Error parsing file ${file.name}:`, error);
+      // Error parsing file
       alert(`Error parsing file ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       allFileResults.push({ fileName: file.name, parsedCompositions: [] });
     }
@@ -4600,7 +4567,7 @@ const importCompositions = async (event) => {
         alert('No valid compositions found in the imported files.');
       }
     } catch (error) {
-      console.error('Error importing compositions:', error);
+      // Error importing compositions
       alert(`Error importing compositions: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -4634,7 +4601,7 @@ const importCompositions = async (event) => {
       }
       */
     } catch (error) {
-      console.error('Error picking file:', error);
+      // Error picking file
       alert(`Error selecting file: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -4642,7 +4609,7 @@ const importCompositions = async (event) => {
 
 // Create a completely new function to force-reset the notes array
 const forceResetNotesArray = () => {
-  console.log('Forcing complete reset of notes array...');
+  // Forcing complete reset of notes array
 
   // Manually empty the array while preserving reactivity
   while (notes.value.length > 0) {
@@ -4651,20 +4618,20 @@ const forceResetNotesArray = () => {
 
   // Double-check
   if (notes.value.length > 0) {
-    console.warn('Failed to clear notes array with pop method, trying splice...');
+    // Failed to clear notes array with pop method, trying splice
     notes.value.splice(0, notes.value.length);
   }
 
-  console.log('Notes array reset, current length:', notes.value.length);
+  // Notes array reset, current length
 
   // Force a redraw
   nextTick(() => {
     const noteElements = document.querySelectorAll('.note');
-    console.log(`After reset, DOM has ${noteElements.length} note elements`);
+    // After reset, DOM has note elements
 
     // Manual DOM cleanup if needed
     if (noteElements.length > 0) {
-      console.warn('Forcing manual DOM cleanup of remaining notes');
+      // Forcing manual DOM cleanup of remaining notes
       noteElements.forEach(el => {
         if (el.parentNode) el.parentNode.removeChild(el);
       });
@@ -4804,7 +4771,7 @@ const measureWidthByTimeSignature = computed(() => {
   }
 
   const width = getMeasureWidth(numerator, denominator);
-  console.log(`Measure width for ${timeSignature.value}: ${width}px (${Math.floor(width/25)} possible positions)`);
+  // Measure width calculation
   return width;
 });
 
@@ -4920,7 +4887,7 @@ const beatPositions = computed(() => {
 // Function to update time signature
 const updateTimeSignature = () => {
   // Recalculate measure widths and barline positions
-  console.log(`Time signature changed to ${timeSignature.value}`);
+  // Time signature changed
 
   // Force redraw of staff
   updateStaffDisplay();
@@ -4950,7 +4917,7 @@ const updateTimeSignature = () => {
 const updateBeatMarkers = () => {
   // Update visual beat markers if they're enabled
   if (showBeatMarkers.value) {
-    console.log('Updating beat markers');
+    // Updating beat markers
   }
 };
 
@@ -4993,7 +4960,7 @@ const selectNote = (note) => {
     if (!tieSlurStartNote.value) {
       // First note selected - set as start note
       tieSlurStartNote.value = noteWithVoiceInfo;
-      console.log(`Selected start note: ${noteWithVoiceInfo.pitch}`);
+      // Selected start note
     } else {
       // Second note selected - create tie/slur
       createTieSlur(tieSlurStartNote.value, noteWithVoiceInfo);
@@ -5309,7 +5276,7 @@ const playScore = () => {
     voicesToPlay.push(...visibleVoices);
   }
 
-  console.log(`Playing ${voicesToPlay.length} voices:`, voicesToPlay.map(v => v.name));
+  // Playing voices
 
   // Collect all notes from the voices to play
   let allNotesToPlay = [];
@@ -5332,8 +5299,7 @@ const playScore = () => {
   const globalKeySignatureWidth = (keySignatures[keySignature.value] || []).length * 10;
   const initialPosition = 70 + globalKeySignatureWidth + 20;
 
-  console.log(`Playback range: measures ${playbackStartMeasure.value} to ${playbackEndMeasure.value || 'end'}`);
-  console.log(`Measure width: ${measureWidth}px, Initial position: ${initialPosition}px`);
+  // Playback range and measure width
 
   // Filter notes based on selected measures
   let filteredNotes = sortedNotes;
@@ -5349,7 +5315,7 @@ const playScore = () => {
     });
   }
 
-  console.log(`Playing ${filteredNotes.length} notes out of ${sortedNotes.length} total notes`);
+  // Playing filtered notes
 
   // Initialize array to track timeout IDs for cleanup
   if (!window.playbackTimeouts) window.playbackTimeouts = [];
@@ -5487,7 +5453,7 @@ const playScore = () => {
           tiedNotesInfo.forEach(tiedNoteInfo => {
             const tiedNoteEndCallback = () => {
               currentPlayingNoteIds.value = currentPlayingNoteIds.value.filter(id => id !== tiedNoteInfo.noteId);
-              console.log(`Tied note ${tiedNoteInfo.noteId} finished playing after ${tiedNoteInfo.totalDurationMs}ms`);
+              // Tied note finished playing
             };
 
             const tiedNoteEndTimeoutId = setTimeout(tiedNoteEndCallback, tiedNoteInfo.totalDurationMs);
@@ -5539,7 +5505,7 @@ const playScore = () => {
       window.playbackTimeouts = [];
     }
 
-    console.log('Playback complete - all voices finished');
+    // Playback complete - all voices finished
   }, maxTotalDuration + 100); // Add a small buffer
 
   // Store the final timeout ID for potential cleanup
@@ -5613,8 +5579,8 @@ const pausePlayback = () => {
     try {
       // For basic Tone.Synth, use triggerRelease() without arguments to release all notes
       noteSynth.triggerRelease();
-    } catch (e) {
-      console.error('Error stopping noteSynth:', e);
+  } catch (e) {
+    // Error stopping noteSynth
     }
   }
 
@@ -5622,8 +5588,8 @@ const pausePlayback = () => {
     try {
       // For Tone.Sampler, we can use releaseAll()
       pianoSynth.releaseAll();
-    } catch (e) {
-      console.error('Error stopping pianoSynth:', e);
+  } catch (e) {
+    // Error stopping pianoSynth
     }
   }
 
@@ -5660,7 +5626,7 @@ const pausePlayback = () => {
     window.playbackTimeouts = [];
   }
 
-  console.log('Playback paused with', pausedTimeouts.value.length, 'pending timeouts');
+  // Playback paused with pending timeouts
 };
 
 // Add a function to resume playback
@@ -5679,7 +5645,7 @@ const resumePlayback = () => {
   // Sort timeouts by remaining time to ensure they execute in the correct order
   const sortedTimeouts = [...pausedTimeouts.value].sort((a, b) => a.remainingTime - b.remainingTime);
 
-  console.log('Resuming playback with', sortedTimeouts.length, 'timeouts');
+  // Resuming playback with timeouts
 
   // Skip any timeouts with very small remaining time (less than 10ms)
   // These are likely to be the ones that would play immediately and cause the first note issue
@@ -5694,7 +5660,7 @@ const resumePlayback = () => {
       try {
         timeout.callback();
       } catch (error) {
-        console.error('Error executing resume callback:', error);
+        // Error executing resume callback
       }
     }, adjustedTime);
 
@@ -5713,7 +5679,7 @@ const resumePlayback = () => {
   pausedTimeouts.value = [];
   pauseTime.value = null;
 
-  console.log(`Playback resumed with ${validTimeouts.length} individual timeouts`);
+  // Playback resumed with individual timeouts
 };
 
 // Add a function to toggle playback
@@ -5761,7 +5727,7 @@ const currentLyric = ref('');
 // Add a function to set lyrics for the selected note
 const setLyricForNote = (noteId, lyric) => {
   if (readOnlyMode.value) {
-    console.log("Read-only mode active - lyrics editing disabled");
+    // Read-only mode active - lyrics editing disabled
     return; // Exit early if in read-only mode
   }
 
@@ -5820,7 +5786,7 @@ const switchActiveVoice = (voiceIdToActivate: string) => {
   activeStaffId.value = voiceToActivate.staffId; // Also set the active staff
 
   selectedNoteId.value = null;
-  console.log(`Switched to voice: ${voiceIdToActivate} on staff: ${activeStaffId.value}`);
+  // Switched to voice
 };
 
 // Add a function to toggle voice visibility
@@ -5908,14 +5874,14 @@ const deleteVoice = (voiceIdToDelete: string) => {
 
     // Persist changes (if you have a save-to-storage mechanism)
     // saveCompositionsToStorage(); // Assuming you have this function
-    console.log(`Voice ${voiceIdToDelete} deleted.`);
+    // Voice deleted
   }
 };
 
 // Add a function to add a new voice layer
 const addVoiceLayer = (staffIdToAddVoiceTo?: string) => {
   if (readOnlyMode.value) {
-    console.log("Read-only mode active - can't add voice");
+    // Read-only mode active - can't add voice
     return; // Exit early if in read-only mode
   }
 
@@ -5929,12 +5895,12 @@ const addVoiceLayer = (staffIdToAddVoiceTo?: string) => {
     staves.value.push({ id: newStaffId, clef: 'treble', order: 0, name: 'Staff 1' });
     activeStaffId.value = newStaffId;
     targetStaffId = newStaffId;
-    console.log("No staves found when adding voice, created a default staff:", newStaffId);
+    // No staves found when adding voice, created a default staff
   }
 
   if (!targetStaffId) {
     alert("Cannot add voice layer: No staff available or selected.");
-    console.error("Failed to add voice layer: No targetStaffId determined.");
+    // Failed to add voice layer: No targetStaffId determined
     return;
   }
 
@@ -5952,7 +5918,7 @@ const addVoiceLayer = (staffIdToAddVoiceTo?: string) => {
   };
   voiceLayers.value.push(newVoice);
   switchActiveVoice(newVoiceId); // Make the new voice active
-  console.log(`Added new voice layer ${newVoiceId} to staff ${targetStaffId}`);
+  // Added new voice layer
   saveToLocalStorage();
 };
 
@@ -5981,10 +5947,10 @@ const assignVoiceToStaff = (voiceId: string, newStaffId: string) => {
       activeStaffId.value = newStaffId;
     }
     
-    console.log(`Moved voice ${voice.name} from staff ${oldStaffId} to staff ${newStaffId}`);
+    // Moved voice from staff to staff
     saveToLocalStorage();
   } else {
-    console.error(`Failed to assign voice ${voiceId} to staff ${newStaffId}. Voice or staff not found.`);
+    // Failed to assign voice to staff
     alert("Error assigning voice to staff. Please try again.");
   }
 };
@@ -6234,7 +6200,7 @@ const handleSaveRename = (id: string, newName: string) => {
   }
   const composition = savedCompositions.value.find(comp => comp.id === id);
   if (!composition) {
-    console.error('Composition not found for rename:', id);
+    // Composition not found for rename
     return;
   }
   composition.name = newName.trim();
@@ -6275,22 +6241,6 @@ const updateVoiceLayerSelection = (voiceId: string, selected: boolean) => {
   }
 };
 
-// Initialize Debug Composable
-// Pass the 'notes' computed property (or the ref it depends on)
-// For notesForDebug, DebugPanel expects 'notes' which is activeVoice.value.notes
-const {
-  debugMode, // Get the reactive ref from the composable
-  showNotePositions, // Get the reactive ref from the composable
-  toggleDebugMode, // Get the method from the composable
-  testAllNotes, // Get the method from the composable
-  // notesForDebug will be the 'notes' computed property from NotationEditorView
-  // lastClickY and selectedOctave are passed through for DebugPanel
-} = useDebug(
-  notes as ComputedRef<ImportedNote[]>,
-  computed(() => staves.value.find(s => s.id === activeStaffId.value)?.clef || (staves.value.length > 0 ? staves.value[0].clef : 'treble')), // Pass active staff's clef
-  lastClickY,
-  selectedOctave
-);
 
 // Add this import at the top of your script section
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -6351,7 +6301,7 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
         const newStaffIdForVoice = oldVoice.staffId ? staffIdMap[oldVoice.staffId] : undefined;
 
         if (!newStaffIdForVoice && newComposition.staves!.length > 0) {
-          console.warn(`Voice ${oldVoice.name} had no staff or unmapped staff. Assigning to first new staff.`);
+          // Voice had no staff or unmapped staff. Assigning to first new staff
           // Attempt to find a staff from the same original composition if possible
           const originalCompStaff = newComposition.staves!.find(s => s.name?.includes(`(from ${comp.name})`));
           const targetStaff = originalCompStaff || newComposition.staves![0];
@@ -6380,7 +6330,7 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
           };
           newComposition.voiceLayers!.push(newVoice);
         } else {
-          console.error(`Could not find a staff for voice ${oldVoice.name} from ${comp.name}. Skipping voice.`);
+          // Could not find a staff for voice
         }
       });
 
@@ -6418,7 +6368,7 @@ const combineCompositions = (compositionIds: string[], newName: string, preserve
       const targetStaffIdForCompVoices = compSpecificNewStaffIds[0] || (newComposition.staves!.length > 0 ? newComposition.staves![0].id : undefined);
 
       if (!targetStaffIdForCompVoices) {
-        console.error(`Cannot add voices for ${comp.name} as no target staff could be determined or created.`);
+        // Cannot add voices as no target staff could be determined or created
         return; // Skip voices for this comp if no staff
       }
 
@@ -6801,7 +6751,7 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
           tiedNotesInfo.forEach(tiedNoteInfo => {
             const tiedNoteEndCallback = () => {
               currentPlayingNoteIds.value = currentPlayingNoteIds.value.filter(id => id !== tiedNoteInfo.noteId);
-              console.log(`Tied note ${tiedNoteInfo.noteId} finished playing after ${tiedNoteInfo.totalDurationMs}ms`);
+              // Tied note finished playing
             };
 
             const tiedNoteEndTimeoutId = setTimeout(tiedNoteEndCallback, tiedNoteInfo.totalDurationMs);
@@ -6853,7 +6803,7 @@ const playCompositionWithCallback = (sectionStartMeasure: number | null = null, 
       window.playbackTimeouts = [];
     }
 
-    console.log('Playback complete - all voices finished');
+    // Playback complete - all voices finished
 
     // If we're playing a sequence, move to the next section
     if (isPlayingSequence.value) {
@@ -6870,13 +6820,13 @@ const sequenceItems = ref<SequenceItem[]>([]);
 
 // Add a function to handle sequence updates from the SectionsPanel
 const updateSequence = (newSequence: SequenceItem[]) => {
-  console.log('Updating sequence:', newSequence);
+  // Updating sequence
   sequenceItems.value = [...newSequence];
 };
 
 // Add this watch to confirm when sequenceItems changes
 watch(sequenceItems, (newValue) => {
-  console.log('sequenceItems changed:', newValue);
+  // sequenceItems changed
 }, { deep: true });
 
 // Modify the exportCurrentComposition function to log more details
@@ -6910,7 +6860,7 @@ const enforceNaturalNotes = () => {
   });
 
   if (enforcedCount > 0) {
-    console.log(`Enforced ${enforcedCount} natural notes`);
+    // Enforced natural notes
   }
 
   return enforcedCount;
@@ -6970,7 +6920,7 @@ const closeFirstTimeInstructions = () => {
 
 // Add this function to initialize a default staff and voice
 const initializeDefaultStaffAndVoice = () => {
-  console.log("Initializing default staff and voice.");
+  // Initializing default staff and voice
   if (staves.value.length === 0) {
     const defaultStaffId = generateId();
     staves.value.push({
@@ -6980,7 +6930,7 @@ const initializeDefaultStaffAndVoice = () => {
       name: 'Staff 1'
     });
     activeStaffId.value = defaultStaffId;
-    console.log("Created default staff:", defaultStaffId);
+    // Created default staff
   }
 
   if (voiceLayers.value.length === 0 && staves.value.length > 0) {
@@ -7328,54 +7278,8 @@ const loadCompositionWithReadOnly = (compositionId, enableReadOnly = true) => {
   }
 };
 
-// Wrapper functions for DebugPanel props
-// Assumes DebugNote is compatible with ImportedNote and DebugPanel uses active clef context
 
-const needsLedgerLinesForDebugPanel = (noteFromDebugPanel: ImportedNote, side: "above" | "below"): boolean => {
-  const currentActiveVoice = activeVoice.value;
-  if (!currentActiveVoice || !currentActiveVoice.staffId) {
-    console.warn("DebugPanel (needsLedgerLines): Active voice or staffId not found for note", noteFromDebugPanel.id);
-    return false;
-  }
-  const currentActiveStaff = staves.value.find(s => s.id === currentActiveVoice.staffId);
-  if (!currentActiveStaff) {
-    console.warn("DebugPanel (needsLedgerLines): Active staff not found for note", noteFromDebugPanel.id);
-    return false;
-  }
 
-  const noteWithContext: NoteWithVoiceInfo = {
-    ...noteFromDebugPanel,
-    voiceId: currentActiveVoice.id,
-    voiceColor: currentActiveVoice.color,
-    staffId: currentActiveStaff.id,
-    staffClef: currentActiveStaff.clef,
-    verticalPosition: noteFromDebugPanel.verticalPosition !== undefined ? noteFromDebugPanel.verticalPosition : getPitchPosition(noteFromDebugPanel.pitch || '', currentActiveStaff.clef)
-  };
-  return needsLedgerLines(noteWithContext, side, currentActiveStaff.clef);
-};
-
-const getLedgerLinesForDebugPanel = (noteFromDebugPanel: ImportedNote, side: "above" | "below"): number[] => {
-  const currentActiveVoice = activeVoice.value;
-  if (!currentActiveVoice || !currentActiveVoice.staffId) {
-    console.warn("DebugPanel (getLedgerLines): Active voice or staffId not found for note", noteFromDebugPanel.id);
-    return [];
-  }
-  const currentActiveStaff = staves.value.find(s => s.id === currentActiveVoice.staffId);
-  if (!currentActiveStaff) {
-    console.warn("DebugPanel (getLedgerLines): Active staff not found for note", noteFromDebugPanel.id);
-    return [];
-  }
-
-  const noteWithContext: NoteWithVoiceInfo = {
-    ...noteFromDebugPanel,
-    voiceId: currentActiveVoice.id,
-    voiceColor: currentActiveVoice.color,
-    staffId: currentActiveStaff.id,
-    staffClef: currentActiveStaff.clef,
-    verticalPosition: noteFromDebugPanel.verticalPosition !== undefined ? noteFromDebugPanel.verticalPosition : getPitchPosition(noteFromDebugPanel.pitch || '', currentActiveStaff.clef)
-  };
-  return getLedgerLines(noteWithContext, side, currentActiveStaff.clef);
-};
 
 const deleteNote = (noteToRemove: ImportedNote | NoteWithVoiceInfo) => {
   if (readOnlyMode.value) return;

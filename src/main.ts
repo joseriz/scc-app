@@ -20,7 +20,7 @@ const authStore = useAuthStore(pinia)
 
 // Initialize auth in the background
 authStore.initialize().catch(error => {
-  console.error('Failed to initialize auth:', error);
+  // Failed to initialize auth
 });
 
 // Initialize symbol support for cross-device compatibility
@@ -31,10 +31,10 @@ try {
   if (deviceClasses) {
     document.body.className += ' ' + deviceClasses;
   }
-  console.log('Symbol support initialized with device classes:', deviceClasses);
-  console.log('Symbol support results:', symbolResults);
+  // Symbol support initialized with device classes
+  // Symbol support results
 } catch (error) {
-  console.warn('Could not initialize symbol support:', error);
+  // Could not initialize symbol support
 }
 
 app.mount('#app') 

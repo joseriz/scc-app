@@ -14,18 +14,9 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Debug: Check if environment variables are loaded
-console.log('Firebase Config:', {
-  apiKey: firebaseConfig.apiKey ? 'Present' : 'Missing',
-  authDomain: firebaseConfig.authDomain ? 'Present' : 'Missing',
-  projectId: firebaseConfig.projectId ? 'Present' : 'Missing',
-  storageBucket: firebaseConfig.storageBucket ? 'Present' : 'Missing',
-  messagingSenderId: firebaseConfig.messagingSenderId ? 'Present' : 'Missing',
-  appId: firebaseConfig.appId ? 'Present' : 'Missing'
-});
+// Firebase configuration loaded
 
-// Log platform information early
-console.log('[Firebase] Capacitor detected? ->', Capacitor.isNativePlatform());
+// Platform detection completed
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -36,14 +27,12 @@ export const auth = getAuth(app);
 // Initialize Firestore with different settings for native vs web
 let db: any;
 if (Capacitor.isNativePlatform()) {
-  console.log('[Firebase] Native platform detected – using memory cache with long polling');
   db = initializeFirestore(app, {
     localCache: memoryLocalCache(),
     experimentalForceLongPolling: true,
     useFetchStreams: false
   } as any);
 } else {
-  console.log('[Firebase] Web platform – using default Firestore');
   db = initializeFirestore(app, {
     localCache: memoryLocalCache()
   });
@@ -106,8 +95,7 @@ export class NativeFirestoreWrapper {
       });
       
       const requestBody = { structuredQuery };
-      console.log('[NativeFirestore] Request URL:', url);
-      console.log('[NativeFirestore] Request body:', JSON.stringify(requestBody, null, 2));
+      // Making Firestore request
       
       const response = await fetch(url, {
         method: 'POST',
@@ -120,12 +108,12 @@ export class NativeFirestoreWrapper {
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[NativeFirestore] Error response:', errorText);
+        // Error response received
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
-      console.log('[NativeFirestore] Response data:', JSON.stringify(data, null, 2));
+      // Response data received
       return data.map((item: any) => {
         const doc = item.document;
         if (!doc) return null;
@@ -133,27 +121,7 @@ export class NativeFirestoreWrapper {
         // Convert Firestore field format to plain object
         const fields = this.convertFirestoreFields(doc.fields);
         
-        console.log('[NativeFirestore] Converted fields for doc:', doc.name.split('/').pop(), fields);
-        console.log('[NativeFirestore] All field keys:', Object.keys(fields));
-        console.log('[NativeFirestore] Field types:', Object.keys(fields).map(key => `${key}: ${typeof fields[key]}`));
-        if (fields.sequenceItems) {
-          console.log('[NativeFirestore] sequenceItems:', fields.sequenceItems);
-        }
-        if (fields.notes) {
-          console.log('[NativeFirestore] notes:', fields.notes);
-        }
-        if (fields.measures) {
-          console.log('[NativeFirestore] measures:', fields.measures);
-        }
-        if (fields.staves) {
-          console.log('[NativeFirestore] staves:', fields.staves);
-        }
-        if (fields.voiceLayers) {
-          console.log('[NativeFirestore] voiceLayers:', fields.voiceLayers);
-          fields.voiceLayers.forEach((voice: any, i: number) => {
-            console.log(`[NativeFirestore] Voice ${i} notes:`, voice.notes);
-          });
-        }
+        // Fields converted successfully
         
         return {
           docId: doc.name.split('/').pop(),
@@ -161,7 +129,7 @@ export class NativeFirestoreWrapper {
         };
       }).filter(Boolean) || [];
     } catch (error) {
-      console.error('[NativeFirestore] Error fetching compositions:', error);
+      // Error fetching compositions
       throw error;
     }
   }
@@ -194,7 +162,7 @@ export class NativeFirestoreWrapper {
         ...fields
       };
     } catch (error) {
-      console.error('[NativeFirestore] Error fetching composition:', error);
+      // Error fetching composition
       throw error;
     }
   }
@@ -216,7 +184,7 @@ export class NativeFirestoreWrapper {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (error) {
-      console.error('[NativeFirestore] Error deleting composition:', error);
+      // Error deleting composition
       throw error;
     }
   }
@@ -241,7 +209,7 @@ export class NativeFirestoreWrapper {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (error) {
-      console.error('[NativeFirestore] Error updating composition:', error);
+      // Error updating composition
       throw error;
     }
   }
@@ -276,7 +244,7 @@ export class NativeFirestoreWrapper {
         id: docId || result.name.split('/').pop()
       };
     } catch (error) {
-      console.error('[NativeFirestore] Error saving composition:', error);
+      // Error saving composition
       throw error;
     }
   }
@@ -322,7 +290,7 @@ export class NativeFirestoreWrapper {
         result[key] = this.convertFirestoreFields(field.mapValue.fields);
       } else {
         // Handle unknown field types
-        console.warn('[NativeFirestore] Unknown field type:', key, field);
+        // Unknown field type encountered
         result[key] = field;
       }
     });
@@ -369,14 +337,6 @@ export const nativeFirestore = Capacitor.isNativePlatform()
   ? new NativeFirestoreWrapper(firebaseConfig.projectId)
   : null;
 
-// Handy helper to log whenever we make a Firestore call – replace/remove if too noisy
-export function logFirestoreCall(method: string, payload?: unknown) {
-  if (Capacitor.isNativePlatform()) {
-    console.log(`[Firestore/native] ${method}`, payload ?? '');
-  } else {
-    console.log(`[Firestore/web] ${method}`, payload ?? '');
-  }
-}
 
 // Helper to convert JS data to Firestore REST API fields
 function toFirestoreFields(obj: Record<string, any>): Record<string, any> {
